@@ -18,8 +18,8 @@ class FileMerger:
             rppg_df = pd.read_csv(os.path.join(self.path, "rppg_log.csv"), dtype=float)
             ecg_df = pd.read_csv(os.path.join(self.path, "ecg_log.csv"), dtype=float)
             # TODO: change to column names
-            rppg_timestamp = rppg_df.iloc[:, 0].to_numpy().tolist()#["timestamp"].to_numpy().tolist()
-            rppg_signal = rppg_df.iloc[:, 1].to_numpy().tolist()#["rppg"].to_numpy().tolist()
+            rppg_timestamp = rppg_df["timestamp"].to_numpy().tolist()
+            rppg_signal = rppg_df["rppg"].to_numpy().tolist()
             ecg_timestamp = ecg_df.iloc[:, 0].to_numpy().tolist()
             ecg_signal = ecg_df.iloc[:, 1].to_numpy().tolist()
             return {
