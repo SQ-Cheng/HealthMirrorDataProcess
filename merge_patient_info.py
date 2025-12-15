@@ -32,7 +32,7 @@ def main():
         output_file = 'lab_merged_patient_info.csv'
     else:
         extracted_file = 'overall_patient_info.csv'
-        marked_file = 'extracted_vitals_251102.csv'
+        marked_file = 'extracted_vitals_1.csv'
         output_file = 'merged_patient_info.csv'
     merge_patient_info(extracted_file, marked_file, output_file)
 

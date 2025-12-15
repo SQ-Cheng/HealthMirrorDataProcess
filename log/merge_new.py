@@ -13,15 +13,18 @@ class FileMerger:
         self.data = dict()
         self.mirror_version = global_vars.mirror_version
 
+    def set_path(self, path: str) -> None:
+        self.path = path
+
     def _load_data(self) -> None:
         def _load_data_v1() -> dict:
             rppg_df = pd.read_csv(os.path.join(self.path, "rppg_log.csv"), dtype=float)
             ecg_df = pd.read_csv(os.path.join(self.path, "ecg_log.csv"), dtype=float)
             # TODO: change to column names
-            rppg_timestamp = rppg_df["timestamp"].to_numpy().tolist()
-            rppg_signal = rppg_df["rppg"].to_numpy().tolist()
-            ecg_timestamp = ecg_df.iloc[:, 0].to_numpy().tolist()
-            ecg_signal = ecg_df.iloc[:, 1].to_numpy().tolist()
+            rppg_timestamp = rppg_df["timestamp"].to_numpy()
+            rppg_signal = rppg_df["rppg"].to_numpy()
+            ecg_timestamp = ecg_df.iloc[:, 0].to_numpy()
+            ecg_signal = ecg_df.iloc[:, 1].to_numpy()
             return {
                 "RPPG_Timestamp": rppg_timestamp,
                 "RPPG_Signal": rppg_signal,
@@ -35,14 +38,14 @@ class FileMerger:
             rppg_df = pd.read_csv(os.path.join(self.path, "rppg_log.csv"), dtype=float)
             ppg_df = pd.read_csv(os.path.join(self.path, "ppg_log.csv"), dtype=float)
             ecg_df = pd.read_csv(os.path.join(self.path, "ecg_log.csv"), dtype=float)
-            rppg_timestamp = rppg_df["timestamp"].to_numpy().tolist()
-            rppg_signal = rppg_df["rppg"].to_numpy().tolist()
-            ppg_timestamp = ppg_df["timestamp"].to_numpy().tolist()
-            ppg_red = ppg_df["ppg_red"].to_numpy().tolist()
-            ppg_ir = ppg_df["ppg_ir"].to_numpy().tolist()
-            ppg_green = ppg_df["ppg_green"].to_numpy().tolist()
-            ecg_timestamp = ecg_df["timestamp"].to_numpy().tolist()
-            ecg_signal = ecg_df["ecg"].to_numpy().tolist()
+            rppg_timestamp = rppg_df["timestamp"].to_numpy()
+            rppg_signal = rppg_df["rppg"].to_numpy()
+            ppg_timestamp = ppg_df["timestamp"].to_numpy()
+            ppg_red = ppg_df["ppg_red"].to_numpy()
+            ppg_ir = ppg_df["ppg_ir"].to_numpy()
+            ppg_green = ppg_df["ppg_green"].to_numpy()
+            ecg_timestamp = ecg_df["timestamp"].to_numpy()
+            ecg_signal = ecg_df["ecg"].to_numpy()
             return {
                 "RPPG_Timestamp": rppg_timestamp,
                 "RPPG_Signal": rppg_signal,
@@ -77,33 +80,38 @@ class FileMerger:
             int((self.raw_data["Last_Timestamp"] - self.raw_data["First_Timestamp"]) * self.resample_rate)
         )
 
-        self.data["Timestamp"] = new_timestamps.tolist()
+        self.data["Timestamp"] = new_timestamps
         self.data["RPPG"] = resample_signal(
             self.raw_data["RPPG_Timestamp"], self.raw_data["RPPG_Signal"], new_timestamps
-        ).tolist()
+        )
         self.data["ECG"] = resample_signal(
             self.raw_data["ECG_Timestamp"], self.raw_data["ECG_Signal"], new_timestamps
-        ).tolist()
+        )
 
         if self.mirror_version == "2":
             self.data["PPG_RED"] = resample_signal(
                 self.raw_data["PPG_Timestamp"], self.raw_data["PPG_Red"], new_timestamps
-            ).tolist()
+            )
             self.data["PPG_IR"] = resample_signal(
                 self.raw_data["PPG_Timestamp"], self.raw_data["PPG_IR"], new_timestamps
-            ).tolist()
+            )
             self.data["PPG_GREEN"] = resample_signal(
                 self.raw_data["PPG_Timestamp"], self.raw_data["PPG_Green"], new_timestamps
-            ).tolist()
+            )
 
         if self.log:
             print(f"[FileMerger] Resampling complete.")
 
     def __call__(self):
         self._load_data()
+        if abs(self.raw_data["RPPG_Timestamp"][0] - self.raw_data["ECG_Timestamp"][0]) > 10.0:
+            if self.log:
+                print(f"[FileMerger] Warning: Large time difference between RPPG and ECG start times.")
+            return None
+
         self._resample_data()
         self.merged_df = pd.DataFrame(self.data)
-        self.merged_df.to_csv(os.path.join(self.path, "merged_log.csv"), index=False)
+        self.merged_df.to_csv(os.path.join(self.path, "merged_log.csv"), float_format="%.3f", index=False)
         if self.log:
             print(f"[FileMerger] Merged data saved to {os.path.join(self.path, 'merged_log.csv')}")
         return self.merged_df
