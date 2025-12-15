@@ -11,6 +11,7 @@ df1 = merge1()
 while True:
     pass
 """
+negative = True
 
 def main():
     global_vars.mirror_version = "1"
@@ -20,7 +21,7 @@ def main():
         if dir.startswith("patient_"):
             try:
                 patient_path = os.path.join(data_dir, dir)
-                merger = FileMerger(path=patient_path, log=True)
+                merger = FileMerger(path=patient_path, log=True, negative=negative)
                 merged_df = merger()
                 if merged_df is None:
                     print(f"Skipping {patient_path} due to merge issues.")

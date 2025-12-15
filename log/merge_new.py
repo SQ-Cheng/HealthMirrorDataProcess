@@ -5,13 +5,14 @@ from scipy.interpolate import interp1d
 import global_vars
 
 class FileMerger:
-    def __init__(self, path=None, log=False, resample_rate=512) -> None:
+    def __init__(self, path=None, log=False, resample_rate=512, negative=False) -> None:
         self.path = path
         self.log = log
         self.resample_rate = resample_rate
         self.raw_data = dict()
         self.data = dict()
         self.mirror_version = global_vars.mirror_version
+        self.negative = negative
 
     def set_path(self, path: str) -> None:
         self.path = path
@@ -25,6 +26,8 @@ class FileMerger:
             rppg_signal = rppg_df["rppg"].to_numpy()
             ecg_timestamp = ecg_df.iloc[:, 0].to_numpy()
             ecg_signal = ecg_df.iloc[:, 1].to_numpy()
+            if self.negative:
+                ecg_signal = -ecg_signal
             return {
                 "RPPG_Timestamp": rppg_timestamp,
                 "RPPG_Signal": rppg_signal,
@@ -46,6 +49,8 @@ class FileMerger:
             ppg_green = ppg_df["ppg_green"].to_numpy()
             ecg_timestamp = ecg_df["timestamp"].to_numpy()
             ecg_signal = ecg_df["ecg"].to_numpy()
+            if self.negative:
+                ecg_signal = -ecg_signal
             return {
                 "RPPG_Timestamp": rppg_timestamp,
                 "RPPG_Signal": rppg_signal,
