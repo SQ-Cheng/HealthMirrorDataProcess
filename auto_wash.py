@@ -218,6 +218,7 @@ class AutoWasher:
             ecg_signal = filter_signal(ecg_signal, fs=self.fs, lowcut=0.5, highcut=30, order=4)
             ecg_signal = notch_filter(ecg_signal, fs=self.fs, freq=50.0, quality=30.0)
             rppg_signal = df['RPPG'].to_numpy()
+            rppg_signal = filter_signal(rppg_signal, fs=self.fs, lowcut=0.5, highcut=5.0, order=4)
             
             # Pre-calculate NeuroKit quality vector
             rppg_quality_vec = None
@@ -638,10 +639,16 @@ class AutoWasher:
         
         ax2.set_ylim(-0.1, 1.1)
         
-        # Mark peaks
+        # Mark ECG peaks
         if len(peaks) > 0:
             valid_peaks = peaks[peaks < len(timestamps)]
             ax1.plot(timestamps[valid_peaks], ecg[valid_peaks], 'r.', markersize=5, label='Peaks')
+        
+        # Mark rPPG peaks
+        rppg_peaks = find_rppg_peaks(rppg, fs=self.fs)
+        if len(rppg_peaks) > 0:
+            valid_rppg_peaks = rppg_peaks[rppg_peaks < len(timestamps)]
+            ax2.plot(timestamps[valid_rppg_peaks], rppg_vis[valid_rppg_peaks], 'r.', markersize=5, label='Peaks')
 
         # Mark segment boundaries (static)
         for seg in segments_info:
