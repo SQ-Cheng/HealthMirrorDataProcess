@@ -801,7 +801,7 @@ class AutoWasher:
             print(f"Saved {filepath}")
 
 if __name__ == "__main__":
-    mirror_id = 2
+    mirror_id = 1
     parser = argparse.ArgumentParser(description="Auto Wash Patient Data")
     parser.add_argument("--data_dir", type=str, default=f"./mirror{mirror_id}_data", help="Directory containing patient folders")
     parser.add_argument("--output_dir", type=str, default=f"./mirror{mirror_id}_auto_cleaned", help="Directory to save cleaned segments")
@@ -820,7 +820,7 @@ if __name__ == "__main__":
         reference_dir=args.reference_dir,
         patient_info_csv=args.patient_info_csv,
         threshold={'ECG': args.threshold_ecg, 'rPPG': args.threshold_rppg},
-        visualize=False,
+        visualize=True,
         ecg_method='mixture'
     )
     

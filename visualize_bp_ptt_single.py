@@ -6,8 +6,13 @@ import argparse
 import os
 
 class SinglePatientBPPTTVisualizer:
-    def __init__(self, csv_path):
-        self.csv_path = csv_path
+    def __init__(self, csv_paths, min_measurements=2):
+        # Accept either a single path or a list of paths
+        if isinstance(csv_paths, str):
+            self.csv_paths = [csv_paths]
+        else:
+            self.csv_paths = csv_paths
+        self.min_measurements = min_measurements
         self.df = None
         self.patient_data = {}  # Dictionary of Hospital_Patient_ID -> dataframe
         self.patient_ids = []   # List of unique Hospital_Patient_IDs
@@ -26,11 +31,23 @@ class SinglePatientBPPTTVisualizer:
         self.update_plots()
         
     def load_data(self):
-        """Load the cleaned patient info CSV and group by Hospital_Patient_ID."""
-        if not os.path.exists(self.csv_path):
-            raise FileNotFoundError(f"CSV file not found: {self.csv_path}")
+        """Load and merge cleaned patient info from multiple CSVs, grouping by Hospital_Patient_ID."""
+        # Load all CSV files
+        all_dfs = []
+        for csv_path in self.csv_paths:
+            if not os.path.exists(csv_path):
+                print(f"Warning: CSV file not found: {csv_path}")
+                continue
+            
+            df = pd.read_csv(csv_path)
+            all_dfs.append(df)
         
-        self.df = pd.read_csv(self.csv_path)
+        if not all_dfs:
+            raise FileNotFoundError(f"No valid CSV files found in: {self.csv_paths}")
+        
+        # Concatenate all dataframes
+        self.df = pd.concat(all_dfs, ignore_index=True)
+        print(f"Loaded {len(all_dfs)} CSV file(s) with {len(self.df)} total records")
         
         # Validate required columns
         required_cols = ['Lab_Patient_ID', 'Hospital_Patient_ID', 'ECG_SQI_AVG', 
@@ -54,17 +71,21 @@ class SinglePatientBPPTTVisualizer:
         # Group by Hospital_Patient_ID
         grouped = valid_df.groupby('Hospital_Patient_ID')
         
-        # Only keep patients with multiple data points (at least 2)
+        # Only keep patients with sufficient data points (>= min_measurements)
+        total_patients = len(grouped)
         for hospital_id, group_df in grouped:
-            if len(group_df) >= 2:
+            if len(group_df) >= self.min_measurements:
                 self.patient_data[hospital_id] = group_df.copy()
         
         self.patient_ids = sorted(self.patient_data.keys())
         
         if not self.patient_ids:
-            raise ValueError("No patients with multiple valid data points found!")
+            raise ValueError(f"No patients with at least {self.min_measurements} valid data points found!")
         
-        print(f"Loaded {len(self.patient_ids)} patients with multiple measurements")
+        filtered_out = total_patients - len(self.patient_ids)
+        print(f"Loaded {len(self.patient_ids)} patients with at least {self.min_measurements} measurements")
+        if filtered_out > 0:
+            print(f"  (Filtered out {filtered_out} patients with < {self.min_measurements} measurements)")
         print(f"Total data points: {sum(len(df) for df in self.patient_data.values())}")
         
     def calculate_all_correlations(self):
@@ -79,16 +100,36 @@ class SinglePatientBPPTTVisualizer:
             high_bp = patient_df['High_Blood_Pressure'].values
             mean_bp = patient_df['Mean_BP'].values
             
-            # Calculate correlations
+            # Calculate correlations and residuals
             r_diastolic = None
             r_systolic = None
             r_mean = None
+            me_diastolic = None
+            std_diastolic = None
+            me_systolic = None
+            std_systolic = None
+            me_mean = None
+            std_mean = None
             
             if len(ptt) >= 2:
                 try:
-                    _, _, r_diastolic, _, _ = stats.linregress(ptt, low_bp)
-                    _, _, r_systolic, _, _ = stats.linregress(ptt, high_bp)
-                    _, _, r_mean, _, _ = stats.linregress(ptt, mean_bp)
+                    slope_dia, intercept_dia, r_diastolic, _, _ = stats.linregress(ptt, low_bp)
+                    y_pred_dia = slope_dia * ptt + intercept_dia
+                    residuals_dia = abs(y_pred_dia - low_bp)
+                    me_diastolic = np.mean(residuals_dia)
+                    std_diastolic = np.std(residuals_dia, ddof=1)
+                    
+                    slope_sys, intercept_sys, r_systolic, _, _ = stats.linregress(ptt, high_bp)
+                    y_pred_sys = slope_sys * ptt + intercept_sys
+                    residuals_sys = abs(y_pred_sys - high_bp)
+                    me_systolic = np.mean(residuals_sys)
+                    std_systolic = np.std(residuals_sys, ddof=1)
+                    
+                    slope_mean, intercept_mean, r_mean, _, _ = stats.linregress(ptt, mean_bp)
+                    y_pred_mean = slope_mean * ptt + intercept_mean
+                    residuals_mean = abs(y_pred_mean - mean_bp)
+                    me_mean = np.mean(residuals_mean)
+                    std_mean = np.std(residuals_mean, ddof=1)
                 except:
                     pass
             
@@ -98,6 +139,12 @@ class SinglePatientBPPTTVisualizer:
                 'r_diastolic': r_diastolic,
                 'r_systolic': r_systolic,
                 'r_mean': r_mean,
+                'me_diastolic': me_diastolic,
+                'std_diastolic': std_diastolic,
+                'me_systolic': me_systolic,
+                'std_systolic': std_systolic,
+                'me_mean': me_mean,
+                'std_mean': std_mean,
                 'ecg_sqi_avg': patient_df['ECG_SQI_AVG'].mean(),
                 'rppg_sqi_avg': patient_df['rPPG_SQI_AVG'].mean(),
                 'ptt_stddev_avg': patient_df['PTT_STDDEV'].mean()
@@ -190,6 +237,17 @@ class SinglePatientBPPTTVisualizer:
         summary_text += f"  Std R: {valid_r_mean.std():.4f}\n"
         summary_text += f"  Range: [{valid_r_mean.min():.3f}, {valid_r_mean.max():.3f}]\n\n"
         
+        summary_text += "ME (mean) ± STD (worst):\n"
+        valid_me_dia = corr_df['me_diastolic'].dropna()
+        valid_std_dia = corr_df['std_diastolic'].dropna()
+        valid_me_sys = corr_df['me_systolic'].dropna()
+        valid_std_sys = corr_df['std_systolic'].dropna()
+        valid_me_mean = corr_df['me_mean'].dropna()
+        valid_std_mean = corr_df['std_mean'].dropna()
+        summary_text += f"  Diastolic: {valid_me_dia.mean():.2f}±{valid_std_dia.max():.2f}\n"
+        summary_text += f"  Systolic: {valid_me_sys.mean():.2f}±{valid_std_sys.max():.2f}\n"
+        summary_text += f"  Mean BP: {valid_me_mean.mean():.2f}±{valid_std_mean.max():.2f}\n\n"
+        
         summary_text += f"Avg Measurements/Patient: {corr_df['n_measurements'].mean():.1f}\n"
         
         ax.text(0.1, 0.95, summary_text, transform=ax.transAxes,
@@ -220,6 +278,17 @@ class SinglePatientBPPTTVisualizer:
         print(f"  Mean R: {valid_r_mean.mean():.4f} ± {valid_r_mean.std():.4f}")
         print(f"  Median R: {valid_r_mean.median():.4f}")
         print(f"  Range: [{valid_r_mean.min():.3f}, {valid_r_mean.max():.3f}]")
+        
+        valid_me_dia = corr_df['me_diastolic'].dropna()
+        valid_std_dia = corr_df['std_diastolic'].dropna()
+        valid_me_sys = corr_df['me_systolic'].dropna()
+        valid_std_sys = corr_df['std_systolic'].dropna()
+        valid_me_mean = corr_df['me_mean'].dropna()
+        valid_std_mean = corr_df['std_mean'].dropna()
+        print(f"\nME (mean) ± STD (worst case):")
+        print(f"  Diastolic BP: {valid_me_dia.mean():.2f}±{valid_std_dia.max():.2f} mmHg")
+        print(f"  Systolic BP:  {valid_me_sys.mean():.2f}±{valid_std_sys.max():.2f} mmHg")
+        print(f"  Mean BP:      {valid_me_mean.mean():.2f}±{valid_std_mean.max():.2f} mmHg")
         print(f"\nPress any key in the plot window to continue...")
         print(f"{'='*70}\n")
         
@@ -261,11 +330,18 @@ class SinglePatientBPPTTVisualizer:
         y_line = slope * x_line + intercept
         ax.plot(x_line, y_line, 'r-', linewidth=2.5, label=f'y = {slope:.4f}x + {intercept:.2f}')
         
+        # Calculate residuals: ME = mean(predicted - reference)
+        y_pred = slope * x + intercept
+        residuals = abs(y_pred - y)
+        residual_mean = np.mean(residuals)
+        residual_std = np.std(residuals, ddof=1)  # Use sample std (n-1)
+        
         # Add statistics to plot
         stats_text = f'R = {r_value:.4f}\n'
         stats_text += f'R² = {r_value**2:.4f}\n'
         stats_text += f'p = {p_value:.4e}\n'
-        stats_text += f'n = {len(x)}'
+        stats_text += f'n = {len(x)}\n'
+        stats_text += f'ME±STD = {residual_mean:.2f}±{residual_std:.2f}'
         
         ax.text(0.05, 0.95, stats_text, transform=ax.transAxes, 
                fontsize=11, verticalalignment='top',
@@ -277,7 +353,7 @@ class SinglePatientBPPTTVisualizer:
         ax.legend(loc='lower right', fontsize=10)
         ax.grid(True, alpha=0.3, linestyle='--')
         
-        return r_value
+        return r_value, residual_mean, residual_std
         
     def update_plots(self):
         """Update all three plots for current patient."""
@@ -302,28 +378,37 @@ class SinglePatientBPPTTVisualizer:
         lab_ids = patient_df['Lab_Patient_ID'].values
         
         # Plot 1: PTT vs Diastolic BP
-        r1 = self.plot_regression(
+        result1 = self.plot_regression(
             self.axes[0], ptt, low_bp,
             'PTT (s)', 'Diastolic BP (mmHg)',
             'PTT vs Diastolic BP',
             current_patient_id
         )
+        r1 = result1[0] if result1 else None
+        r1_mean = result1[1] if result1 else None
+        r1_std = result1[2] if result1 else None
         
         # Plot 2: PTT vs Systolic BP
-        r2 = self.plot_regression(
+        result2 = self.plot_regression(
             self.axes[1], ptt, high_bp,
             'PTT (s)', 'Systolic BP (mmHg)',
             'PTT vs Systolic BP',
             current_patient_id
         )
+        r2 = result2[0] if result2 else None
+        r2_mean = result2[1] if result2 else None
+        r2_std = result2[2] if result2 else None
         
         # Plot 3: PTT vs Mean BP
-        r3 = self.plot_regression(
+        result3 = self.plot_regression(
             self.axes[2], ptt, mean_bp,
             'PTT (s)', 'Mean BP (mmHg)',
             'PTT vs Mean BP',
             current_patient_id
         )
+        r3 = result3[0] if result3 else None
+        r3_mean = result3[1] if result3 else None
+        r3_std = result3[2] if result3 else None
         
         # Update main title with patient info
         title_text = f'Patient: {current_patient_id} ({self.current_index + 1}/{len(self.patient_ids)}) | '
@@ -360,12 +445,12 @@ class SinglePatientBPPTTVisualizer:
         print(f"Systolic BP Range: {high_bp.min():.0f} - {high_bp.max():.0f} mmHg")
         
         if r1 is not None:
-            print(f"\nCorrelation Coefficients:")
-            print(f"  PTT vs Diastolic BP: R = {r1:.4f}, R² = {r1**2:.4f}")
+            print(f"\nCorrelation Coefficients & Residuals:")
+            print(f"  PTT vs Diastolic BP: R = {r1:.4f}, R² = {r1**2:.4f}, ME±STD = {r1_mean:.2f}±{r1_std:.2f} mmHg")
         if r2 is not None:
-            print(f"  PTT vs Systolic BP:  R = {r2:.4f}, R² = {r2**2:.4f}")
+            print(f"  PTT vs Systolic BP:  R = {r2:.4f}, R² = {r2**2:.4f}, ME±STD = {r2_mean:.2f}±{r2_std:.2f} mmHg")
         if r3 is not None:
-            print(f"  PTT vs Mean BP:      R = {r3:.4f}, R² = {r3**2:.4f}")
+            print(f"  PTT vs Mean BP:      R = {r3:.4f}, R² = {r3**2:.4f}, ME±STD = {r3_mean:.2f}±{r3_std:.2f} mmHg")
         print(f"{'='*70}\n")
         
     def show(self):
@@ -379,15 +464,22 @@ def main():
     )
     parser.add_argument(
         '--csv', 
-        type=str, 
-        default='./mirror2_auto_cleaned/cleaned_patient_info.csv',
-        help='Path to cleaned_patient_info.csv file'
+        type=str,
+        nargs='+',
+        default=['./mirror2_auto_cleaned/cleaned_patient_info.csv', './mirror1_auto_cleaned/cleaned_patient_info.csv'],
+        help='Path(s) to cleaned_patient_info.csv file(s). Can specify multiple files.'
+    )
+    parser.add_argument(
+        '--min_measurements',
+        type=int,
+        default=3,
+        help='Minimum number of measurements required per patient (default: 2)'
     )
     
     args = parser.parse_args()
     
-    # Create visualizer
-    visualizer = SinglePatientBPPTTVisualizer(args.csv)
+    # Create visualizer with potentially multiple CSV files
+    visualizer = SinglePatientBPPTTVisualizer(args.csv, min_measurements=args.min_measurements)
     
     # First show correlation summary for all patients
     print("\nGenerating correlation summary for all patients...")
