@@ -346,6 +346,9 @@ class AutoWasher:
             # 3.5. Calculate PTT from good blocks
             ptt_mean, ptt_std, ptt_length = self._calculate_ptt_from_blocks(timestamps, ecg_signal, rppg_signal, peaks, blocks)
             
+            # 3.6. Calculate HR and HRV from good blocks
+            hr_mean, hr_std, sdnn, rmssd = self._calculate_hr_hrv_from_blocks(timestamps, peaks, blocks)
+            
             # 4. Visualize (Optional)
             save_blocks = False
             final_ecg_th = self.threshold['ECG']
@@ -365,6 +368,8 @@ class AutoWasher:
                     blocks = self._find_continuous_blocks(segments_info, min_len=self.segment_length_threshold)
                     # Recalculate PTT with updated blocks
                     ptt_mean, ptt_std, ptt_length = self._calculate_ptt_from_blocks(timestamps, ecg_signal, rppg_signal, peaks, blocks)
+                    # Recalculate HR and HRV with updated blocks
+                    hr_mean, hr_std, sdnn, rmssd = self._calculate_hr_hrv_from_blocks(timestamps, peaks, blocks)
                     save_blocks = True
             elif blocks:
                 save_blocks = True
@@ -385,7 +390,7 @@ class AutoWasher:
             if save_blocks and blocks:
                 self._save_blocks(df, blocks, patient_dir)
                 # Save cleaned patient info
-                self._save_patient_info(patient_dir, segments_info, blocks, ptt_mean, ptt_std, ptt_length)
+                self._save_patient_info(patient_dir, segments_info, blocks, ptt_mean, ptt_std, ptt_length, hr_mean, hr_std, sdnn, rmssd)
 
         except Exception as e:
             print(f"Error processing {patient_dir}: {e}")
@@ -575,6 +580,50 @@ class AutoWasher:
         ptt_filtered = [p for p in ptt_values if abs(p - ptt_median) < 0.1]
         
         return ptt_filtered
+
+    def _calculate_hr_hrv_from_blocks(self, timestamps, peaks, blocks):
+        """Calculate HR and HRV metrics from all good blocks."""
+        if not blocks:
+            return None, None, None, None
+        
+        all_rr_intervals = []
+        
+        for block in blocks:
+            start_idx = block[0]['start']
+            end_idx = block[-1]['end']
+            
+            # Find peaks within this block
+            block_peaks = peaks[(peaks >= start_idx) & (peaks < end_idx)]
+            
+            if len(block_peaks) < 2:
+                continue
+            
+            # Calculate RR intervals in seconds
+            peak_times = timestamps[block_peaks]
+            rr_intervals = np.diff(peak_times)
+            
+            # Filter physiologically plausible RR intervals (30-200 BPM -> 0.3-2.0s)
+            valid_rr = rr_intervals[(rr_intervals > 0.3) & (rr_intervals < 2.0)]
+            all_rr_intervals.extend(valid_rr)
+        
+        if len(all_rr_intervals) < 2:
+            return None, None, None, None
+        
+        rr_array = np.array(all_rr_intervals)
+        
+        # Calculate HR (beats per minute)
+        hr_mean = 60.0 / np.mean(rr_array)
+        hr_std = 60.0 * np.std(rr_array) / (np.mean(rr_array) ** 2)
+        
+        # Calculate HRV metrics
+        # SDNN: Standard deviation of NN intervals (in ms)
+        sdnn = np.std(rr_array) * 1000
+        
+        # RMSSD: Root mean square of successive differences (in ms)
+        successive_diff = np.diff(rr_array)
+        rmssd = np.sqrt(np.mean(successive_diff ** 2)) * 1000
+        
+        return hr_mean, hr_std, sdnn, rmssd
     
     def _find_continuous_blocks(self, segments_info, min_len=None):
         if min_len is None:
@@ -737,7 +786,7 @@ class AutoWasher:
         except Exception:
             return False, self.threshold['ECG'], self.threshold['rPPG']
 
-    def _save_patient_info(self, patient_dir, segments_info, blocks, ptt, ptt_std, ptt_length):
+    def _save_patient_info(self, patient_dir, segments_info, blocks, ptt, ptt_std, ptt_length, hr_mean=None, hr_std=None, sdnn=None, rmssd=None):
         """Save cleaned patient information to cleaned_patient_info list."""
         patient_id = os.path.basename(patient_dir)  # patient_xxxxxx
         
@@ -769,6 +818,10 @@ class AutoWasher:
             'PTT': ptt if ptt is not None else np.nan,
             'PTT_STDDEV': ptt_std if ptt_std is not None else np.nan,
             'PTT_LENGTH': ptt_length,
+            'HR_MEAN': hr_mean if hr_mean is not None else np.nan,
+            'HR_STD': hr_std if hr_std is not None else np.nan,
+            'HRV_SDNN': sdnn if sdnn is not None else np.nan,
+            'HRV_RMSSD': rmssd if rmssd is not None else np.nan,
             'Low_Blood_Pressure': low_bp,
             'High_Blood_Pressure': high_bp
         })
@@ -787,12 +840,17 @@ class AutoWasher:
             block_df = df.iloc[start_idx:end_idx].copy()
             
             # Z-score normalization
+            # Change: Don't normalize RPPG, ECG normalize by dividing 32768
             for col in ['RPPG', 'ECG']:
                 if col in block_df.columns:
-                    if block_df[col].std() > 1e-6:
-                        block_df[col] = (block_df[col] - block_df[col].mean()) / block_df[col].std()
-                    else:
-                        block_df[col] = 0.0
+                    if col == 'ECG':
+                        block_df[col] = block_df[col] / 32768.0  # Normalize ECG by dividing by 32768
+                    elif col == 'RPPG':
+                        if block_df[col].std() > 1e-6:
+                            pass # Don't normalize RPPG, just keep it as is. The model can learn from the raw values.
+                            # block_df[col] = (block_df[col] - block_df[col].mean()) / block_df[col].std()
+                        else:
+                            block_df[col] = 0.0
             
             filename = f"{patient_id}_{i+1}.csv"
             filepath = os.path.join(self.output_dir, filename)
@@ -820,7 +878,7 @@ if __name__ == "__main__":
         reference_dir=args.reference_dir,
         patient_info_csv=args.patient_info_csv,
         threshold={'ECG': args.threshold_ecg, 'rPPG': args.threshold_rppg},
-        visualize=True,
+        visualize=False,
         ecg_method='mixture'
     )
     

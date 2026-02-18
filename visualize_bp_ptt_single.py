@@ -52,7 +52,7 @@ class SinglePatientBPPTTVisualizer:
         # Validate required columns
         required_cols = ['Lab_Patient_ID', 'Hospital_Patient_ID', 'ECG_SQI_AVG', 
                         'rPPG_SQI_AVG', 'PTT', 'PTT_STDDEV', 'PTT_LENGTH',
-                        'Low_Blood_Pressure', 'High_Blood_Pressure']
+                        'Low_Blood_Pressure', 'High_Blood_Pressure', 'HR_MEAN']
         
         missing_cols = [col for col in required_cols if col not in self.df.columns]
         if missing_cols:
@@ -99,17 +99,21 @@ class SinglePatientBPPTTVisualizer:
             low_bp = patient_df['Low_Blood_Pressure'].values
             high_bp = patient_df['High_Blood_Pressure'].values
             mean_bp = patient_df['Mean_BP'].values
+            hr = patient_df['HR_MEAN'].values
             
             # Calculate correlations and residuals
             r_diastolic = None
             r_systolic = None
             r_mean = None
+            r_hr = None
             me_diastolic = None
             std_diastolic = None
             me_systolic = None
             std_systolic = None
             me_mean = None
             std_mean = None
+            me_hr = None
+            std_hr = None
             
             if len(ptt) >= 2:
                 try:
@@ -130,6 +134,17 @@ class SinglePatientBPPTTVisualizer:
                     residuals_mean = abs(y_pred_mean - mean_bp)
                     me_mean = np.mean(residuals_mean)
                     std_mean = np.std(residuals_mean, ddof=1)
+                    
+                    # HR vs PTT correlation (filter out NaN values)
+                    valid_hr_mask = ~np.isnan(hr)
+                    if np.sum(valid_hr_mask) >= 2:
+                        ptt_valid = ptt[valid_hr_mask]
+                        hr_valid = hr[valid_hr_mask]
+                        slope_hr, intercept_hr, r_hr, _, _ = stats.linregress(ptt_valid, hr_valid)
+                        y_pred_hr = slope_hr * ptt_valid + intercept_hr
+                        residuals_hr = abs(y_pred_hr - hr_valid)
+                        me_hr = np.mean(residuals_hr)
+                        std_hr = np.std(residuals_hr, ddof=1)
                 except:
                     pass
             
@@ -139,12 +154,15 @@ class SinglePatientBPPTTVisualizer:
                 'r_diastolic': r_diastolic,
                 'r_systolic': r_systolic,
                 'r_mean': r_mean,
+                'r_hr': r_hr,
                 'me_diastolic': me_diastolic,
                 'std_diastolic': std_diastolic,
                 'me_systolic': me_systolic,
                 'std_systolic': std_systolic,
                 'me_mean': me_mean,
                 'std_mean': std_mean,
+                'me_hr': me_hr,
+                'std_hr': std_hr,
                 'ecg_sqi_avg': patient_df['ECG_SQI_AVG'].mean(),
                 'rppg_sqi_avg': patient_df['rPPG_SQI_AVG'].mean(),
                 'ptt_stddev_avg': patient_df['PTT_STDDEV'].mean()
@@ -157,7 +175,7 @@ class SinglePatientBPPTTVisualizer:
         corr_df = self.calculate_all_correlations()
         
         # Create summary figure
-        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        fig, axes = plt.subplots(2, 4, figsize=(22, 10))
         fig.suptitle('Correlation Coefficient Summary - All Patients', 
                     fontsize=16, fontweight='bold')
         
@@ -195,6 +213,17 @@ class SinglePatientBPPTTVisualizer:
         ax.legend()
         ax.grid(True, alpha=0.3)
         
+        ax = axes[0, 3]
+        valid_r_hr = corr_df['r_hr'].dropna()
+        ax.hist(valid_r_hr, bins=20, alpha=0.7, color='orchid', edgecolor='black')
+        ax.axvline(valid_r_hr.mean(), color='red', linestyle='--', linewidth=2,
+                  label=f'Mean: {valid_r_hr.mean():.3f}')
+        ax.set_xlabel('Correlation Coefficient (R)', fontsize=11)
+        ax.set_ylabel('Number of Patients', fontsize=11)
+        ax.set_title('PTT vs HR', fontsize=12, fontweight='bold')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
         # Scatter plots: Number of measurements vs correlation
         ax = axes[1, 0]
         ax.scatter(corr_df['n_measurements'], corr_df['r_diastolic'], 
@@ -212,8 +241,16 @@ class SinglePatientBPPTTVisualizer:
         ax.set_title('Measurements vs Correlation (Systolic)', fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         
-        # Summary statistics text
         ax = axes[1, 2]
+        ax.scatter(corr_df['n_measurements'], corr_df['r_hr'],
+                  alpha=0.6, s=50, edgecolors='black', linewidth=0.5, color='orchid')
+        ax.set_xlabel('Number of Measurements', fontsize=11)
+        ax.set_ylabel('R (HR)', fontsize=11)
+        ax.set_title('Measurements vs Correlation (HR)', fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        
+        # Summary statistics text
+        ax = axes[1, 3]
         ax.axis('off')
         
         summary_text = "Summary Statistics\n" + "="*40 + "\n\n"
@@ -237,6 +274,12 @@ class SinglePatientBPPTTVisualizer:
         summary_text += f"  Std R: {valid_r_mean.std():.4f}\n"
         summary_text += f"  Range: [{valid_r_mean.min():.3f}, {valid_r_mean.max():.3f}]\n\n"
         
+        summary_text += "HR Correlation:\n"
+        summary_text += f"  Mean R: {valid_r_hr.mean():.4f}\n"
+        summary_text += f"  Median R: {valid_r_hr.median():.4f}\n"
+        summary_text += f"  Std R: {valid_r_hr.std():.4f}\n"
+        summary_text += f"  Range: [{valid_r_hr.min():.3f}, {valid_r_hr.max():.3f}]\n\n"
+        
         summary_text += "ME (mean) ± STD (worst):\n"
         valid_me_dia = corr_df['me_diastolic'].dropna()
         valid_std_dia = corr_df['std_diastolic'].dropna()
@@ -244,9 +287,12 @@ class SinglePatientBPPTTVisualizer:
         valid_std_sys = corr_df['std_systolic'].dropna()
         valid_me_mean = corr_df['me_mean'].dropna()
         valid_std_mean = corr_df['std_mean'].dropna()
+        valid_me_hr = corr_df['me_hr'].dropna()
+        valid_std_hr = corr_df['std_hr'].dropna()
         summary_text += f"  Diastolic: {valid_me_dia.mean():.2f}±{valid_std_dia.max():.2f}\n"
         summary_text += f"  Systolic: {valid_me_sys.mean():.2f}±{valid_std_sys.max():.2f}\n"
-        summary_text += f"  Mean BP: {valid_me_mean.mean():.2f}±{valid_std_mean.max():.2f}\n\n"
+        summary_text += f"  Mean BP: {valid_me_mean.mean():.2f}±{valid_std_mean.max():.2f}\n"
+        summary_text += f"  HR: {valid_me_hr.mean():.2f}±{valid_std_hr.max():.2f} BPM\n\n"
         
         summary_text += f"Avg Measurements/Patient: {corr_df['n_measurements'].mean():.1f}\n"
         
@@ -279,16 +325,24 @@ class SinglePatientBPPTTVisualizer:
         print(f"  Median R: {valid_r_mean.median():.4f}")
         print(f"  Range: [{valid_r_mean.min():.3f}, {valid_r_mean.max():.3f}]")
         
+        print(f"\nHR Correlation:")
+        print(f"  Mean R: {valid_r_hr.mean():.4f} ± {valid_r_hr.std():.4f}")
+        print(f"  Median R: {valid_r_hr.median():.4f}")
+        print(f"  Range: [{valid_r_hr.min():.3f}, {valid_r_hr.max():.3f}]")
+        
         valid_me_dia = corr_df['me_diastolic'].dropna()
         valid_std_dia = corr_df['std_diastolic'].dropna()
         valid_me_sys = corr_df['me_systolic'].dropna()
         valid_std_sys = corr_df['std_systolic'].dropna()
         valid_me_mean = corr_df['me_mean'].dropna()
         valid_std_mean = corr_df['std_mean'].dropna()
+        valid_me_hr = corr_df['me_hr'].dropna()
+        valid_std_hr = corr_df['std_hr'].dropna()
         print(f"\nME (mean) ± STD (worst case):")
         print(f"  Diastolic BP: {valid_me_dia.mean():.2f}±{valid_std_dia.max():.2f} mmHg")
         print(f"  Systolic BP:  {valid_me_sys.mean():.2f}±{valid_std_sys.max():.2f} mmHg")
         print(f"  Mean BP:      {valid_me_mean.mean():.2f}±{valid_std_mean.max():.2f} mmHg")
+        print(f"  HR:           {valid_me_hr.mean():.2f}±{valid_std_hr.max():.2f} BPM")
         print(f"\nPress any key in the plot window to continue...")
         print(f"{'='*70}\n")
         
