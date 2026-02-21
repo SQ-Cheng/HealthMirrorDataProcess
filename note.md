@@ -79,8 +79,7 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
     * ECG/PPG: 1024\*1 - 1024\*32 + 1024\*32 - 2-Scale-Conv(kernel=25,9) - 256\*32 + 256\*32 - Max pooling - 2-Scale-Conv(kernel=25,9) - 64\*32 + 64\*32 - stack - 64\*64
   * LSTM Layer: stack.(ECG,PPG) - 64\*128
   * Output Layer: dense - SBP+DBP
-- Training:
-- Result:
+- Training & Result:
   * Exp 01-01
     Under hyperparameters:
     ```python
@@ -125,19 +124,28 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
     OVERFITTING?
 
   * Exp 01-04
+    Model Modification:
+    * Changed 0.5 dropout in the end of CNN module and before the output layer
     Dataset modification:
     * Orthogonal dataset: samples with the same hospital patient id are put into either tr/va set
-    Model same as 01-03
     Hyperparameters same as 01-03
 
-    NO RESULT YET
+    IN-TRAINING PROBLEM:
+    Different rand seed creates confusing situation: The SD of either Tr or Va set is exteremely high. **CHECK FOR ANY FAULTY SAMPLE.**
+    Significant waving of training/validating loss. **Too high dropout?** Training/validating loss goes in the different direction.
+    Happens in the first about 50 epoches.
 
-    The best result is:
+    Result:
+    The best one on va set is not the best on tr set.
+    Near-end overall best result:
     ```python
-    SBPTr -0.85+-19.575, DBPTr -0.06+-10.714, SBPVa -1.72+-16.610, DBPVa -0.28+-10.426
+    SBPTr -1.02+-20.171, DBPTr -0.00+-9.904, SBPVa -6.08+-17.786, DBPVa -6.01+-12.200
     ```
-    Problems:
-    Looks like 01-01 has overfitted
 
-
+    **TODO**
+    * fix model structure: redundant maxpool? cat/stack?
+    * re-train under 0.3 dropout
+    * check for any new models published
+    * check for faulty data (maybe not exist, just caused by too large dropout)
+    * **Download resources for working without network!!!**
 

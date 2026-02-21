@@ -211,7 +211,7 @@ class BPDataset(Dataset):
         return ecg_tensor, rppg_tensor, bp_tensor
 
 
-def build_dataloaders(root_dir, batch_size=32, val_ratio=0.2, seed=41,
+def build_dataloaders(root_dir, batch_size=32, val_ratio=0.2, seed=42,
                       window_sec=3.0, step_sec=1.0, target_length=1024):
     """
     Build train and validation DataLoaders with a patient-level split.

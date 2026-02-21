@@ -2,6 +2,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
+CNN_DROPOUT = 0.3
+OUTPUT_DROPOUT = 0.3
 
 class TwoScaleConv(nn.Module):
     """Two parallel convolutions with different kernel sizes for multi-scale feature extraction"""
@@ -44,7 +46,7 @@ class CNNBranch(nn.Module):
         self.downsample2 = nn.MaxPool1d(kernel_size=2, stride=2)
 
         # Dropout for regularization
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(CNN_DROPOUT)
         
     def forward(self, x):
         x = self.initial_conv(x)  # 1024×32
@@ -68,7 +70,7 @@ class LSCN(nn.Module):
       - Output: 64×32 features per branch
     - Stack: Concatenate ECG and PPG features -> 64×64
     - LSTM Layer: Process temporal features -> 128 hidden units
-    - Dropout: 0.3 for regularization
+    - Dropout: 0.5 for regularization
     - Output Layer: Dense layer -> SBP and DBP (2 values)
     """
     def __init__(self):
@@ -81,7 +83,7 @@ class LSCN(nn.Module):
         self.lstm = nn.LSTM(input_size=64, hidden_size=128, num_layers=1, batch_first=True)
 
         # Dropout layer
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(OUTPUT_DROPOUT)
         
         # Output layer: dense layer for SBP and DBP
         self.output_layer = nn.Linear(128, 2)
