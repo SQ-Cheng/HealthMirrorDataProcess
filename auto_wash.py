@@ -840,17 +840,10 @@ class AutoWasher:
             block_df = df.iloc[start_idx:end_idx].copy()
             
             # Z-score normalization
-            # Change: Don't normalize RPPG, ECG normalize by dividing 32768
+            # Change: Perform Z-score normalization on both ECG and RPPG
             for col in ['RPPG', 'ECG']:
                 if col in block_df.columns:
-                    if col == 'ECG':
-                        block_df[col] = block_df[col] / 32768.0  # Normalize ECG by dividing by 32768
-                    elif col == 'RPPG':
-                        if block_df[col].std() > 1e-6:
-                            pass # Don't normalize RPPG, just keep it as is. The model can learn from the raw values.
-                            # block_df[col] = (block_df[col] - block_df[col].mean()) / block_df[col].std()
-                        else:
-                            block_df[col] = 0.0
+                    block_df[col] = (block_df[col] - block_df[col].mean()) / block_df[col].std()
             
             filename = f"{patient_id}_{i+1}.csv"
             filepath = os.path.join(self.output_dir, filename)
@@ -859,7 +852,7 @@ class AutoWasher:
             print(f"Saved {filepath}")
 
 if __name__ == "__main__":
-    mirror_id = 1
+    mirror_id = 2
     parser = argparse.ArgumentParser(description="Auto Wash Patient Data")
     parser.add_argument("--data_dir", type=str, default=f"./mirror{mirror_id}_data", help="Directory containing patient folders")
     parser.add_argument("--output_dir", type=str, default=f"./mirror{mirror_id}_auto_cleaned", help="Directory to save cleaned segments")

@@ -63,15 +63,16 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
   * `expand(*sizes)`: Returns a new view of the tensor with singleton dimensions (which size is 1) expanded to a larger size.
   * `repeat(*repeats)`: Repeat the tensor along the dimension: `repeat (torch.Size, int..., tuple of int or list of int)` – The number of times to repeat this tensor along each dimension.
 
+## 2026-02-21
 ### Experiment 01
 - Target:
   * Check the possibility of pure end-to-end deep learning
   * Build a general dataloader
 - Before:
-  * data washing modification: ECG normalize by dividing 32768, no normalization on RPPG - MODIFIED - CHECKING(RPPG norm error?) - DONE
+  * Z-score normalization on both ECG and RPPG.
   * data washing on 2 - DONE, 1 - DONE
   * Understand LSTM
-  * Data processing: Data augmentation - sliding windows, 2-sec length, 1-sec step.
+  * Data processing: Data augmentation - sliding windows, 3-sec length, 1-sec step.
 - Structure: LSCN
   * Input: ECG: 1024\*1, PPG: 1024\*1.
   * CNN Layer:
@@ -80,3 +81,24 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
   * Output Layer: dense - SBP+DBP
 - Training:
 - Result:
+  * Exp 01-01
+    Under hyperparameters:
+    ```python
+    BATCH_SIZE = 32
+    LEARNING_RATE = 1e-4
+    EPOCHS = 50
+    VAL_RATIO = 0.2
+    SEED = 42
+    WINDOW_SEC = 3.0
+    STEP_SEC = 1.0
+    TARGET_LENGTH = 1024
+    ```
+    The best result is:
+    ```python
+    SBPTr -0.06+-14.731, DBPTr -0.01+-10.411, SBPVa 0.05+-14.393, DBPVa -0.71+-10.474
+    ```
+  * Exp 01-02
+    Model Modification:
+    
+
+
