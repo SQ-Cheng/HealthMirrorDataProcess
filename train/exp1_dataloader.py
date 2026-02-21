@@ -50,8 +50,9 @@ class BPDataset(Dataset):
             target_length:  Number of sample points per window after resampling.
         """
         self.target_length = target_length
-        self.samples = []  # list of (ecg_window, rppg_window, sbp, dbp)
-        self._nan_report = []  # list of (source, detail) for NaN events
+        self.samples = []          # list of (ecg_window, rppg_window, bp)
+        self.hospital_pids = []    # Hospital_Patient_ID for each sample (for patient-level split)
+        self._nan_report = []      # list of (source, detail) for NaN events
 
         # Discover all mirrorx_auto_cleaned directories
         mirror_dirs = sorted(glob.glob(os.path.join(root_dir, "mirror*_auto_cleaned")))
@@ -64,7 +65,7 @@ class BPDataset(Dataset):
                 print(f"[WARN] No cleaned_patient_info.csv in {mirror_dir}, skipping.")
                 continue
 
-            # Load patient info and build lookup {Lab_Patient_ID: (dbp, sbp)}
+            # Load patient info and build lookup {Lab_Patient_ID: (sbp, dbp, hospital_pid)}
             info_df = pd.read_csv(info_path)
             bp_lookup = {}
             for _, row in info_df.iterrows():
@@ -74,7 +75,8 @@ class BPDataset(Dataset):
                 # Skip patients without valid BP
                 if dbp == -1 or sbp == -1:
                     continue
-                bp_lookup[pid] = (float(sbp), float(dbp))
+                hospital_pid = row["Hospital_Patient_ID"]
+                bp_lookup[pid] = (float(sbp), float(dbp), hospital_pid)
 
             # Find all patient signal files
             signal_files = sorted(glob.glob(os.path.join(mirror_dir, "patient_*.csv")))
@@ -90,7 +92,7 @@ class BPDataset(Dataset):
                 if pid not in bp_lookup:
                     continue
 
-                sbp, dbp = bp_lookup[pid]
+                sbp, dbp, hospital_pid = bp_lookup[pid]
 
                 # Load signal
                 try:
@@ -168,6 +170,7 @@ class BPDataset(Dataset):
                         rppg_win.astype(np.float32),
                         np.array([normalize_bp(sbp), normalize_bp(dbp)], dtype=np.float32),
                     ))
+                    self.hospital_pids.append(hospital_pid)
 
                     start += step_samples
 
@@ -208,10 +211,13 @@ class BPDataset(Dataset):
         return ecg_tensor, rppg_tensor, bp_tensor
 
 
-def build_dataloaders(root_dir, batch_size=32, val_ratio=0.2, seed=42,
+def build_dataloaders(root_dir, batch_size=32, val_ratio=0.2, seed=41,
                       window_sec=3.0, step_sec=1.0, target_length=1024):
     """
-    Build train and validation DataLoaders.
+    Build train and validation DataLoaders with a patient-level split.
+
+    Samples sharing the same Hospital_Patient_ID are kept exclusively in
+    either the training set or the validation set, preventing data leakage.
 
     Returns:
         train_loader, val_loader
@@ -219,20 +225,30 @@ def build_dataloaders(root_dir, batch_size=32, val_ratio=0.2, seed=42,
     dataset = BPDataset(root_dir, window_sec=window_sec, step_sec=step_sec,
                         target_length=target_length)
 
-    n = len(dataset)
-    n_val = int(n * val_ratio)
-    n_train = n - n_val
+    # ── Patient-level split ──────────────────────────────────────────────
+    rng = np.random.default_rng(seed)
 
-    generator = torch.Generator().manual_seed(seed)
-    train_set, val_set = torch.utils.data.random_split(dataset, [n_train, n_val],
-                                                       generator=generator)
+    unique_pids = list(dict.fromkeys(dataset.hospital_pids))  # preserve order, deduplicate
+    rng.shuffle(unique_pids)
+
+    n_val_pids = max(1, int(len(unique_pids) * val_ratio))
+    val_pids = set(unique_pids[:n_val_pids])
+    train_pids = set(unique_pids[n_val_pids:])
+
+    train_indices = [i for i, p in enumerate(dataset.hospital_pids) if p in train_pids]
+    val_indices   = [i for i, p in enumerate(dataset.hospital_pids) if p in val_pids]
+
+    train_set = torch.utils.data.Subset(dataset, train_indices)
+    val_set   = torch.utils.data.Subset(dataset, val_indices)
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
                               num_workers=0, pin_memory=False)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
-                            num_workers=0, pin_memory=False)
+    val_loader   = DataLoader(val_set,   batch_size=batch_size, shuffle=False,
+                              num_workers=0, pin_memory=False)
 
-    print(f"[DataLoader] Train: {n_train} samples, Val: {n_val} samples")
+    print(f"[DataLoader] Patient-level split — "
+          f"train: {len(train_pids)} patients / {len(train_indices)} samples, "
+          f"val: {len(val_pids)} patients / {len(val_indices)} samples")
     dataset.nan_report()
     return train_loader, val_loader
 

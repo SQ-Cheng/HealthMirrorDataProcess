@@ -97,8 +97,47 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
     ```python
     SBPTr -0.06+-14.731, DBPTr -0.01+-10.411, SBPVa 0.05+-14.393, DBPVa -0.71+-10.474
     ```
+    Problems:
+    OVERFITTING?
+
   * Exp 01-02
     Model Modification:
-    
+    * Add 0.2 dropout in the end of CNN module
+    Hyperparameters same as 01-01
+    The best result is:
+    ```python
+    SBPTr -0.85+-19.575, DBPTr -0.06+-10.714, SBPVa -1.72+-16.610, DBPVa -0.28+-10.426
+    ```
+    Problems:
+    Looks like 01-01 has overfitted
+    OVERFITTING?
+
+  * Exp 01-03
+    Model Modification:
+    * Changed 0.3 dropout in the end of CNN module and before the output layer
+    Hyperparameter modification:
+    * EPOCHS = 100
+    The best result is:
+    ```python
+    SBPTr -0.05+-14.670, DBPTr -0.09+-10.453, SBPVa -0.43+-14.098, DBPVa 0.50+-10.354
+    ```
+    Problems:
+    OVERFITTING?
+
+  * Exp 01-04
+    Dataset modification:
+    * Orthogonal dataset: samples with the same hospital patient id are put into either tr/va set
+    Model same as 01-03
+    Hyperparameters same as 01-03
+
+    NO RESULT YET
+
+    The best result is:
+    ```python
+    SBPTr -0.85+-19.575, DBPTr -0.06+-10.714, SBPVa -1.72+-16.610, DBPVa -0.28+-10.426
+    ```
+    Problems:
+    Looks like 01-01 has overfitted
+
 
 

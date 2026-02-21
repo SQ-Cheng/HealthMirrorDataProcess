@@ -42,6 +42,9 @@ class CNNBranch(nn.Module):
         
         # Downsample to 64: 128×32 -> 64×32
         self.downsample2 = nn.MaxPool1d(kernel_size=2, stride=2)
+
+        # Dropout for regularization
+        self.dropout = nn.Dropout(0.3)
         
     def forward(self, x):
         x = self.initial_conv(x)  # 1024×32
@@ -50,7 +53,8 @@ class CNNBranch(nn.Module):
         x = self.maxpool(x)       # 128×32
         x = self.conv_block2(x)   # 128×32
         x = self.downsample2(x)   # 64×32
-        return x
+        x = self.dropout(x)
+        return x  # (batch, 32, 64)
 
 
 class LSCN(nn.Module):
@@ -64,6 +68,7 @@ class LSCN(nn.Module):
       - Output: 64×32 features per branch
     - Stack: Concatenate ECG and PPG features -> 64×64
     - LSTM Layer: Process temporal features -> 128 hidden units
+    - Dropout: 0.3 for regularization
     - Output Layer: Dense layer -> SBP and DBP (2 values)
     """
     def __init__(self):
@@ -74,6 +79,9 @@ class LSCN(nn.Module):
         
         # LSTM layer: input 64 features, hidden size 128
         self.lstm = nn.LSTM(input_size=64, hidden_size=128, num_layers=1, batch_first=True)
+
+        # Dropout layer
+        self.dropout = nn.Dropout(0.3)
         
         # Output layer: dense layer for SBP and DBP
         self.output_layer = nn.Linear(128, 2)
@@ -105,6 +113,9 @@ class LSCN(nn.Module):
         # Take the last hidden state
         last_hidden = h_n[-1]  # (batch, 128)
         
+        # Dropout on last hidden state
+        last_hidden = self.dropout(last_hidden)
+
         # Output layer
         output = self.output_layer(last_hidden)  # (batch, 2) - SBP and DBP
         
