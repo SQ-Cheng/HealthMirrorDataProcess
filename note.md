@@ -7,7 +7,7 @@
 
 ### *Combined deep CNN–LSTM network-based multitasking learning architecture for noninvasive continuous blood pressure estimation using difference in ECG-PPG features*
 - Structure
-  ECG-PPG-Difference - 1D conv - batchnorm - Bidirectional LSTM/LSTM - Dense&output
+  ECG-PPG-Difference - 1D conv - batchnorm - **Bidirectional** LSTM/LSTM - Dense&output
 
 ### Advice from LLM
 * Gemini: If you want the best results with 1,000 samples, use a Hybrid Approach:
@@ -54,7 +54,7 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
 ## 2026-02-19
 ### Learn PyTorch
 - Tensor shape
-  * `reshape(input, shape)`, `view(shape)`: flatten or un-flatten data without changing the sequence inside the memory.
+  * `reshape(tensor, shape)`, `view(shape)`: flatten or un-flatten data without changing the sequence inside the memory.
   * `permute(shape)`, `transpose(input, dim_1, dim_2)`: Like transpose. If your data is `(Time, Batch, Feature)` but your model expects `(Batch, Time, Feature)`, you must use permute`(1, 0, 2)`.
   * `squeeze(input)`: Remove all dimensions that have a size of 1.
   * `nsqueeze(input, dim)`: Add a dimension at the position of `dim`.
@@ -62,6 +62,10 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
   * `stack(tensors, dim=0, *, out=None)`: Concatenate the given tensors in `tensors` in the given NEW `dim`.
   * `expand(*sizes)`: Returns a new view of the tensor with singleton dimensions (which size is 1) expanded to a larger size.
   * `repeat(*repeats)`: Repeat the tensor along the dimension: `repeat (torch.Size, int..., tuple of int or list of int)` – The number of times to repeat this tensor along each dimension.
+- Tensor modification
+  * `chunk(tensor, chunks, dim)`: Divide a certain tensor into `chunks` seperate parts equally.
+  * `split(tensor, *sizes, dim)`: `*sizes=32` divide into equal sizes (32), `*sizes=[16,32,48]` divide into different sizes.
+  * manual slicing like `[0:mid], [mid:-1]`.
 
 ## 2026-02-21
 ### Experiment 01
@@ -179,3 +183,21 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
     * Result
       * Likely overfitted, as 01-05. No improvement on validation set after the 4th epoch.
       * 91st epoch: -1.47    22.276    -0.06     9.899  |   -5.45    18.543    -6.22    12.190
+
+  * Exp 01-07
+    * Model structure:
+      * Optimized feature extraction. No cross-feature conv1d.
+      * LSTM input size changed to 128 respectively. hidden size remain 64.
+      * 189,442 parameters
+    * Result:
+      * Likely overfitted.
+      * 98th epoth: -0.59    19.860    -0.20     9.971  |   -4.93    18.419    -6.03    12.281
+  * Exp 01-08
+    * Model structure:
+      * Due to different sampling freq compared with the reference, the kernel sizes were changed to 49 and 15.
+      * 312,322 parameters
+    * Result
+      * Very likely overfitted. Ref using ~38,000 parameters.
+      * Likely a larger model works better - achieved new validation best on 47th epoch,
+      * Overall -4+-18 SBP, -6+-12 DBP over validation set. `SEED=45`
+      * 
