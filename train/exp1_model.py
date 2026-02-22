@@ -10,8 +10,8 @@ class TwoScaleConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size1=25, kernel_size2=9):
         super().__init__()
         # Each scale produces half the output channels
-        self.conv1 = nn.Conv1d(in_channels, out_channels//2, kernel_size=kernel_size1, stride=1, padding=kernel_size1//2)
-        self.conv2 = nn.Conv1d(in_channels, out_channels//2, kernel_size=kernel_size2, stride=1, padding=kernel_size2//2)
+        self.conv1 = nn.Conv1d(in_channels, out_channels//2, kernel_size=kernel_size1, stride=2, padding=kernel_size1//2)
+        self.conv2 = nn.Conv1d(in_channels, out_channels//2, kernel_size=kernel_size2, stride=2, padding=kernel_size2//2)
         self.relu = nn.ReLU()
         
     def forward(self, x):
@@ -24,37 +24,28 @@ class CNNBranch(nn.Module):
     """CNN branch for processing ECG or PPG signal"""
     def __init__(self):
         super().__init__()
-        # Initial expansion: 1024×1 -> 1024×32
-        self.initial_conv = nn.Sequential(
-            nn.Conv1d(1, 32, kernel_size=15, stride=1, padding=7),
-            nn.ReLU()
-        )
         
-        # First two-scale conv block: 1024×32 -> 1024×32
+        # First two-scale conv block: 1024×32 -> 512×32
         self.conv_block1 = TwoScaleConv(32, 32, kernel_size1=25, kernel_size2=9)
         
-        # Downsample to 256: 1024×32 -> 256×32
-        self.downsample1 = nn.MaxPool1d(kernel_size=4, stride=4)
+        # Max pooling: 512×32 -> 256×32
+        self.maxpool1 = nn.MaxPool1d(kernel_size=2, stride=2)
         
-        # Max pooling: 256×32 -> 128×32
-        self.maxpool = nn.MaxPool1d(kernel_size=2, stride=2)
-        
-        # Second two-scale conv block: 128×32 -> 128×32
+        # Second two-scale conv block: 256×32 -> 128×32
         self.conv_block2 = TwoScaleConv(32, 32, kernel_size1=25, kernel_size2=9)
         
         # Downsample to 64: 128×32 -> 64×32
-        self.downsample2 = nn.MaxPool1d(kernel_size=2, stride=2)
+        self.maxpool2 = nn.MaxPool1d(kernel_size=2, stride=2)
 
         # Dropout for regularization
         self.dropout = nn.Dropout(CNN_DROPOUT)
         
     def forward(self, x):
-        x = self.initial_conv(x)  # 1024×32
+        x = x.expand(-1, 32, -1)  # Expand to (batch, 32, 1024)
         x = self.conv_block1(x)   # 1024×32
-        x = self.downsample1(x)   # 256×32
-        x = self.maxpool(x)       # 128×32
+        x = self.maxpool1(x)       # 128×32
         x = self.conv_block2(x)   # 128×32
-        x = self.downsample2(x)   # 64×32
+        x = self.maxpool2(x)   # 64×32
         x = self.dropout(x)
         return x  # (batch, 32, 64)
 
@@ -79,14 +70,14 @@ class LSCN(nn.Module):
         self.ecg_branch = CNNBranch()
         self.ppg_branch = CNNBranch()
         
-        # LSTM layer: input 64 features, hidden size 128
-        self.lstm = nn.LSTM(input_size=64, hidden_size=128, num_layers=1, batch_first=True)
+        # LSTM layer: input 64 features, hidden size 64
+        self.lstm = nn.LSTM(input_size=64, hidden_size=64, num_layers=1, batch_first=True)
 
         # Dropout layer
         self.dropout = nn.Dropout(OUTPUT_DROPOUT)
         
         # Output layer: dense layer for SBP and DBP
-        self.output_layer = nn.Linear(128, 2)
+        self.output_layer = nn.Linear(64, 2)
     
     def forward(self, ecg, ppg):
         """
@@ -113,7 +104,7 @@ class LSCN(nn.Module):
         lstm_out, (h_n, c_n) = self.lstm(combined)
         
         # Take the last hidden state
-        last_hidden = h_n[-1]  # (batch, 128)
+        last_hidden = h_n[-1]  # (batch, 64)
         
         # Dropout on last hidden state
         last_hidden = self.dropout(last_hidden)

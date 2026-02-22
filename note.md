@@ -81,71 +81,101 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
   * Output Layer: dense - SBP+DBP
 - Training & Result:
   * Exp 01-01
-    Under hyperparameters:
-    ```python
-    BATCH_SIZE = 32
-    LEARNING_RATE = 1e-4
-    EPOCHS = 50
-    VAL_RATIO = 0.2
-    SEED = 42
-    WINDOW_SEC = 3.0
-    STEP_SEC = 1.0
-    TARGET_LENGTH = 1024
-    ```
-    The best result is:
-    ```python
-    SBPTr -0.06+-14.731, DBPTr -0.01+-10.411, SBPVa 0.05+-14.393, DBPVa -0.71+-10.474
-    ```
-    Problems:
-    OVERFITTING?
+    * Under hyperparameters:
+      ```python
+      BATCH_SIZE = 32
+      LEARNING_RATE = 1e-4
+      EPOCHS = 50
+      VAL_RATIO = 0.2
+      SEED = 42
+      WINDOW_SEC = 3.0
+      STEP_SEC = 1.0
+      TARGET_LENGTH = 1024
+      ```
+    * The best result is:
+      ```python
+      SBPTr -0.06+-14.731, DBPTr -0.01+-10.411, SBPVa 0.05+-14.393, DBPVa -0.71+-10.474
+      ```
+    * Problems:
+      OVERFITTING?
 
   * Exp 01-02
-    Model Modification:
-    * Add 0.2 dropout in the end of CNN module
-    Hyperparameters same as 01-01
-    The best result is:
-    ```python
-    SBPTr -0.85+-19.575, DBPTr -0.06+-10.714, SBPVa -1.72+-16.610, DBPVa -0.28+-10.426
-    ```
-    Problems:
-    Looks like 01-01 has overfitted
-    OVERFITTING?
+    * Model Modification:
+      Add 0.2 dropout in the end of CNN module
+    * Hyperparameters same as 01-01
+    * The best result is:
+      ```python
+      SBPTr -0.85+-19.575, DBPTr -0.06+-10.714, SBPVa -1.72+-16.610, DBPVa -0.28+-10.426
+      ```
+    * Problems:
+      Looks like 01-01 has overfitted
+      OVERFITTING?
 
   * Exp 01-03
-    Model Modification:
-    * Changed 0.3 dropout in the end of CNN module and before the output layer
-    Hyperparameter modification:
-    * EPOCHS = 100
-    The best result is:
-    ```python
-    SBPTr -0.05+-14.670, DBPTr -0.09+-10.453, SBPVa -0.43+-14.098, DBPVa 0.50+-10.354
-    ```
-    Problems:
-    OVERFITTING?
+    * Model Modification:
+      Changed 0.3 dropout in the end of CNN module and before the output layer
+    * Hyperparameter modification:
+      EPOCHS = 100
+    * The best result is:
+      ```python
+      SBPTr -0.05+-14.670, DBPTr -0.09+-10.453, SBPVa -0.43+-14.098, DBPVa 0.50+-10.354
+      ```
+    * Problems:
+      OVERFITTING?
 
   * Exp 01-04
-    Model Modification:
-    * Changed 0.5 dropout in the end of CNN module and before the output layer
-    Dataset modification:
-    * Orthogonal dataset: samples with the same hospital patient id are put into either tr/va set
-    Hyperparameters same as 01-03
+    * Model Modification:
+      Changed 0.5 dropout in the end of CNN module and before the output layer
+    * Dataset modification:
+      Orthogonal dataset: samples with the same hospital patient id are put into either tr/va set
+    * Hyperparameters same as 01-03
 
-    IN-TRAINING PROBLEM:
-    Different rand seed creates confusing situation: The SD of either Tr or Va set is exteremely high. **CHECK FOR ANY FAULTY SAMPLE.**
-    Significant waving of training/validating loss. **Too high dropout?** Training/validating loss goes in the different direction.
-    Happens in the first about 50 epoches.
+    * IN-TRAINING PROBLEM:
+      Different rand seed creates confusing situation: The SD of either Tr or Va set is exteremely high. **CHECK FOR ANY FAULTY SAMPLE.**
+      Significant waving of training/validating loss. **Too high dropout?** Training/validating loss goes in the different direction.
+      Happens in the first about 50 epoches.
 
-    Result:
-    The best one on va set is not the best on tr set.
-    Near-end overall best result:
-    ```python
-    SBPTr -1.02+-20.171, DBPTr -0.00+-9.904, SBPVa -6.08+-17.786, DBPVa -6.01+-12.200
-    ```
+    * Result:
+      The best one on va set is not the best on tr set.
+      Near-end overall best result:
+      ```python
+      SBPTr -1.02+-20.171, DBPTr -0.00+-9.904, SBPVa -6.08+-17.786, DBPVa -6.01+-12.200
+      ```
 
-    **TODO**
-    * fix model structure: redundant maxpool? cat/stack?
-    * re-train under 0.3 dropout
-    * check for any new models published
-    * check for faulty data (maybe not exist, just caused by too large dropout)
-    * **Download resources for working without network!!!**
-
+## 2026-02-22
+  **TODO**
+  * fix model structure: redundant maxpool? - FIXED, cat/stack - FIXED
+    * Further model structure fixing after exp.
+  * re-train under 0.3 dropout - TRAINING - OVERFITTED
+  * check for any new models published
+  * check for faulty data (maybe not exist, just caused by too large dropout)
+  * **Download resources for working without network!!!**
+### Experiment 01
+  * Exp 01-05
+    * Model Structure fix:
+      * Redundant maxpool deleted
+      * Downsampling by conv1d stride=2
+      * parameter count: 169,346
+      * dropout changed to 0.3, 0.3 for conv, output
+    * Hyperparameters:
+      ```
+      BATCH_SIZE = 32
+      LEARNING_RATE = 1e-4
+      EPOCHS = 100
+      VAL_RATIO = 0.2
+      SEED = 45
+      WINDOW_SEC = 3.0
+      STEP_SEC = 1.0
+      TARGET_LENGTH = 1024
+      ```
+    * Result:
+      * Very likely overfitted - waving loss on validation set
+      * no useful data.
+  
+  * Exp 01-06
+    * Model structure:
+      * LSTM hidden size changed to 64.
+      * 103,170 parameters
+    * Result
+      * Likely overfitted, as 01-05. No improvement on validation set after the 4th epoch.
+      * 91st epoch: -1.47    22.276    -0.06     9.899  |   -5.45    18.543    -6.22    12.190
