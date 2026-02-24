@@ -19,13 +19,13 @@ from exp1_dataloader import build_dataloaders, BP_MIN, BP_MAX
 
 # ─── Hyperparameters ──────────────────────────────────────────────
 BATCH_SIZE = 32
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-3
 EPOCHS = 100
 VAL_RATIO = 0.2
-SEED = 46
+SEED = 42
 WINDOW_SEC = 3.0
 STEP_SEC = 1.0
-TARGET_LENGTH = 1024
+TARGET_LENGTH = 512
 # ──────────────────────────────────────────────────────────────────
 
 DEVICE = torch.device("cpu")
@@ -118,6 +118,7 @@ def main():
         window_sec=WINDOW_SEC,
         step_sec=STEP_SEC,
         target_length=TARGET_LENGTH,
+        debug=True,
     )
 
     if len(train_loader.dataset) == 0:
@@ -129,7 +130,7 @@ def main():
     param_count = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {param_count:,}")
 
-    criterion = nn.MSELoss()
+    criterion = nn.HuberLoss()#nn.MSELoss()
     optimizer = Adam(model.parameters(), lr=LEARNING_RATE)
 
     # ─── Training loop ────────────────────────────────────────────

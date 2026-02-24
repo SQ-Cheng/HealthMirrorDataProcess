@@ -1,4 +1,11 @@
 # Notes
+
+## Overall
+- Data quality
+  * Mirror1 Final Update: 20251009, Patient_ID > 315.
+  * **TODO**
+    * Check data auto wash process - whether all-0 values are excepted
+
 ## 2026-02-18
 ### *Estimation of Beat-by-Beat Blood Pressure and Heart Rate From ECG and PPG Using a Fine-Tuned Deep CNN Model*
 - Structure
@@ -147,57 +154,135 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
       ```
 
 ## 2026-02-22
-  **TODO**
-  * fix model structure: redundant maxpool? - FIXED, cat/stack - FIXED
-    * Further model structure fixing after exp.
-  * re-train under 0.3 dropout - TRAINING - OVERFITTED
-  * check for any new models published
-  * check for faulty data (maybe not exist, just caused by too large dropout)
-  * **Download resources for working without network!!!**
+**TODO**
+* fix model structure: redundant maxpool? - FIXED, cat/stack - FIXED
+  * Further model structure fixing after exp.
+* re-train under 0.3 dropout - TRAINING - OVERFITTED
+* check for any new models published - CHECKING
+* check for faulty data (maybe not exist, just caused by too large dropout) - FAUTY DATA EXISTS - CHECKING
+* **Download resources for working without network!!!** - EXPIRED
 ### Experiment 01
-  * Exp 01-05
-    * Model Structure fix:
-      * Redundant maxpool deleted
-      * Downsampling by conv1d stride=2
-      * parameter count: 169,346
-      * dropout changed to 0.3, 0.3 for conv, output
-    * Hyperparameters:
-      ```
-      BATCH_SIZE = 32
-      LEARNING_RATE = 1e-4
-      EPOCHS = 100
-      VAL_RATIO = 0.2
-      SEED = 45
-      WINDOW_SEC = 3.0
-      STEP_SEC = 1.0
-      TARGET_LENGTH = 1024
-      ```
-    * Result:
-      * Very likely overfitted - waving loss on validation set
-      * no useful data.
-  
-  * Exp 01-06
-    * Model structure:
-      * LSTM hidden size changed to 64.
-      * 103,170 parameters
-    * Result
-      * Likely overfitted, as 01-05. No improvement on validation set after the 4th epoch.
-      * 91st epoch: -1.47    22.276    -0.06     9.899  |   -5.45    18.543    -6.22    12.190
+* Exp 01-05
+  * Model Structure fix:
+    * Redundant maxpool deleted
+    * Downsampling by conv1d stride=2
+    * parameter count: 169,346
+    * dropout changed to 0.3, 0.3 for conv, output
+  * Hyperparameters:
+    ```
+    BATCH_SIZE = 32
+    LEARNING_RATE = 1e-4
+    EPOCHS = 100
+    VAL_RATIO = 0.2
+    SEED = 45
+    WINDOW_SEC = 3.0
+    STEP_SEC = 1.0
+    TARGET_LENGTH = 1024
+    ```
+  * Result:
+    * Very likely overfitted - waving loss on validation set
+    * no useful data.
 
-  * Exp 01-07
-    * Model structure:
-      * Optimized feature extraction. No cross-feature conv1d.
-      * LSTM input size changed to 128 respectively. hidden size remain 64.
-      * 189,442 parameters
-    * Result:
-      * Likely overfitted.
-      * 98th epoth: -0.59    19.860    -0.20     9.971  |   -4.93    18.419    -6.03    12.281
-  * Exp 01-08
-    * Model structure:
-      * Due to different sampling freq compared with the reference, the kernel sizes were changed to 49 and 15.
-      * 312,322 parameters
-    * Result
-      * Very likely overfitted. Ref using ~38,000 parameters.
-      * Likely a larger model works better - achieved new validation best on 47th epoch,
-      * Overall -4+-18 SBP, -6+-12 DBP over validation set. `SEED=45`
-      * 
+* Exp 01-06
+  * Model structure:
+    * LSTM hidden size changed to 64.
+    * 103,170 parameters
+  * Result
+    * Likely overfitted, as 01-05. No improvement on validation set after the 4th epoch.
+    * 91st epoch: -1.47    22.276    -0.06     9.899  |   -5.45    18.543    -6.22    12.190
+
+* Exp 01-07
+  * Model structure:
+    * Optimized feature extraction. No cross-feature conv1d.
+    * LSTM input size changed to 128 respectively. hidden size remain 64.
+    * 189,442 parameters
+  * Result:
+    * Likely overfitted.
+    * 98th epoth: -0.59    19.860    -0.20     9.971  |   -4.93    18.419    -6.03    12.281
+
+* Exp 01-08
+  * Model structure:
+    * Due to different sampling freq compared with the reference, the kernel sizes were changed to 49 and 15.
+    * 312,322 parameters
+  * Result
+    * Very likely overfitted. Ref using ~38,000 parameters.
+    * Likely a larger model works better - achieved new validation best on 47th epoch,
+    * Overall -4+-18 SBP, -6+-12 DBP over validation set. `SEED=45`
+    * Near AAMI accuracy on training set however signiificant SBP error on validation set. `SEED=46`
+    * Like `SEED=45` for `SEED=47`
+    * Looks like faulty data in tr set: 45,47,48,49; va set: 42,46
+  * **TODO**
+    * Check for faulty data
+    * Learn CNN+Transformer structure
+
+## 2026-02-23
+### *A paralleled CNN and Transformer network for PPG-based non-invasive blood pressure estimation*
+- Model Structure
+  * PCTN: CNN+Transformer
+  * CNN Block: Resnet/UNet style. Pyramid CNN with U-Net style???
+  * Transformer block: 
+  * Data preprocess: 125Hz 1024pts - ~8s
+
+### Different networks for different purposes in medical signal processing:
+- UNet - Reconstruction
+- ResNet - Classification
+- CNN (+LSTM/Transformer) - Prediction
+- For ECG+PPG->BP prediction, newer approaches include:
+  * Mamba-UNet: the bottleneck of UNet replaced by a "selective state space" layer
+  * Diffusion models
+  * Self-supervised foundation models - might a worse and more costy approach
+
+### Learn transformer
+
+### Learn CBAM
+- Parts: Channel-wise attention, spatial attention.
+- Channel-wise attention:
+  * Extracted features channel_num\*feature_shape(h\*w or length) - Parallel(AvgPool, MaxPool) on feature axis(channel_cnt\*1\*1) - 3-layer-MLP - Element-wise summation - M_c
+  * AvgPool and MaxPool results share the same MLP and summed up.
+  * Pooling operations size - One channel into 1 num.
+  * So the output size of the pooling module is channel_cnt \* 1 \* 1, respectively the input size of the raw feature map is channel_cnt \* h \* w.
+- Spatial attention:
+  * Extracted features channel_num\*feature_shape(h\*w or length) - Parallel(AvgPool, MaxPool) on channel axis(1\*feature_shape) - Concatenation - Conv - M_s
+- Sequential arrangement: channel-wise - spatial
+
+### Learn PCTN
+* Overall Structure
+  * Stem module: Preprocess, include 1d conv, batch norm, max pooling.
+  * Stem output - Conv block: like U-Net, concat lower/higher dimension features - Spatial attention
+  * Stem output - 3\*Transformers block - Spatial attention
+  * Conv/Trans concat - Channel attention
+
+**TODO**
+- Calculate the mean/stddev of bp in the collected dataset
+- Understand PCTN structure
+- Design EXP2 which use PCTN/Mamba-UNet/Diffusion models. learn them respectively.
+
+## 2026-02-24
+### Experiment 01
+* Exp 01-09
+  * Fixed error data for testing purpose
+  * In-training performance was equal to guessing the average.
+  
+* Exp 01-10
+  * Model modification:
+    * Changed to kernel size 25,9, dropout=0.5
+    * 189,442 params
+    * MSE Loss, 100 Epochs
+  * Result
+    * Likely overfitted on training data
+    * -0.40    11.306    -0.14     8.545  |   -2.07    16.933    -0.01    13.026 (Learning rate 1e-4)
+    * -0.02     9.493     0.03     7.745  |   -3.51    17.459    -0.88    13.117 (Learning rate 1e-3)
+    * ```
+      [BP Stats]                SBP Mean    SBP SD    DBP Mean    DBP SD
+                  ----------  ----------  --------  ----------  --------
+                      Train      116.34     14.40       70.91     10.27
+                        Val      121.57     14.82       72.87     11.78
+      ```
+
+* Exp 01-11
+  * Model modification:
+    * Input size reduced to 512. Channel count reduced to 16.
+    * 47,618 params
+    * Huber loss, 100 epochs
+  * Overfitted
+    * 0.08     8.670    -0.00     7.613  |   -5.55    17.515    -1.63    13.037

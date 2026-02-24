@@ -2,11 +2,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
-CNN_DROPOUT = 0.3
-OUTPUT_DROPOUT = 0.3
+CNN_DROPOUT = 0.5
+OUTPUT_DROPOUT = 0.5
 
-KERNEL_SIZE_1 = 49
-KERNEL_SIZE_2 = 15
+KERNEL_SIZE_1 = 25
+KERNEL_SIZE_2 = 9
+
+CNN_CHANNELS = 16
+LSTM_HIDDEN_SIZE = 32
+LSTM_INPUT_SIZE = CNN_CHANNELS * 4
 
 class TwoScaleConv(nn.Module):
     """Two parallel convolutions with different kernel sizes for multi-scale feature extraction"""
@@ -29,18 +33,18 @@ class CNNBranch(nn.Module):
         super().__init__()
         
         # Input: 1024×1 -> Expand to 1024×32 for convolution
-        self.expand = nn.Conv1d(1, 32, kernel_size=1)  # 1024×1 -> 1024×32
+        self.expand = nn.Conv1d(1, CNN_CHANNELS, kernel_size=1)  # 1024×1 -> 1024×32
 
         self.relu = nn.ReLU()
 
         # Conv layers with kernel sizes 25 and 9
-        self.conv_1_1 = nn.Conv1d(32, 32, kernel_size=KERNEL_SIZE_1, stride=2, padding=KERNEL_SIZE_1//2)  # 1024×32 -> 512×32
-        self.conv_2_1 = nn.Conv1d(32, 32, kernel_size=KERNEL_SIZE_2, stride=2, padding=KERNEL_SIZE_2//2)     # 1024×32 -> 512×32
+        self.conv_1_1 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_1, stride=2, padding=KERNEL_SIZE_1//2)  # 1024×32 -> 512×32
+        self.conv_2_1 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_2, stride=2, padding=KERNEL_SIZE_2//2)     # 1024×32 -> 512×32
         # Max pooling layers for downsampling
         self.maxpool_1_1 = nn.MaxPool1d(kernel_size=2, stride=2)  # 512×32 -> 256×32
         self.maxpool_2_1 = nn.MaxPool1d(kernel_size=2, stride=2)   # 512×32 -> 256×32
-        self.conv_1_2 = nn.Conv1d(32, 32, kernel_size=KERNEL_SIZE_1, stride=2, padding=KERNEL_SIZE_1//2)  # 256×32 -> 128×32
-        self.conv_2_2 = nn.Conv1d(32, 32, kernel_size=KERNEL_SIZE_2, stride=2, padding=KERNEL_SIZE_2//2)     # 256×32 -> 128×32
+        self.conv_1_2 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_1, stride=2, padding=KERNEL_SIZE_1//2)  # 256×32 -> 128×32
+        self.conv_2_2 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_2, stride=2, padding=KERNEL_SIZE_2//2)     # 256×32 -> 128×32
         self.maxpool_1_2 = nn.MaxPool1d(kernel_size=2, stride=2)  # 128×32 -> 64×32
         self.maxpool_2_2 = nn.MaxPool1d(kernel_size=2, stride=2)   # 128×32 -> 64×32
 
@@ -83,13 +87,13 @@ class LSCN(nn.Module):
         self.ppg_branch = CNNBranch()
         
         # LSTM layer: input 128 features, hidden size 64
-        self.lstm = nn.LSTM(input_size=128, hidden_size=64, num_layers=1, batch_first=True)
+        self.lstm = nn.LSTM(input_size=LSTM_INPUT_SIZE, hidden_size=LSTM_HIDDEN_SIZE, num_layers=1, batch_first=True)
 
         # Dropout layer
         self.dropout = nn.Dropout(OUTPUT_DROPOUT)
         
         # Output layer: dense layer for SBP and DBP
-        self.output_layer = nn.Linear(64, 2)
+        self.output_layer = nn.Linear(LSTM_HIDDEN_SIZE, 2)
     
     def forward(self, ecg, ppg):
         """

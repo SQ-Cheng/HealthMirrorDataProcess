@@ -52,6 +52,8 @@ class BPDataset(Dataset):
         self.target_length = target_length
         self.samples = []          # list of (ecg_window, rppg_window, bp)
         self.hospital_pids = []    # Hospital_Patient_ID for each sample (for patient-level split)
+        self.lab_pids = []         # Lab_Patient_ID for each sample (for debug reporting)
+        self.mirror_nums = []      # mirror number (X from mirrorX_auto_cleaned) per sample
         self._nan_report = []      # list of (source, detail) for NaN events
 
         # Discover all mirrorx_auto_cleaned directories
@@ -60,6 +62,13 @@ class BPDataset(Dataset):
             raise FileNotFoundError(f"No mirror*_auto_cleaned directories found in {root_dir}")
 
         for mirror_dir in mirror_dirs:
+            # Extract the mirror number from directory name, e.g. mirror2_auto_cleaned -> 2
+            dir_name = os.path.basename(mirror_dir)
+            try:
+                mirror_num = int(''.join(filter(str.isdigit, dir_name.split('_')[0])))
+            except (ValueError, IndexError):
+                mirror_num = -1
+
             info_path = os.path.join(mirror_dir, "cleaned_patient_info.csv")
             if not os.path.exists(info_path):
                 print(f"[WARN] No cleaned_patient_info.csv in {mirror_dir}, skipping.")
@@ -76,7 +85,7 @@ class BPDataset(Dataset):
                 if dbp == -1 or sbp == -1:
                     continue
                 hospital_pid = row["Hospital_Patient_ID"]
-                bp_lookup[pid] = (float(sbp), float(dbp), hospital_pid)
+                bp_lookup[pid] = (float(sbp), float(dbp), hospital_pid, pid)
 
             # Find all patient signal files
             signal_files = sorted(glob.glob(os.path.join(mirror_dir, "patient_*.csv")))
@@ -92,7 +101,7 @@ class BPDataset(Dataset):
                 if pid not in bp_lookup:
                     continue
 
-                sbp, dbp, hospital_pid = bp_lookup[pid]
+                sbp, dbp, hospital_pid, lab_pid = bp_lookup[pid]
 
                 # Load signal
                 try:
@@ -171,6 +180,8 @@ class BPDataset(Dataset):
                         np.array([normalize_bp(sbp), normalize_bp(dbp)], dtype=np.float32),
                     ))
                     self.hospital_pids.append(hospital_pid)
+                    self.lab_pids.append(lab_pid)
+                    self.mirror_nums.append(mirror_num)
 
                     start += step_samples
 
@@ -212,7 +223,8 @@ class BPDataset(Dataset):
 
 
 def build_dataloaders(root_dir, batch_size=32, val_ratio=0.2, seed=42,
-                      window_sec=3.0, step_sec=1.0, target_length=1024):
+                      window_sec=3.0, step_sec=1.0, target_length=1024,
+                      debug=False):
     """
     Build train and validation DataLoaders with a patient-level split.
 
@@ -250,12 +262,77 @@ def build_dataloaders(root_dir, batch_size=32, val_ratio=0.2, seed=42,
           f"train: {len(train_pids)} patients / {len(train_indices)} samples, "
           f"val: {len(val_pids)} patients / {len(val_indices)} samples")
     dataset.nan_report()
+
+    # ── BP distribution report ───────────────────────────────────────────
+    _report_bp_stats(dataset, train_indices, val_indices)
+
+    # ── Debug: report and save Lab_Patient_ID split ──────────────────────
+    if debug:
+        _save_split_report(dataset, train_indices, val_indices, save_dir=root_dir)
+
     return train_loader, val_loader
+
+
+def _report_bp_stats(dataset, train_indices, val_indices):
+    """Print Mean and STDDEV of SBP and DBP (in mmHg) for train and val sets."""
+    def extract_bp(indices):
+        sbp = np.array([denormalize_bp(dataset.samples[i][2][0]) for i in indices], dtype=np.float32)
+        dbp = np.array([denormalize_bp(dataset.samples[i][2][1]) for i in indices], dtype=np.float32)
+        return sbp, dbp
+
+    tr_sbp, tr_dbp = extract_bp(train_indices)
+    va_sbp, va_dbp = extract_bp(val_indices)
+
+    print(f"\n[BP Stats]  {'':10}  {'SBP Mean':>10}  {'SBP SD':>8}  {'DBP Mean':>10}  {'DBP SD':>8}")
+    print(f"            {'-'*10}  {'-'*10}  {'-'*8}  {'-'*10}  {'-'*8}")
+    print(f"            {'Train':>10}  {tr_sbp.mean():>10.2f}  {tr_sbp.std():>8.2f}  {tr_dbp.mean():>10.2f}  {tr_dbp.std():>8.2f}")
+    print(f"            {'Val':>10}  {va_sbp.mean():>10.2f}  {va_sbp.std():>8.2f}  {va_dbp.mean():>10.2f}  {va_dbp.std():>8.2f}")
+
+
+def _save_split_report(dataset, train_indices, val_indices, save_dir):
+    """Print and save the Lab_Patient_ID -> train/val assignment with mirror info.
+    Each (lab_pid, mirror) combination is reported on its own row."""
+    from collections import Counter, defaultdict
+
+    # Count samples per (lab_pid, mirror, split)
+    train_key_counts = Counter(
+        (dataset.lab_pids[i], dataset.mirror_nums[i]) for i in train_indices
+    )
+    val_key_counts = Counter(
+        (dataset.lab_pids[i], dataset.mirror_nums[i]) for i in val_indices
+    )
+
+    all_keys = sorted(set(train_key_counts) | set(val_key_counts))  # (pid, mirror)
+
+    # Build CSV rows ordered by pid then mirror
+    rows = []
+    for pid, mirror in sorted(set((p, m) for p, m in all_keys)):
+        if (pid, mirror) in train_key_counts:
+            rows.append((pid, "train", train_key_counts[(pid, mirror)], mirror))
+        if (pid, mirror) in val_key_counts:
+            rows.append((pid, "val", val_key_counts[(pid, mirror)], mirror))
+
+    lines = ["Lab_Patient_ID,Split,Samples,Mirror"] + \
+            [f"{pid},{split},{samples},{mirror}" for pid, split, samples, mirror in rows]
+
+    # Console summary
+    print(f"\n[Split Debug] Lab_Patient_ID assignment:")
+    print(f"  {'Lab_PID':>10}  {'Split':>5}  {'Samples':>7}  {'Mirror':>6}")
+    print(f"  {'-'*10}  {'-'*5}  {'-'*7}  {'-'*6}")
+    for pid, split, samples, mirror in rows:
+        split_label = "train" if split == "train" else "  val"
+        print(f"  {pid:>10}  {split_label:>5}  {samples:>7}  {mirror:>6}")
+
+    # Save to file
+    out_path = os.path.join(save_dir, "split_debug.csv")
+    with open(out_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"[Split Debug] Saved to {out_path}")
 
 
 if __name__ == "__main__":
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    train_loader, val_loader = build_dataloaders(ROOT, batch_size=16)
+    train_loader, val_loader = build_dataloaders(ROOT, batch_size=16, debug=True)
     for ecg, rppg, bp in train_loader:
         print(f"ECG: {ecg.shape}, RPPG: {rppg.shape}, BP: {bp.shape}")
         print(f"BP sample (normalized): {bp[0]}")
