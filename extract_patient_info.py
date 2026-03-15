@@ -1,6 +1,6 @@
 from data.patient_info import PatientInfo
 
-mirror_id = 2
+mirror_id = 6
 
 data_dir = f"./mirror{mirror_id}_data"
 #data_dir = "./lab_mirror_data"

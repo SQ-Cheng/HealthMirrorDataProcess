@@ -59,11 +59,11 @@ def merge_patient_info(extracted_file, marked_file, output_file):
 
 def main():
     lab = False
-    mirror_id = 2
+    mirror_id = 6
     
     if lab:
         extracted_file = 'lab_overall_patient_info.csv'
-        marked_file = 'lab_overall_patient_info. csv'
+        marked_file = 'lab_overall_patient_info.csv'
         output_file = 'lab_merged_patient_info.csv'
     else:
         extracted_file = f'overall_patient_info_{mirror_id}.csv'

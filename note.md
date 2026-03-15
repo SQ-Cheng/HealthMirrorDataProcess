@@ -286,3 +286,10 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
     * Huber loss, 100 epochs
   * Overfitted
     * 0.08     8.670    -0.00     7.613  |   -5.55    17.515    -1.63    13.037
+
+## 2026-02-25
+### Experiment 01
+* Exp 01-12
+  * Training modification
+    * Window length reduced to 2 sec
+  * 

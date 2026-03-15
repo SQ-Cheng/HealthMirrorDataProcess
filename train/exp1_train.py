@@ -23,7 +23,7 @@ LEARNING_RATE = 1e-3
 EPOCHS = 100
 VAL_RATIO = 0.2
 SEED = 42
-WINDOW_SEC = 3.0
+WINDOW_SEC = 2.0
 STEP_SEC = 1.0
 TARGET_LENGTH = 512
 # ──────────────────────────────────────────────────────────────────
