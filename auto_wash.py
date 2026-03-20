@@ -11,6 +11,13 @@ import sys
 import neurokit2 as nk
 from ecg.ecg_process import ECGProcess
 
+
+RAW_SIGNAL_COLUMNS = {
+    'ecg': ['timestamp', 'ecg'],
+    'rppg': ['timestamp', 'rppg'],
+    'ppg': ['timestamp', 'ppg_red', 'ppg_ir', 'ppg_green'],
+}
+
 def filter_signal(data, fs=512, lowcut=0.5, highcut=5.0, order=4):
     nyquist = 0.5 * fs
     low = lowcut / nyquist
@@ -75,7 +82,7 @@ def calculate_ptt(time, rppg_signal, ecg_signal, ecg_peaks, fs=512):
     return ptt_final, std
 
 class AutoWasher:
-    def __init__(self, data_dir, output_dir, reference_dir, patient_info_csv=None, threshold = {'rPPG': 0.75, 'ECG': 0.6}, visualize=False, ecg_method='reference'):
+    def __init__(self, data_dir, output_dir, reference_dir, patient_info_csv=None, threshold = {'rPPG': 0.75, 'ECG': 0.6}, visualize=False, ecg_method='reference', mirror_version='1'):
         self.data_dir = data_dir
         self.output_dir = output_dir
         self.reference_dir = reference_dir
@@ -83,9 +90,13 @@ class AutoWasher:
         self.threshold = threshold
         self.visualize = visualize
         self.ecg_method = ecg_method
+        self.mirror_version = str(mirror_version)
         self.segment_length_threshold = 6
         self.fs = 512
         self.mixture_ratio = 0.7
+
+        if self.mirror_version not in {'1', '2'}:
+            raise ValueError("mirror_version must be '1' or '2'")
         
         if self.visualize:
             plt.ion()
@@ -200,17 +211,10 @@ class AutoWasher:
 
     def process_patient(self, patient_dir):
         """Process a single patient directory."""
-        merged_csv = os.path.join(patient_dir, "merged_log.csv")
-        if not os.path.exists(merged_csv):
-            return
-
         print(f"Processing {patient_dir}...")
         try:
-            df = pd.read_csv(merged_csv)
-            # Ensure columns exist
-            required = ['Timestamp', 'RPPG', 'ECG']
-            if not all(col in df.columns for col in required):
-                print(f"Skipping {patient_dir}: Missing columns.")
+            df = self._load_patient_dataframe(patient_dir)
+            if df is None:
                 return
             
             timestamps = df['Timestamp'].to_numpy()
@@ -396,6 +400,126 @@ class AutoWasher:
             print(f"Error processing {patient_dir}: {e}")
             import traceback
             traceback.print_exc()
+
+    def _read_raw_signal_csv(self, file_path, signal_name):
+        expected_columns = RAW_SIGNAL_COLUMNS[signal_name]
+
+        if not os.path.exists(file_path):
+            return None
+
+        try:
+            df = pd.read_csv(file_path)
+        except pd.errors.EmptyDataError:
+            return None
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
+            return None
+
+        normalized_columns = [str(col).strip().lower() for col in df.columns]
+        df.columns = normalized_columns
+        if all(col in df.columns for col in expected_columns):
+            return df[expected_columns].copy()
+
+        try:
+            df = pd.read_csv(file_path, header=None)
+        except pd.errors.EmptyDataError:
+            return None
+        except Exception as e:
+            print(f"Error reading headerless {file_path}: {e}")
+            return None
+
+        if df.shape[1] < len(expected_columns):
+            return None
+
+        df = df.iloc[:, :len(expected_columns)].copy()
+        df.columns = expected_columns
+        return df
+
+    def _prepare_signal_frame(self, df, value_columns):
+        if df is None:
+            return None
+
+        numeric_columns = ['timestamp'] + value_columns
+        frame = df[numeric_columns].apply(pd.to_numeric, errors='coerce').dropna()
+        if frame.empty:
+            return None
+
+        frame = frame.sort_values('timestamp')
+        frame = frame.drop_duplicates(subset='timestamp', keep='last')
+        if len(frame) < 2:
+            return None
+
+        return frame.reset_index(drop=True)
+
+    def _resample_signal(self, timestamps, values, new_timestamps):
+        if len(timestamps) < 2:
+            return np.zeros_like(new_timestamps)
+
+        interpolation_kind = 'cubic' if len(timestamps) >= 4 else 'linear'
+        interpolator = interp1d(
+            timestamps,
+            values,
+            kind=interpolation_kind,
+            bounds_error=False,
+            fill_value=0.0,
+        )
+        return interpolator(new_timestamps)
+
+    def _load_patient_dataframe(self, patient_dir):
+        ecg_path = os.path.join(patient_dir, 'ecg_log.csv')
+        rppg_path = os.path.join(patient_dir, 'rppg_log.csv')
+        ppg_path = os.path.join(patient_dir, 'ppg_log.csv')
+
+        ecg_df = self._prepare_signal_frame(self._read_raw_signal_csv(ecg_path, 'ecg'), ['ecg'])
+        if ecg_df is None:
+            print(f"Skipping {patient_dir}: Missing or invalid ecg_log.csv")
+            return None
+
+        rppg_df = self._prepare_signal_frame(self._read_raw_signal_csv(rppg_path, 'rppg'), ['rppg'])
+        if rppg_df is None:
+            print(f"Skipping {patient_dir}: Missing or invalid rppg_log.csv")
+            return None
+
+        ppg_df = None
+        if self.mirror_version == '2':
+            ppg_df = self._prepare_signal_frame(
+                self._read_raw_signal_csv(ppg_path, 'ppg'),
+                ['ppg_red', 'ppg_ir', 'ppg_green']
+            )
+            if ppg_df is None:
+                print(f"Skipping {patient_dir}: Missing or invalid ppg_log.csv")
+                return None
+
+        if abs(rppg_df['timestamp'].iloc[0] - ecg_df['timestamp'].iloc[0]) > 10.0:
+            print(f"Skipping {patient_dir}: Large time difference between ECG and rPPG start times")
+            return None
+
+        first_timestamp = min(ecg_df['timestamp'].iloc[0], rppg_df['timestamp'].iloc[0])
+        last_timestamp = max(ecg_df['timestamp'].iloc[-1], rppg_df['timestamp'].iloc[-1])
+
+        if ppg_df is not None:
+            first_timestamp = min(first_timestamp, ppg_df['timestamp'].iloc[0])
+            last_timestamp = max(last_timestamp, ppg_df['timestamp'].iloc[-1])
+
+        target_len = int((last_timestamp - first_timestamp) * self.fs)
+        if target_len < 2:
+            print(f"Skipping {patient_dir}: Not enough samples after raw log alignment")
+            return None
+
+        timestamps = np.linspace(first_timestamp, last_timestamp, target_len)
+        merged_data = {
+            'Timestamp': timestamps,
+            'RPPG': self._resample_signal(rppg_df['timestamp'].to_numpy(), rppg_df['rppg'].to_numpy(), timestamps),
+            'ECG': self._resample_signal(ecg_df['timestamp'].to_numpy(), ecg_df['ecg'].to_numpy(), timestamps),
+        }
+
+        if ppg_df is not None:
+            ppg_timestamps = ppg_df['timestamp'].to_numpy()
+            merged_data['PPG_RED'] = self._resample_signal(ppg_timestamps, ppg_df['ppg_red'].to_numpy(), timestamps)
+            merged_data['PPG_IR'] = self._resample_signal(ppg_timestamps, ppg_df['ppg_ir'].to_numpy(), timestamps)
+            merged_data['PPG_GREEN'] = self._resample_signal(ppg_timestamps, ppg_df['ppg_green'].to_numpy(), timestamps)
+
+        return pd.DataFrame(merged_data)
 
     def _detect_peaks(self, ecg_signal):
         if self.ecg_processor:
@@ -837,7 +961,7 @@ class AutoWasher:
             end_idx = block[-1]['end']
             
             # Slice DataFrame
-            block_df = df.iloc[start_idx:end_idx].copy()
+            block_df = df.iloc[start_idx:end_idx][['Timestamp', 'RPPG', 'ECG']].copy()
             
             # Z-score normalization
             # Change: Perform Z-score normalization on both ECG and RPPG
@@ -852,12 +976,13 @@ class AutoWasher:
             print(f"Saved {filepath}")
 
 if __name__ == "__main__":
-    mirror_id = 2
+    mirror_id = 4
     parser = argparse.ArgumentParser(description="Auto Wash Patient Data")
     parser.add_argument("--data_dir", type=str, default=f"./mirror{mirror_id}_data", help="Directory containing patient folders")
     parser.add_argument("--output_dir", type=str, default=f"./mirror{mirror_id}_auto_cleaned", help="Directory to save cleaned segments")
     parser.add_argument("--reference_dir", type=str, default="./reference_signals", help="Directory containing reference signals")
     parser.add_argument("--patient_info_csv", type=str, default=f"./merged_patient_info_{mirror_id}.csv", help="CSV file with patient info including blood pressure")
+    parser.add_argument("--mirror_version", type=str, default='1', choices=['1', '2'], help="Mirror data version: 1 for mirror1/2, 2 for mirror4/5/6")
     parser.add_argument("--threshold_ecg", type=float, default=0.6, help="ECG similarity threshold")
     parser.add_argument("--threshold_rppg", type=float, default=0.75, help="rPPG similarity threshold")
     parser.add_argument("--visualize", action="store_true", help="Enable visualization and manual review")
@@ -871,8 +996,9 @@ if __name__ == "__main__":
         reference_dir=args.reference_dir,
         patient_info_csv=args.patient_info_csv,
         threshold={'ECG': args.threshold_ecg, 'rPPG': args.threshold_rppg},
-        visualize=False,
-        ecg_method='mixture'
+        visualize=args.visualize,
+        ecg_method=args.ecg_method,
+        mirror_version=args.mirror_version,
     )
     
     washer.process_all()
