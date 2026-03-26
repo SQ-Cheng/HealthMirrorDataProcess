@@ -292,4 +292,29 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
 * Exp 01-12
   * Training modification
     * Window length reduced to 2 sec
-  * 
+  *
+
+## 2026-03-24
+### Experiment 01
+* Exp 01-13
+  * Modified CNN stride=1
+
+### Experiment 02
+* Exp 02-01
+  * Target:
+    * Build a bidirectional GAN for ECG->rPPG and rPPG->ECG.
+  * Data:
+    * Reuse Experiment 01 data process (same windows, resampling, normalization, patient-level split).
+    * New dataloader: train/exp2_dataloader.py.
+  * Model:
+    * Two generators: G_ecg2rppg and G_rppg2ecg.
+    * Two discriminators: D_rppg and D_ecg.
+    * Generator uses 1D encoder-residual-decoder structure.
+    * Discriminator uses 1D patch-style CNN.
+    * New model file: train/exp2_model.py.
+  * Training:
+    * Loss = adversarial + paired L1 + cycle L1 + identity L1.
+    * Save best model by validation combined reconstruction loss.
+    * New training file: train/exp2_train.py.
+  * Output:
+    * Checkpoints: train/checkpoints/exp2_best.pt, train/checkpoints/exp2_final.pt

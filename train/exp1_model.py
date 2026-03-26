@@ -38,29 +38,47 @@ class CNNBranch(nn.Module):
         self.relu = nn.ReLU()
 
         # Conv layers with kernel sizes 25 and 9
-        self.conv_1_1 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_1, stride=2, padding=KERNEL_SIZE_1//2)  # 1024×32 -> 512×32
-        self.conv_2_1 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_2, stride=2, padding=KERNEL_SIZE_2//2)     # 1024×32 -> 512×32
+        self.conv_1_1 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_1, stride=1, padding=KERNEL_SIZE_1//2)  # 1024×32 -> 1024×32
+        self.conv_2_1 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_2, stride=1, padding=KERNEL_SIZE_2//2)  # 1024×32 -> 1024×32
         # Max pooling layers for downsampling
-        self.maxpool_1_1 = nn.MaxPool1d(kernel_size=2, stride=2)  # 512×32 -> 256×32
-        self.maxpool_2_1 = nn.MaxPool1d(kernel_size=2, stride=2)   # 512×32 -> 256×32
-        self.conv_1_2 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_1, stride=2, padding=KERNEL_SIZE_1//2)  # 256×32 -> 128×32
-        self.conv_2_2 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_2, stride=2, padding=KERNEL_SIZE_2//2)     # 256×32 -> 128×32
-        self.maxpool_1_2 = nn.MaxPool1d(kernel_size=2, stride=2)  # 128×32 -> 64×32
-        self.maxpool_2_2 = nn.MaxPool1d(kernel_size=2, stride=2)   # 128×32 -> 64×32
+        self.maxpool_1_1 = nn.MaxPool1d(kernel_size=2, stride=2)  # 1024×32 -> 512×32
+        self.maxpool_2_1 = nn.MaxPool1d(kernel_size=2, stride=2)  # 1024×32 -> 512×32
+        self.conv_1_2 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_1, stride=1, padding=KERNEL_SIZE_1//2)  # 512×32 -> 512×32
+        self.conv_2_2 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_2, stride=1, padding=KERNEL_SIZE_2//2)  # 512×32 -> 512×32
+        self.maxpool_1_2 = nn.MaxPool1d(kernel_size=2, stride=2)  # 512×32 -> 256×32
+        self.maxpool_2_2 = nn.MaxPool1d(kernel_size=2, stride=2)  # 512×32 -> 256×32
+        self.conv_1_3 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_1, stride=1, padding=KERNEL_SIZE_1//2)  # 256×32 -> 256×32
+        self.conv_2_3 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_2, stride=1, padding=KERNEL_SIZE_2//2)  # 256×32 -> 256×32
+        self.maxpool_1_3 = nn.MaxPool1d(kernel_size=2, stride=2)  # 256×32 -> 128×32
+        self.maxpool_2_3 = nn.MaxPool1d(kernel_size=2, stride=2)  # 256×32 -> 128×32
+        self.conv_1_4 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_1, stride=1, padding=KERNEL_SIZE_1//2)  # 128×32 -> 128×32
+        self.conv_2_4 = nn.Conv1d(CNN_CHANNELS, CNN_CHANNELS, kernel_size=KERNEL_SIZE_2, stride=1, padding=KERNEL_SIZE_2//2)  # 128×32 -> 128×32
+        self.maxpool_1_4 = nn.MaxPool1d(kernel_size=2, stride=2)  # 128×32 -> 64×32
+        self.maxpool_2_4 = nn.MaxPool1d(kernel_size=2, stride=2)  # 128×32 -> 64×32
 
         # Dropout for regularization
         self.dropout = nn.Dropout(CNN_DROPOUT)
         
     def forward(self, x):
         x = self.relu(self.expand(x))  # (batch, 32, 1024)
-        x1 = self.relu(self.conv_1_1(x))  # (batch, 32, 512)
-        x1 = self.maxpool_1_1(x1)  # (batch, 32, 256)
-        x1 = self.relu(self.conv_1_2(x1))  # (batch, 32, 128)
-        x1 = self.maxpool_1_2(x1)  # (batch, 32, 64)
-        x2 = self.relu(self.conv_2_1(x))  # (batch, 32, 512)
-        x2 = self.maxpool_2_1(x2)  # (batch, 32, 256)
-        x2 = self.relu(self.conv_2_2(x2))  # (batch, 32, 128)
-        x2 = self.maxpool_2_2(x2)  # (batch, 32, 64)
+        x1 = self.relu(self.conv_1_1(x))  # (batch, 32, 1024)
+        x1 = self.maxpool_1_1(x1)  # (batch, 32, 512)
+        x1 = self.relu(self.conv_1_2(x1))  # (batch, 32, 512)
+        x1 = self.maxpool_1_2(x1)  # (batch, 32, 256)
+        x1 = self.relu(self.conv_1_3(x1))  # (batch, 32, 256)
+        x1 = self.maxpool_1_3(x1)  # (batch, 32, 128)
+        x1 = self.relu(self.conv_1_4(x1))  # (batch, 32, 128)
+        x1 = self.maxpool_1_4(x1)  # (batch, 32, 64)
+        
+        x2 = self.relu(self.conv_2_1(x))  # (batch, 32, 1024)
+        x2 = self.maxpool_2_1(x2)  # (batch, 32, 512)
+        x2 = self.relu(self.conv_2_2(x2))  # (batch, 32, 512)
+        x2 = self.maxpool_2_2(x2)  # (batch, 32, 256)
+        x2 = self.relu(self.conv_2_3(x2))  # (batch, 32, 256)
+        x2 = self.maxpool_2_3(x2)  # (batch, 32, 128)
+        x2 = self.relu(self.conv_2_4(x2))  # (batch, 32, 128)
+        x2 = self.maxpool_2_4(x2)  # (batch, 32, 64)
+
         x = torch.cat([x1, x2], dim=1)  # (batch, 64, 64)
         x = self.dropout(x)
         return x  # (batch, 64, 64)

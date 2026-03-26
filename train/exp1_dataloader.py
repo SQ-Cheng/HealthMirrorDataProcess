@@ -316,13 +316,14 @@ def _save_split_report(dataset, train_indices, val_indices, save_dir):
             [f"{pid},{split},{samples},{mirror}" for pid, split, samples, mirror in rows]
 
     # Console summary
-    print(f"\n[Split Debug] Lab_Patient_ID assignment:")
-    print(f"  {'Lab_PID':>10}  {'Split':>5}  {'Samples':>7}  {'Mirror':>6}")
-    print(f"  {'-'*10}  {'-'*5}  {'-'*7}  {'-'*6}")
-    for pid, split, samples, mirror in rows:
-        split_label = "train" if split == "train" else "  val"
-        print(f"  {pid:>10}  {split_label:>5}  {samples:>7}  {mirror:>6}")
-
+    
+    #print(f"\n[Split Debug] Lab_Patient_ID assignment:")
+    #print(f"  {'Lab_PID':>10}  {'Split':>5}  {'Samples':>7}  {'Mirror':>6}")
+    #print(f"  {'-'*10}  {'-'*5}  {'-'*7}  {'-'*6}")
+    #for pid, split, samples, mirror in rows:
+    #    split_label = "train" if split == "train" else "  val"
+    #    print(f"  {pid:>10}  {split_label:>5}  {samples:>7}  {mirror:>6}")
+    
     # Save to file
     out_path = os.path.join(save_dir, "split_debug.csv")
     with open(out_path, "w") as f:

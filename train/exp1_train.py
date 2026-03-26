@@ -19,10 +19,10 @@ from exp1_dataloader import build_dataloaders, BP_MIN, BP_MAX
 
 # ─── Hyperparameters ──────────────────────────────────────────────
 BATCH_SIZE = 32
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 EPOCHS = 100
 VAL_RATIO = 0.2
-SEED = 42
+SEED = 43
 WINDOW_SEC = 2.0
 STEP_SEC = 1.0
 TARGET_LENGTH = 512

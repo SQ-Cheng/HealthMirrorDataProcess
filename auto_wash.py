@@ -218,7 +218,7 @@ class AutoWasher:
                 return
             
             timestamps = df['Timestamp'].to_numpy()
-            ecg_signal = df['ECG'].to_numpy()
+            ecg_signal = -df['ECG'].to_numpy()
             ecg_signal = filter_signal(ecg_signal, fs=self.fs, lowcut=0.5, highcut=30, order=4)
             ecg_signal = notch_filter(ecg_signal, fs=self.fs, freq=50.0, quality=30.0)
             rppg_signal = df['RPPG'].to_numpy()
@@ -976,7 +976,7 @@ class AutoWasher:
             print(f"Saved {filepath}")
 
 if __name__ == "__main__":
-    mirror_id = 4
+    mirror_id = 6
     parser = argparse.ArgumentParser(description="Auto Wash Patient Data")
     parser.add_argument("--data_dir", type=str, default=f"./mirror{mirror_id}_data", help="Directory containing patient folders")
     parser.add_argument("--output_dir", type=str, default=f"./mirror{mirror_id}_auto_cleaned", help="Directory to save cleaned segments")
