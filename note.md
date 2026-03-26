@@ -318,3 +318,89 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
     * New training file: train/exp2_train.py.
   * Output:
     * Checkpoints: train/checkpoints/exp2_best.pt, train/checkpoints/exp2_final.pt
+
+## 2026-03-26
+### Implementation Refinement (Fact-check + Rebuild)
+* Verified assumptions from code/data:
+  * `train/exp2_dataloader.py` originally depended on `BPDataset`, which silently filtered by valid BP labels. This was wrong for unsupervised ECG-rPPG translation because many usable paired windows were dropped.
+  * `mirror*_auto_cleaned/cleaned_patient_info.csv` does not include `heart_rate` or `blood_oxygen`; those labels must be joined from `merged_patient_info_x.csv` by `lab_patient_id`.
+  * Electrical stimulation path is deprecated and excluded.
+  * Manual feature-only direction (PTT/HRV/SQI from heuristics) remains unreliable for primary targets.
+
+### Experiment 02 (Refined): Cross-modal ECG<->rPPG Translation
+* Implementation updates:
+  * Rebuilt `train/exp2_dataloader.py` to load paired windows directly from waveform files without BP-label filtering.
+  * Added artifact guards in dataloader: NaN skip, near-flat skip, near-all-zero skip.
+  * Added quick-local controls: `--max-patients`, `--max-windows-per-patient`, `--max-train-batches`, `--max-val-batches`.
+  * Added dual model variants in `train/exp2_model.py`:
+    * `light`: base_channels=16, residual blocks=2
+    * `full`: base_channels=64, residual blocks=6
+  * Refactored `train/exp2_train.py` to support CLI variant selection and variant-specific checkpoints.
+* Quick local CPU smoke result (`light`, 30 patients cap, 1 epoch):
+  * Dataset: 90 paired windows (train 75 / val 15)
+  * Params: Generators(2x)=317,378; Discriminators(2x)=129,282
+  * Metrics: `Val_pair=1.5329`, `Val_cycle=1.1251`, combined=`2.6580`
+* Run commands:
+  * Quick local:
+    * `python train/exp2_train.py --variant light --epochs 1 --batch-size 8 --target-length 512 --max-patients 30 --max-windows-per-patient 4 --max-train-batches 5 --max-val-batches 2`
+  * Full training:
+    * `python train/exp2_train.py --variant full --epochs 80 --batch-size 16 --target-length 1024`
+
+### Experiment 03 (New): rPPG -> Heart Rate + SpO2 Multitask Regression
+* Motivation:
+  * BP target density is poor and unstable for end-to-end regression.
+  * HR/SpO2 labels are more available in merged metadata and physiologically closer to optical signal periodicity.
+* New files:
+  * `train/exp3_dataloader.py`
+  * `train/exp3_model.py`
+  * `train/exp3_train.py`
+* Implementation details:
+  * Dataloader joins `merged_patient_info_x.csv` by `lab_patient_id` to fetch `heart_rate` and `blood_oxygen`.
+  * Uses patient-level split by hospital patient id.
+  * Uses masked multitask loss so missing one label does not drop the sample.
+  * Model variants:
+    * `light`: compact TCN-like stack for fast CPU tests.
+    * `full`: deeper ResNet-style temporal model.
+* Quick local CPU smoke result (`light`, 30 patients cap, 1 epoch):
+  * Dataset: 92 windows (train 71 / val 21)
+  * Params: 49,362
+  * Metrics: `TrLoss=0.0641`, `VaLoss=0.1000`, `VaHR_MAE=27.919`, `VaSpO2_MAE=18.261`
+  * Note: This is only a smoke baseline on a tiny capped subset.
+* Run commands:
+  * Quick local:
+    * `python train/exp3_train.py --variant light --epochs 1 --batch-size 16 --max-patients 30 --max-windows-per-patient 4 --max-train-batches 5 --max-val-batches 2`
+  * Full training:
+    * `python train/exp3_train.py --variant full --epochs 60 --batch-size 32 --target-length 512`
+
+### Experiment 04 (New): Unsupervised Artifact Detector via Autoencoder SQI
+* Motivation:
+  * Replace brittle fixed-rule quality filters with data-driven reconstruction quality.
+* New files:
+  * `train/exp4_dataloader.py`
+  * `train/exp4_model.py`
+  * `train/exp4_train.py`
+* Implementation details:
+  * Computes per-window spectral SNR in 0.5-5 Hz and defines clean train subset by percentile threshold.
+  * Trains on top-quality windows only, evaluates reconstruction error on all validation windows.
+  * Reports:
+    * Correlation between SNR and reconstruction error (`VaCorr(SNR,Err)`).
+    * Quartile separation (`VaQSep` = low-SNR error minus high-SNR error).
+  * Model variants:
+    * `light`: compact convolutional autoencoder.
+    * `full`: higher-capacity convolutional autoencoder.
+* Quick local CPU smoke result (`light`, 30 patients cap, 1 epoch):
+  * Dataset: 90 windows (train all 75, clean train 8, val 15)
+  * Clean threshold: `4.45 dB`
+  * Params: 7,121
+  * Metrics: `TrLoss=1.0016`, `VaLoss=0.9977`, `VaCorr=0.0511`, `VaQSep=-0.0004`
+  * Note: one-epoch tiny-subset run confirms pipeline only; SQI separation needs longer training and larger data.
+* Run commands:
+  * Quick local:
+    * `python train/exp4_train.py --variant light --epochs 1 --batch-size 16 --max-patients 30 --max-windows-per-patient 4 --max-train-batches 5 --max-val-batches 2`
+  * Full training:
+    * `python train/exp4_train.py --variant full --epochs 80 --batch-size 32 --clean-percentile 90`
+
+### TODO (Next Reliable Runs)
+* Run all `full` variants without patient cap and with early stopping + LR scheduler.
+* Add cross-mirror hold-out protocol (e.g. train mirrors 1/2/4/5, test mirror 6) for domain shift evaluation.
+* Add quantitative quality benchmark for Exp04 (AUC for artifact/no-artifact classification using pseudo labels from SNR quantiles).
