@@ -33,36 +33,11 @@ def parse_args():
     parser.add_argument("--step-sec", type=float, default=1.0)
     parser.add_argument("--target-length", type=int, default=256)
     parser.add_argument("--clean-percentile", type=float, default=90.0)
-    parser.add_argument("--noise-std", type=float, default=0.08)
-    parser.add_argument("--dropout-prob", type=float, default=0.03)
-    parser.add_argument("--mask-prob", type=float, default=0.03)
     parser.add_argument("--max-windows-per-patient", type=int, default=None)
     parser.add_argument("--max-patients", type=int, default=None)
     parser.add_argument("--max-train-batches", type=int, default=None)
     parser.add_argument("--max-val-batches", type=int, default=None)
     return parser.parse_args()
-
-
-def corrupt_rppg(x, noise_std=0.2, dropout_prob=0.1, mask_prob=0.08):
-    """Create denoising input from clean target windows."""
-    x_noisy = x + torch.randn_like(x) * noise_std
-
-    # Point dropout-like corruption.
-    if dropout_prob > 0:
-        keep = (torch.rand_like(x_noisy) > dropout_prob).float()
-        x_noisy = x_noisy * keep
-
-    # Temporal contiguous masking to mimic short motion artifacts.
-    if mask_prob > 0:
-        bsz, _, length = x_noisy.shape
-        seg_len = max(4, length // 16)
-        seg_count = max(1, int(mask_prob * 8))
-        for b in range(bsz):
-            for _ in range(seg_count):
-                start = torch.randint(0, max(1, length - seg_len), (1,), device=x_noisy.device).item()
-                x_noisy[b, :, start:start + seg_len] = 0.0
-
-    return x_noisy
 
 
 def run_epoch(
@@ -71,9 +46,6 @@ def run_epoch(
     criterion,
     optimizer=None,
     max_batches=None,
-    noise_std=0.2,
-    dropout_prob=0.1,
-    mask_prob=0.08,
 ):
     is_train = optimizer is not None
     model.train(is_train)
@@ -81,7 +53,6 @@ def run_epoch(
     losses = []
     snrs = []
     rec_errors = []
-    denoise_gains = []
 
     for batch_idx, (x, snr) in enumerate(loader):
         if max_batches is not None and batch_idx >= max_batches:
@@ -91,12 +62,8 @@ def run_epoch(
         snr = snr.to(DEVICE)
         target = x
 
-        x_in = corrupt_rppg(
-            x,
-            noise_std=noise_std,
-            dropout_prob=dropout_prob,
-            mask_prob=mask_prob,
-        )
+        # No synthetic corruption/augmentation: use only observed windows.
+        x_in = x
 
         if is_train:
             optimizer.zero_grad()
@@ -112,10 +79,6 @@ def run_epoch(
         losses.append(loss.item())
         snrs.extend(snr.detach().cpu().numpy().tolist())
         rec_errors.extend(per_sample.detach().cpu().numpy().tolist())
-
-        input_mse = ((x_in - target) ** 2).mean(dim=(1, 2))
-        gain = (input_mse - per_sample).mean().detach().cpu().item()
-        denoise_gains.append(gain)
 
     if not losses:
         return {"loss": 0.0, "snr_rec_corr": 0.0, "q_sep": 0.0}
@@ -138,7 +101,6 @@ def run_epoch(
         "loss": float(np.mean(losses)),
         "snr_rec_corr": corr,
         "q_sep": q_sep,
-        "denoise_gain": float(np.mean(denoise_gains)) if denoise_gains else 0.0,
     }
 
 
@@ -186,9 +148,6 @@ def main():
             criterion,
             optimizer=optimizer,
             max_batches=args.max_train_batches,
-            noise_std=args.noise_std,
-            dropout_prob=args.dropout_prob,
-            mask_prob=args.mask_prob,
         )
         with torch.no_grad():
             va = run_epoch(
@@ -197,14 +156,11 @@ def main():
                 criterion,
                 optimizer=None,
                 max_batches=args.max_val_batches,
-                noise_std=args.noise_std,
-                dropout_prob=args.dropout_prob,
-                mask_prob=args.mask_prob,
             )
 
         elapsed = time.time() - t0
         marker = ""
-        score = va["loss"] - 0.1 * va["denoise_gain"]
+        score = va["loss"]
         if score < best_val:
             best_val = score
             torch.save(
@@ -215,11 +171,7 @@ def main():
                     "optimizer_state_dict": optimizer.state_dict(),
                     "val_score": best_val,
                     "val_loss": va["loss"],
-                    "val_denoise_gain": va["denoise_gain"],
                     "snr_threshold": threshold,
-                    "noise_std": args.noise_std,
-                    "dropout_prob": args.dropout_prob,
-                    "mask_prob": args.mask_prob,
                 },
                 os.path.join(SAVE_DIR, f"exp4_{args.variant}_best.pt"),
             )
@@ -228,7 +180,6 @@ def main():
         print(
             f"{epoch:5d}  {tr['loss']:8.4f}  {va['loss']:8.4f}  "
             f"{va['snr_rec_corr']:15.4f}  {va['q_sep']:8.4f}  {elapsed:5.1f}s{marker}"
-            f"  gain={va['denoise_gain']:+.4f}"
         )
 
     torch.save(
@@ -239,9 +190,6 @@ def main():
             "optimizer_state_dict": optimizer.state_dict(),
             "val_score": best_val,
             "snr_threshold": threshold,
-            "noise_std": args.noise_std,
-            "dropout_prob": args.dropout_prob,
-            "mask_prob": args.mask_prob,
         },
         os.path.join(SAVE_DIR, f"exp4_{args.variant}_final.pt"),
     )

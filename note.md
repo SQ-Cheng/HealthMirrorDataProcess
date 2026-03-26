@@ -404,3 +404,33 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
 * Run all `full` variants without patient cap and with early stopping + LR scheduler.
 * Add cross-mirror hold-out protocol (e.g. train mirrors 1/2/4/5, test mirror 6) for domain shift evaluation.
 * Add quantitative quality benchmark for Exp04 (AUC for artifact/no-artifact classification using pseudo labels from SNR quantiles).
+
+## 2026-03-27
+### Experiment 04 Progress Update (Current)
+* What was changed:
+  * Expanded effective temporal receptive field without increasing learnable parameters:
+    * Internal temporal compression/expansion added in model forward path.
+    * `light` variant uses `io_downsample_factor=2`.
+    * `full` variant uses `io_downsample_factor=4`.
+  * Reduced default datapoint count while keeping the same time window:
+    * `target_length` default changed from `512` to `256` in Exp4 train/visualize scripts.
+  * Enforced no data augmentation in Exp4 training:
+    * Removed synthetic corruption path (`noise`, `dropout masking`, `temporal masking`).
+    * Training input now uses only observed windows (`x_in = x`).
+
+* Current result (latest augmentation-free smoke run, `full`):
+  * Command:
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp4/exp4_train.py --variant full --epochs 1 --batch-size 16 --max-patients 20 --max-windows-per-patient 8 --max-train-batches 2 --max-val-batches 1`
+  * Dataset summary:
+    * Loaded windows: `82`
+    * Train all: `71`, train clean: `8`, val all: `11`
+    * Clean threshold: `4.84 dB`
+  * Model summary:
+    * Params (`full`): `37,404` (unchanged)
+  * Metrics:
+    * `TrLoss=0.7056`, `VaLoss=0.7867`, `VaCorr=0.2523`, `VaQSep=-0.0513`
+
+* Status:
+  * Exp4 pipeline runs successfully with augmentation-free training.
+  * Receptive-field expansion and reduced point-density update are integrated.
+  * Current metrics are smoke-test level only; longer uncapped runs are still required for reliable assessment.
