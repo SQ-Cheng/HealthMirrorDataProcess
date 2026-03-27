@@ -546,3 +546,45 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
     * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3/exp3_train.py --variant full --epochs 50 --batch-size 32 --target-length 256`
   * Visualize:
     * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3/exp3_visualize.py --variant light --num-segments 5`
+
+### Experiment 03-1 (ECG SQI Approach Comparison)
+* Goal:
+  * Compare multiple ECG SQI approaches and verify whether legacy frequency-based SNR is a useful proxy.
+
+* Script:
+  * `train/exp3/exp3_1_compare_sqi.py`
+
+* Run command:
+  * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3/exp3_1_compare_sqi.py --max-samples 800`
+
+* Data coverage in this comparison:
+  * Full dataset available: `12240` windows from `2345` patients.
+  * Random sampled windows for analysis: `800` (`seed=42`).
+
+* Output figures:
+  * `train/exp3/plots/exp3_1_sqi_compare_matrix.png`
+  * `train/exp3/plots/exp3_1_sqi_compare_examples.png`
+
+* Key quantitative results:
+  * Composite non-frequency SQI vs legacy frequency SNR: `corr=-0.0656`
+  * Composite non-frequency SQI vs rPPG SNR: `corr=-0.0561`
+  * Strong internal consistency of non-frequency features:
+    * `corr(composite, autocorr)=0.8295`
+    * `corr(composite, template_corr)=0.6137`
+  * Weak relation of legacy frequency SNR to other ECG quality cues:
+    * `corr(legacy_freq_snr, template_corr)=-0.0246`
+    * `corr(legacy_freq_snr, autocorr)=-0.0673`
+    * `corr(legacy_freq_snr, morph_stability)=-0.0322`
+
+* Method distribution summary (mean +/- std):
+  * `template_corr`: `0.7593 +/- 0.0715`
+  * `autocorr`: `0.4414 +/- 0.1417`
+  * `morph_stability`: `0.4774 +/- 0.0680`
+  * `artifact_penalty`: `0.9851 +/- 0.0051`
+  * `composite_nonfreq`: `0.6809 +/- 0.0537`
+  * `legacy_freq_snr` (normalized): `0.0364 +/- 0.0915`
+
+* Conclusion:
+  * Legacy frequency-based SNR is not a good standalone ECG SQI proxy in this dataset.
+  * Non-frequency ECG quality features (template correlation + autocorrelation + morphology/artifact terms) provide a more coherent quality ranking.
+  * For Exp03 weighting and downstream quality control, prioritize `composite_nonfreq` over `legacy_freq_snr`.
