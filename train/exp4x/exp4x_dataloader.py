@@ -1,4 +1,4 @@
-"""Experiment 03 dataloader: joint ECG+rPPG masked reconstruction with quality ranking."""
+"""Experiment 04-X dataloader: full-data SNR-ranked SQI regression dataset."""
 
 import glob
 import os
@@ -17,27 +17,13 @@ def _zscore(x):
     return (x - x.mean()) / std
 
 
-def _rank01(values):
-    values = np.asarray(values, dtype=np.float64)
-    order = np.argsort(values)
-    ranks = np.empty_like(order, dtype=np.float64)
-    ranks[order] = np.arange(len(values), dtype=np.float64)
-    if len(values) <= 1:
-        return np.zeros_like(values, dtype=np.float32)
-    return (ranks / float(len(values) - 1)).astype(np.float32)
-
-
-def compute_snr_db(x, fs, lo_hz, hi_hz, peak_width_hz):
-    """Estimate narrow-band SNR around dominant frequency in a target band."""
+def compute_snr_db(x, fs):
+    """Estimate physiological narrow-band SNR around dominant cardiac frequency."""
     n = len(x)
     freqs = np.fft.rfftfreq(n, d=1.0 / fs)
     spec = np.abs(np.fft.rfft(x)) ** 2
 
-    hi_hz = min(hi_hz, float(freqs[-1]) - 1e-6)
-    if hi_hz <= lo_hz:
-        return -100.0
-
-    band = (freqs >= lo_hz) & (freqs <= hi_hz)
+    band = (freqs >= 0.5) & (freqs <= 5.0)
     if not np.any(band):
         return -100.0
 
@@ -45,7 +31,7 @@ def compute_snr_db(x, fs, lo_hz, hi_hz, peak_width_hz):
     band_freqs = freqs[band]
     peak_freq = band_freqs[np.argmax(band_spec)]
 
-    signal_band = (freqs >= (peak_freq - peak_width_hz)) & (freqs <= (peak_freq + peak_width_hz))
+    signal_band = (freqs >= (peak_freq - 0.15)) & (freqs <= (peak_freq + 0.15))
     signal_power = spec[signal_band].sum()
     noise_power = spec[band].sum() - signal_power
     noise_power = max(noise_power, 1e-12)
@@ -53,8 +39,8 @@ def compute_snr_db(x, fs, lo_hz, hi_hz, peak_width_hz):
     return 10.0 * np.log10(max(signal_power, 1e-12) / noise_power)
 
 
-class MaskedReconDataset(Dataset):
-    """Per-window ECG+rPPG samples with quality score derived from ranked SNR."""
+class RPPGSQIRankDataset(Dataset):
+    """All-window dataset with SQI target defined by global SNR rank."""
 
     def __init__(
         self,
@@ -65,11 +51,10 @@ class MaskedReconDataset(Dataset):
         max_windows_per_patient=None,
         max_patients=None,
     ):
-        self.samples = []
+        self.windows = []
+        self.snr_db = []
+        self.sqi = []
         self.hospital_pids = []
-        self.rppg_snr_db = []
-        self.ecg_snr_db = []
-        self.clean_score = []
 
         mirror_dirs = sorted(glob.glob(os.path.join(root_dir, "mirror*_auto_cleaned")))
         if not mirror_dirs:
@@ -113,13 +98,11 @@ class MaskedReconDataset(Dataset):
 
                 patient_count += 1
 
-                required_cols = {"Timestamp", "RPPG", "ECG"}
-                if not required_cols.issubset(set(sig_df.columns)):
+                if "Timestamp" not in sig_df.columns or "RPPG" not in sig_df.columns:
                     continue
 
                 timestamps = sig_df["Timestamp"].values
                 rppg = sig_df["RPPG"].values
-                ecg = sig_df["ECG"].values
                 if len(timestamps) < 2:
                     continue
 
@@ -130,77 +113,87 @@ class MaskedReconDataset(Dataset):
 
                 window_samples = int(window_sec * fs)
                 step_samples = int(step_sec * fs)
-                if window_samples > len(rppg) or window_samples > len(ecg):
+                if window_samples > len(rppg):
                     continue
 
+                patient_windows = 0
                 hospital_pid = hospital_lookup.get(lab_pid, f"m{mirror_num}_lab{lab_pid}")
 
-                patient_windows = 0
                 start = 0
                 while start + window_samples <= len(rppg):
-                    rppg_win = rppg[start:start + window_samples].copy()
-                    ecg_win = ecg[start:start + window_samples].copy()
+                    win = rppg[start:start + window_samples].copy()
                     start += step_samples
 
-                    if np.isnan(rppg_win).any() or np.isnan(ecg_win).any():
+                    if np.isnan(win).any():
                         continue
 
-                    rppg_win = resample(rppg_win, target_length)
-                    ecg_win = resample(ecg_win, target_length)
-
-                    if np.isnan(rppg_win).any() or np.isnan(ecg_win).any():
+                    win = resample(win, target_length)
+                    if np.isnan(win).any() or win.std() < 1e-6:
                         continue
-                    if rppg_win.std() < 1e-6 or ecg_win.std() < 1e-6:
+                    if (np.abs(win) < 1e-8).mean() > 0.95:
                         continue
 
-                    if (np.abs(rppg_win) < 1e-8).mean() > 0.95:
-                        continue
-                    if (np.abs(ecg_win) < 1e-8).mean() > 0.95:
-                        continue
-
-                    rppg_win = _zscore(rppg_win).astype(np.float32)
-                    ecg_win = _zscore(ecg_win).astype(np.float32)
-                    pair = np.stack([ecg_win, rppg_win], axis=0)
-
+                    win = _zscore(win)
                     fs_target = target_length / window_sec
-                    rppg_snr = compute_snr_db(rppg_win, fs_target, lo_hz=0.5, hi_hz=5.0, peak_width_hz=0.15)
-                    ecg_snr = compute_snr_db(ecg_win, fs_target, lo_hz=1.0, hi_hz=30.0, peak_width_hz=0.8)
+                    snr = compute_snr_db(win, fs=fs_target)
 
-                    self.samples.append(pair)
+                    self.windows.append(win.astype(np.float32))
+                    self.snr_db.append(float(snr))
                     self.hospital_pids.append(hospital_pid)
-                    self.rppg_snr_db.append(float(rppg_snr))
-                    self.ecg_snr_db.append(float(ecg_snr))
 
                     patient_windows += 1
                     if max_windows_per_patient is not None and patient_windows >= max_windows_per_patient:
                         break
 
-        if not self.samples:
-            raise RuntimeError("No valid ECG+rPPG windows for Experiment 03.")
+        if not self.windows:
+            raise RuntimeError("No valid Exp4-X windows were loaded.")
 
-        rppg_rank = _rank01(self.rppg_snr_db)
-        ecg_rank = _rank01(self.ecg_snr_db)
-        self.clean_score = (0.6 * rppg_rank + 0.4 * ecg_rank).astype(np.float32).tolist()
+        snr_np = np.array(self.snr_db)
+        order = np.argsort(snr_np)
+        ranks = np.empty_like(order, dtype=np.float32)
+        ranks[order] = np.arange(len(order), dtype=np.float32)
+        if len(order) > 1:
+            sqi_np = ranks / float(len(order) - 1)
+        else:
+            sqi_np = np.zeros_like(ranks)
+        self.sqi = sqi_np.tolist()
 
         print(
-            f"[Exp3 Dataset] Loaded {len(self.samples)} ECG+rPPG windows from {patient_count} patients. "
-            f"rPPG SNR range {np.min(self.rppg_snr_db):.2f}..{np.max(self.rppg_snr_db):.2f} dB"
+            f"[Exp4-X Dataset] Loaded {len(self.windows)} windows from {patient_count} patients. "
+            f"SNR range: {snr_np.min():.2f} to {snr_np.max():.2f} dB"
         )
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.windows)
 
     def __getitem__(self, idx):
-        pair = self.samples[idx]
         return (
-            torch.from_numpy(pair),
-            torch.tensor(self.clean_score[idx], dtype=torch.float32),
-            torch.tensor(self.ecg_snr_db[idx], dtype=torch.float32),
-            torch.tensor(self.rppg_snr_db[idx], dtype=torch.float32),
+            torch.from_numpy(self.windows[idx]).unsqueeze(0),
+            torch.tensor(self.sqi[idx], dtype=torch.float32),
+            torch.tensor(self.snr_db[idx], dtype=torch.float32),
         )
 
 
-def build_masked_recon_dataloaders(
+def _patient_split_indices(hospital_pids, val_ratio, seed):
+    rng = np.random.default_rng(seed)
+    unique_pids = list(dict.fromkeys(hospital_pids))
+    rng.shuffle(unique_pids)
+    if not unique_pids:
+        raise RuntimeError("No valid patient IDs for Exp4-X split.")
+
+    n_val = max(1, int(len(unique_pids) * val_ratio))
+    val_pids = set(unique_pids[:n_val])
+    train_pids = set(unique_pids[n_val:])
+
+    train_indices = [i for i, pid in enumerate(hospital_pids) if pid in train_pids]
+    val_indices = [i for i, pid in enumerate(hospital_pids) if pid in val_pids]
+    if not train_indices or not val_indices:
+        raise RuntimeError("Exp4-X split failed: empty train or validation set.")
+
+    return train_indices, val_indices
+
+
+def build_exp4x_dataloaders(
     root_dir,
     batch_size=32,
     val_ratio=0.2,
@@ -210,8 +203,9 @@ def build_masked_recon_dataloaders(
     target_length=256,
     max_windows_per_patient=None,
     max_patients=None,
+    return_meta=False,
 ):
-    dataset = MaskedReconDataset(
+    dataset = RPPGSQIRankDataset(
         root_dir,
         window_sec=window_sec,
         step_sec=step_sec,
@@ -220,18 +214,7 @@ def build_masked_recon_dataloaders(
         max_patients=max_patients,
     )
 
-    rng = np.random.default_rng(seed)
-    unique_pids = list(dict.fromkeys(dataset.hospital_pids))
-    rng.shuffle(unique_pids)
-    if not unique_pids:
-        raise RuntimeError("No valid samples for Experiment 03.")
-
-    n_val_pids = max(1, int(len(unique_pids) * val_ratio))
-    val_pids = set(unique_pids[:n_val_pids])
-    train_pids = set(unique_pids[n_val_pids:])
-
-    train_indices = [i for i, p in enumerate(dataset.hospital_pids) if p in train_pids]
-    val_indices = [i for i, p in enumerate(dataset.hospital_pids) if p in val_pids]
+    train_indices, val_indices = _patient_split_indices(dataset.hospital_pids, val_ratio, seed)
 
     train_loader = DataLoader(
         Subset(dataset, train_indices),
@@ -248,13 +231,20 @@ def build_masked_recon_dataloaders(
         pin_memory=False,
     )
 
-    train_clean = np.array([dataset.clean_score[i] for i in train_indices])
-    val_clean = np.array([dataset.clean_score[i] for i in val_indices])
+    train_snr = np.array([dataset.snr_db[i] for i in train_indices])
+    val_snr = np.array([dataset.snr_db[i] for i in val_indices])
     print(
-        "[Exp3 DataLoader] Patient-level split - "
-        f"train: {len(train_pids)} patients / {len(train_indices)} samples, "
-        f"val: {len(val_pids)} patients / {len(val_indices)} samples | "
-        f"clean-score mean train={train_clean.mean():.3f}, val={val_clean.mean():.3f}"
+        "[Exp4-X DataLoader] Patient-level split - "
+        f"train: {len(train_indices)}, val: {len(val_indices)} | "
+        f"train SNR mean={train_snr.mean():.2f} dB, val SNR mean={val_snr.mean():.2f} dB"
     )
 
-    return train_loader, val_loader
+    if not return_meta:
+        return train_loader, val_loader
+
+    meta = {
+        "dataset": dataset,
+        "train_indices": train_indices,
+        "val_indices": val_indices,
+    }
+    return train_loader, val_loader, meta

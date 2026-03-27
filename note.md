@@ -434,3 +434,115 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
   * Exp4 pipeline runs successfully with augmentation-free training.
   * Receptive-field expansion and reduced point-density update are integrated.
   * Current metrics are smoke-test level only; longer uncapped runs are still required for reliable assessment.
+
+### Experiment 04-X (New): Full-data SNR-ranked SQI Regression
+* Target:
+  * Use all available rPPG windows, not only high-SNR windows.
+  * Convert SNR ranking into a normalized SQI target in [0, 1].
+  * Predict segment-level SQI directly from waveform.
+
+* New files:
+  * `train/exp4x/exp4x_dataloader.py`
+  * `train/exp4x/exp4x_model.py`
+  * `train/exp4x/exp4x_train.py`
+  * `train/exp4x/exp4x_visualize.py`
+
+* Model structures (3 variants):
+  * `exp4-1`: compact CNN regressor.
+  * `exp4-2`: CNN encoder + BiGRU temporal regressor.
+  * `exp4-3`: dilated multi-scale temporal CNN regressor.
+
+* Quick smoke results (20 patients cap, 1 epoch):
+  * Dataset: 82 windows (train 71 / val 11), SNR range -8.28 to 5.84 dB.
+  * `exp4-1`: params 16,313 | VaLoss 0.0456 | VaMAE 0.2789 | Pearson 0.0848 | Corr(Pred,SNR) 0.1097
+  * `exp4-2`: params 21,673 | VaLoss 0.0455 | VaMAE 0.2755 | Pearson -0.2878 | Corr(Pred,SNR) -0.3405
+  * `exp4-3`: params 18,817 | VaLoss 0.0459 | VaMAE 0.2820 | Pearson 0.4852 | Corr(Pred,SNR) 0.4542
+
+* Visualization output:
+  * `train/exp4x/plots/exp4x_exp4-1_viz.png`
+  * `train/exp4x/plots/exp4x_exp4-2_viz.png`
+  * `train/exp4x/plots/exp4x_exp4-3_viz.png`
+
+* Run commands:
+  * Train:
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp4x/exp4x_train.py --model exp4-1 --epochs 60 --batch-size 32`
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp4x/exp4x_train.py --model exp4-2 --epochs 60 --batch-size 32`
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp4x/exp4x_train.py --model exp4-3 --epochs 60 --batch-size 32`
+  * Visualize:
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp4x/exp4x_visualize.py --model exp4-1`
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp4x/exp4x_visualize.py --model exp4-2`
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp4x/exp4x_visualize.py --model exp4-3`
+
+* Full-data run summary (12240 windows, 2345 patients):
+  * Shared dataset stats:
+    * Loaded windows: `12240`
+    * Train/Val split: `9018 / 3222`
+    * SNR range: `-11.00 to 13.06 dB`
+    * Train SNR mean: `1.27 dB`, Val SNR mean: `1.39 dB`
+  * `exp4-1`:
+    * Visualization: `train/exp4x/plots/exp4x_exp4-1_viz.png`
+    * `Val MAE=0.101782`, `Pearson=0.877300`, `Corr(Pred,SNR)=0.868098`
+  * `exp4-2`:
+    * Visualization: `train/exp4x/plots/exp4x_exp4-2_viz.png`
+    * `Val MAE=0.065481`, `Pearson=0.943353`, `Corr(Pred,SNR)=0.927810`
+  * `exp4-3`:
+    * Visualization: `train/exp4x/plots/exp4x_exp4-3_viz.png`
+    * `Val MAE=0.096558`, `Pearson=0.891255`, `Corr(Pred,SNR)=0.882799`
+
+* Conclusion from full-data benchmark:
+  * Best overall: `exp4-2` (lowest MAE and highest correlation).
+  * `exp4-3` is second best.
+  * `exp4-1` is the current baseline.
+
+### Experiment 03 (Major Refinement / Deprecation of Old Target)
+* Why changed:
+  * Existing `heart_rate` / `blood_oxygen` labels are not reliable enough for supervised regression.
+  * Regressing SpO2 from single rPPG is physically impractical for this setup.
+  * Old Exp03 target (`rPPG -> HR+SpO2`) is deprecated.
+
+* New Exp03 target:
+  * Self-supervised masked reconstruction of **joint ECG + rPPG** windows.
+  * Input channels: `(ECG, rPPG)` with random temporal masks.
+  * Model reconstructs hidden segments from visible context.
+
+* How clean data is handled (new strategy):
+  * Keep **all available windows** (no hard clean-only filter).
+  * Compute quality proxies per window:
+    * rPPG SNR in `0.5-5 Hz`.
+    * ECG SNR in `1-30 Hz`.
+  * Convert both to rank-normalized scores and combine:
+    * `clean_score = 0.6 * rank(rPPG_SNR) + 0.4 * rank(ECG_SNR)`.
+  * Use `clean_score` as **sample weight** in reconstruction loss (higher-quality windows weighted more, but low-quality windows still used).
+
+* Files replaced/added:
+  * Replaced: `train/exp3/exp3_dataloader.py`
+  * Replaced: `train/exp3/exp3_model.py`
+  * Replaced: `train/exp3/exp3_train.py`
+  * Added: `train/exp3/exp3_visualize.py`
+
+* Quick validation runs:
+  * 1-epoch smoke (light):
+    * Dataset: 90 windows from 30 patients (train 75 / val 15)
+    * `TrLoss=0.3748`, `VaLoss=0.3785`, `VaECG_MAE=0.6929`, `VaRPPG_MAE=0.8317`
+    * Initial visualization showed underfitting (near-flat reconstruction), so longer run was required.
+  * 8-epoch quick run (light):
+    * Dataset: 219 windows from 60 patients (train 162 / val 57)
+    * Best validation loss: `0.2300`
+    * Best checkpoint epoch metrics (epoch 7):
+      * `VaLoss=0.2300`, `VaECG_MAE=0.7092`, `VaRPPG_MAE=0.4565`
+    * Visualization output:
+      * `train/exp3/plots/exp3_light_masked_recon.png`
+      * Masked MAE (visualization batch): `ECG=0.2366`, `rPPG=0.1845`
+
+* Current conclusion:
+  * Exp03 has been successfully converted from unreliable HR/SpO2 supervision to masked reconstruction.
+  * rPPG reconstruction quality improves clearly with short training.
+  * ECG reconstruction is currently smoother than target and still needs architecture/loss tuning.
+
+* New run commands:
+  * Train (quick):
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3/exp3_train.py --variant light --epochs 8 --batch-size 16 --max-patients 60 --max-windows-per-patient 6 --max-train-batches 15 --max-val-batches 6`
+  * Train (full):
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3/exp3_train.py --variant full --epochs 50 --batch-size 32 --target-length 256`
+  * Visualize:
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3/exp3_visualize.py --variant light --num-segments 5`

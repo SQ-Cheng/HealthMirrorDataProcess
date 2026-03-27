@@ -1,4 +1,4 @@
-"""Experiment 03 training: multitask rPPG regression for HR and SpO2."""
+"""Experiment 03 training: masked ECG+rPPG reconstruction (self-supervised)."""
 
 import argparse
 import os
@@ -11,11 +11,7 @@ from torch.optim import AdamW
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from exp3_dataloader import (
-    denormalize_hr,
-    denormalize_spo2,
-    build_vitals_dataloaders,
-)
+from exp3_dataloader import build_masked_recon_dataloaders
 from exp3_model import build_exp3_model
 
 
@@ -25,16 +21,20 @@ SAVE_DIR = os.path.join(ROOT_DIR, "train", "checkpoints")
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Experiment 03: rPPG -> HR + SpO2")
+    parser = argparse.ArgumentParser(description="Experiment 03: Masked ECG+rPPG reconstruction")
     parser.add_argument("--variant", choices=["light", "full"], default="light")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--window-sec", type=float, default=3.0)
     parser.add_argument("--step-sec", type=float, default=1.0)
-    parser.add_argument("--target-length", type=int, default=512)
+    parser.add_argument("--target-length", type=int, default=256)
+    parser.add_argument("--mask-ratio", type=float, default=0.30)
+    parser.add_argument("--mask-block-min", type=int, default=8)
+    parser.add_argument("--mask-block-max", type=int, default=32)
+    parser.add_argument("--context-weight", type=float, default=0.20)
     parser.add_argument("--max-windows-per-patient", type=int, default=None)
     parser.add_argument("--max-patients", type=int, default=None)
     parser.add_argument("--max-train-batches", type=int, default=None)
@@ -42,68 +42,118 @@ def parse_args():
     return parser.parse_args()
 
 
-def masked_huber(pred, target, mask, criterion):
-    loss = criterion(pred, target)
-    weighted = loss * mask
-    denom = mask.sum().clamp_min(1.0)
-    return weighted.sum() / denom
+def build_visible_mask(x, mask_ratio, block_min, block_max):
+    """Create visible mask (1=visible, 0=masked) with contiguous masked spans."""
+    bsz, ch, length = x.shape
+    visible = torch.ones((bsz, ch, length), device=x.device, dtype=x.dtype)
+
+    target_mask_points = int(length * max(0.0, min(0.95, mask_ratio)))
+    if target_mask_points <= 0:
+        return visible
+
+    for b in range(bsz):
+        for c in range(ch):
+            masked = 0
+            attempts = 0
+            while masked < target_mask_points and attempts < 64:
+                attempts += 1
+                seg_len = torch.randint(block_min, block_max + 1, (1,), device=x.device).item()
+                seg_len = max(1, min(seg_len, length))
+                start = torch.randint(0, max(1, length - seg_len + 1), (1,), device=x.device).item()
+                end = start + seg_len
+                newly = visible[b, c, start:end].sum().item()
+                visible[b, c, start:end] = 0.0
+                masked += int(newly)
+
+    return visible
 
 
-def compute_mae_metrics(pred, target, mask):
-    pred_hr = denormalize_hr(pred[:, 0])
-    gt_hr = denormalize_hr(target[:, 0])
-    pred_spo2 = denormalize_spo2(pred[:, 1])
-    gt_spo2 = denormalize_spo2(target[:, 1])
+def weighted_masked_loss(pred, target, visible_mask, clean_score, criterion, context_weight):
+    masked_mask = 1.0 - visible_mask
 
-    hr_mask = mask[:, 0] > 0.5
-    spo2_mask = mask[:, 1] > 0.5
+    per_point = criterion(pred, target)
 
-    hr_mae = (pred_hr[hr_mask] - gt_hr[hr_mask]).abs().mean().item() if hr_mask.any() else float("nan")
-    spo2_mae = (pred_spo2[spo2_mask] - gt_spo2[spo2_mask]).abs().mean().item() if spo2_mask.any() else float("nan")
-    return hr_mae, spo2_mae
+    masked_num = (per_point * masked_mask).sum(dim=(1, 2))
+    masked_den = masked_mask.sum(dim=(1, 2)).clamp_min(1.0)
+    masked_loss = masked_num / masked_den
+
+    context_num = (per_point * visible_mask).sum(dim=(1, 2))
+    context_den = visible_mask.sum(dim=(1, 2)).clamp_min(1.0)
+    context_loss = context_num / context_den
+
+    # Keep all data, but trust high-quality windows slightly more.
+    sample_weight = 0.5 + 0.5 * clean_score
+    sample_loss = (masked_loss + context_weight * context_loss) * sample_weight
+    return sample_loss.mean()
 
 
-def run_epoch(model, loader, criterion, optimizer=None, max_batches=None):
+def recon_mae_by_channel(pred, target, masked_mask):
+    ecg_mae = ((pred[:, 0] - target[:, 0]).abs() * masked_mask[:, 0]).sum() / masked_mask[:, 0].sum().clamp_min(1.0)
+    rppg_mae = ((pred[:, 1] - target[:, 1]).abs() * masked_mask[:, 1]).sum() / masked_mask[:, 1].sum().clamp_min(1.0)
+    return ecg_mae.item(), rppg_mae.item()
+
+
+def run_epoch(
+    model,
+    loader,
+    criterion,
+    optimizer=None,
+    max_batches=None,
+    mask_ratio=0.3,
+    mask_block_min=8,
+    mask_block_max=32,
+    context_weight=0.2,
+):
     is_train = optimizer is not None
     model.train(is_train)
 
-    total_loss = 0.0
-    n = 0
-    hr_maes = []
-    spo2_maes = []
+    losses = []
+    ecg_maes = []
+    rppg_maes = []
 
-    for batch_idx, (rppg, target, mask) in enumerate(loader):
+    for batch_idx, (pair, clean_score, _, _) in enumerate(loader):
         if max_batches is not None and batch_idx >= max_batches:
             break
 
-        rppg = rppg.to(DEVICE)
-        target = target.to(DEVICE)
-        mask = mask.to(DEVICE)
+        pair = pair.to(DEVICE)
+        clean_score = clean_score.to(DEVICE)
+
+        visible = build_visible_mask(
+            pair,
+            mask_ratio=mask_ratio,
+            block_min=mask_block_min,
+            block_max=mask_block_max,
+        )
+        masked_mask = 1.0 - visible
+        x_masked = pair * visible
 
         if is_train:
             optimizer.zero_grad()
 
-        pred = model(rppg)
-        loss = masked_huber(pred, target, mask, criterion)
+        pred = model(x_masked, visible)
+        loss = weighted_masked_loss(
+            pred,
+            pair,
+            visible,
+            clean_score,
+            criterion,
+            context_weight=context_weight,
+        )
 
         if is_train:
             loss.backward()
             optimizer.step()
 
-        with torch.no_grad():
-            hr_mae, spo2_mae = compute_mae_metrics(pred, target, mask)
-            if not torch.isnan(torch.tensor(hr_mae)):
-                hr_maes.append(hr_mae)
-            if not torch.isnan(torch.tensor(spo2_mae)):
-                spo2_maes.append(spo2_mae)
+        ecg_mae, rppg_mae = recon_mae_by_channel(pred, pair, masked_mask)
 
-        total_loss += loss.item()
-        n += 1
+        losses.append(loss.item())
+        ecg_maes.append(ecg_mae)
+        rppg_maes.append(rppg_mae)
 
     out = {
-        "loss": total_loss / max(n, 1),
-        "hr_mae": sum(hr_maes) / max(len(hr_maes), 1),
-        "spo2_mae": sum(spo2_maes) / max(len(spo2_maes), 1),
+        "loss": sum(losses) / max(len(losses), 1),
+        "ecg_mae": sum(ecg_maes) / max(len(ecg_maes), 1),
+        "rppg_mae": sum(rppg_maes) / max(len(rppg_maes), 1),
     }
     return out
 
@@ -113,7 +163,7 @@ def main():
     torch.manual_seed(args.seed)
 
     print("Loading data ...")
-    train_loader, val_loader = build_vitals_dataloaders(
+    train_loader, val_loader = build_masked_recon_dataloaders(
         ROOT_DIR,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,
@@ -126,7 +176,7 @@ def main():
     )
 
     model = build_exp3_model(args.variant).to(DEVICE)
-    param_count = sum(p.numel() for p in model.parameters())
+    param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Device: {DEVICE}")
     print(f"Model variant: {args.variant}, params: {param_count:,}")
 
@@ -137,10 +187,10 @@ def main():
     best_val = float("inf")
 
     print(
-        f"\n{'Epoch':>5}  {'TrLoss':>8}  {'VaLoss':>8}  "
-        f"{'TrHR_MAE':>9}  {'TrSpO2':>8}  {'VaHR_MAE':>9}  {'VaSpO2':>8}  {'Time':>6}"
+        f"\n{'Epoch':>5}  {'TrLoss':>8}  {'VaLoss':>8}  {'TrECG_MAE':>10}  {'TrRPPG_MAE':>11}  "
+        f"{'VaECG_MAE':>10}  {'VaRPPG_MAE':>11}  {'Time':>6}"
     )
-    print("-" * 80)
+    print("-" * 96)
 
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
@@ -150,6 +200,10 @@ def main():
             criterion,
             optimizer=optimizer,
             max_batches=args.max_train_batches,
+            mask_ratio=args.mask_ratio,
+            mask_block_min=args.mask_block_min,
+            mask_block_max=args.mask_block_max,
+            context_weight=args.context_weight,
         )
         with torch.no_grad():
             va = run_epoch(
@@ -158,6 +212,10 @@ def main():
                 criterion,
                 optimizer=None,
                 max_batches=args.max_val_batches,
+                mask_ratio=args.mask_ratio,
+                mask_block_min=args.mask_block_min,
+                mask_block_max=args.mask_block_max,
+                context_weight=args.context_weight,
             )
 
         elapsed = time.time() - t0
@@ -171,6 +229,8 @@ def main():
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "val_loss": best_val,
+                    "mask_ratio": args.mask_ratio,
+                    "target_length": args.target_length,
                 },
                 os.path.join(SAVE_DIR, f"exp3_{args.variant}_best.pt"),
             )
@@ -178,8 +238,8 @@ def main():
 
         print(
             f"{epoch:5d}  {tr['loss']:8.4f}  {va['loss']:8.4f}  "
-            f"{tr['hr_mae']:9.3f}  {tr['spo2_mae']:8.3f}  "
-            f"{va['hr_mae']:9.3f}  {va['spo2_mae']:8.3f}  "
+            f"{tr['ecg_mae']:10.4f}  {tr['rppg_mae']:11.4f}  "
+            f"{va['ecg_mae']:10.4f}  {va['rppg_mae']:11.4f}  "
             f"{elapsed:5.1f}s{marker}"
         )
 
@@ -190,6 +250,8 @@ def main():
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "val_loss": best_val,
+            "mask_ratio": args.mask_ratio,
+            "target_length": args.target_length,
         },
         os.path.join(SAVE_DIR, f"exp3_{args.variant}_final.pt"),
     )
