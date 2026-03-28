@@ -661,3 +661,37 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
   * Best model: **unet_gated** with WeightedLoss=0.169, ECG_MAE=0.431, rPPG_MAE=0.229.
   * All models evaluated (tcn_ssm, unet_gated, dual_head, cross_attention).
   * unet_gated consistently lowest loss & best ECG reconstruction.
+
+## 2026-03-29
+### Experiment 01T Progress (CNN + Transformer)
+* Status:
+  * Core implementation is complete.
+  * Local validation (syntax + CLI loading) is complete.
+
+* New files:
+  * `train/exp1t/exp1t_dataloader.py`
+  * `train/exp1t/exp1t_model.py`
+  * `train/exp1t/exp1t_train.py`
+
+* What is implemented:
+  * Reused Experiment 01 preprocessing/splitting pipeline through exp1 dataloader wrapper.
+  * New BP model: dual-branch CNN encoder (ECG/rPPG) + Transformer encoder + regression head (SBP/DBP).
+  * Training pipeline with:
+    * Huber loss + AdamW optimizer.
+    * Gradient clipping.
+    * Train/Val mmHg error report per epoch.
+    * Best/final checkpoint saving.
+
+* Data source option:
+  * `--data-source sqi` (default): uses `mirror*_auto_cleaned_sqi`.
+  * `--data-source cleaned`: uses `mirror*_auto_cleaned`.
+
+* Outputs:
+  * `train/checkpoints/exp1t_best.pt`
+  * `train/checkpoints/exp1t_final.pt`
+
+* Run command:
+  * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp1t/exp1t_train.py --data-source sqi`
+
+* Next step:
+  * Run full training and record first benchmark metrics (best validation epoch with SBP/DBP mean error and SD).

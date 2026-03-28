@@ -11,7 +11,7 @@ import sys
 import time
 import torch
 import torch.nn as nn
-from torch.optim import AdamW
+from torch.optim import Adam
 
 # Add project root to path so imports work from any working directory.
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -151,8 +151,8 @@ def main():
     param_count = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {param_count:,}")
 
-    criterion = nn.HuberLoss()
-    optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=WEIGHT_DECAY)
+    criterion = nn.MSELoss()
+    optimizer = Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
     os.makedirs(SAVE_DIR, exist_ok=True)
     best_val_loss = float("inf")
