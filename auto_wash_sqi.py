@@ -1150,7 +1150,7 @@ class AutoWasherSQI:
 
 
 if __name__ == "__main__":
-    mirror_id = 5
+    mirror_id = 1
     parser = argparse.ArgumentParser(
         description="Auto Wash Patient Data with ECG (autocorr/btb/template) SQI + rPPG SNR/autocorr SQI"
     )
