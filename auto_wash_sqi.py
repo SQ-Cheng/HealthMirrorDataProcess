@@ -173,6 +173,7 @@ class AutoWasherSQI:
         ecg_weight_autocorr=0.4,
         ecg_weight_btb_corr=0.3,
         ecg_weight_template=0.3,
+        polarity="neg",
     ):
         self.data_dir = data_dir
         self.output_dir = output_dir
@@ -191,6 +192,7 @@ class AutoWasherSQI:
         self.ecg_weight_autocorr = float(ecg_weight_autocorr)
         self.ecg_weight_btb_corr = float(ecg_weight_btb_corr)
         self.ecg_weight_template = float(ecg_weight_template)
+        self.polarity = polarity
 
         if self.mirror_version not in {"1", "2"}:
             raise ValueError("mirror_version must be '1' or '2'")
@@ -352,7 +354,8 @@ class AutoWasherSQI:
                 return
 
             timestamps = df["Timestamp"].to_numpy()
-            ecg_signal = -df["ECG"].to_numpy()
+            if self.polarity == "neg" and "ECG" in df.columns:
+                ecg_signal = -df["ECG"].to_numpy()
             ecg_signal = filter_signal(ecg_signal, fs=self.fs, lowcut=0.5, highcut=30.0, order=4)
             ecg_signal = notch_filter(ecg_signal, fs=self.fs, freq=50.0, quality=30.0)
             rppg_signal = df["RPPG"].to_numpy()
@@ -1139,6 +1142,9 @@ class AutoWasherSQI:
 
             block_df = df.iloc[start_idx:end_idx][["Timestamp", "RPPG", "ECG"]].copy()
 
+            if "ECG" in block_df.columns and self.polarity == "neg":
+                block_df["ECG"] = -block_df["ECG"]
+
             for col in ["RPPG", "ECG"]:
                 if col in block_df.columns:
                     block_df[col] = (block_df[col] - block_df[col].mean()) / block_df[col].std()
@@ -1150,7 +1156,7 @@ class AutoWasherSQI:
 
 
 if __name__ == "__main__":
-    mirror_id = 1
+    mirror_id = 6
     parser = argparse.ArgumentParser(
         description="Auto Wash Patient Data with ECG (autocorr/btb/template) SQI + rPPG SNR/autocorr SQI"
     )
@@ -1188,6 +1194,7 @@ if __name__ == "__main__":
     parser.add_argument("--threshold_ecg", type=float, default=0.4, help="Final fused ECG SQI threshold")
     parser.add_argument("--threshold_rppg", type=float, default=0.4, help="Final fused rPPG SQI threshold in [0,1]")
     parser.add_argument("--visualize", action="store_true", help="Enable visualization and manual review")
+    parser.add_argument("--polarity", type=str, default="neg", choices=["neg", "pos"], help="ECG signal polarity: 'neg' or 'pos'")
     parser.add_argument(
         "--rppg_weight_snr",
         type=float,
@@ -1234,5 +1241,6 @@ if __name__ == "__main__":
         ecg_weight_autocorr=args.ecg_weight_autocorr,
         ecg_weight_btb_corr=args.ecg_weight_btb_corr,
         ecg_weight_template=args.ecg_weight_template,
+        polarity=args.polarity,
     )
     washer.process_all()
