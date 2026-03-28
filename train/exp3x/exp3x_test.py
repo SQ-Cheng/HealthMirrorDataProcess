@@ -36,6 +36,12 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def parse_args():
     parser = argparse.ArgumentParser(description="Exp3X quick smoke tests for 4 model structures")
     parser.add_argument(
+        "--data-source",
+        choices=["sqi", "cleaned"],
+        default="sqi",
+        help="Use mirror*_auto_cleaned_sqi (sqi) or mirror*_auto_cleaned (cleaned)",
+    )
+    parser.add_argument(
         "--models",
         type=str,
         default="unet_gated,dual_head,tcn_ssm,cross_attention",
@@ -146,6 +152,7 @@ def main():
         window_sec=args.window_sec,
         step_sec=args.step_sec,
         target_length=args.target_length,
+        data_source=args.data_source,
         max_windows_per_patient=args.max_windows_per_patient,
         max_patients=args.max_patients,
     )

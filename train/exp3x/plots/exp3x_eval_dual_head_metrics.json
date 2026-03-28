@@ -1,0 +1,32 @@
+{
+  "model": "dual_head",
+  "checkpoint": "d:\\HealthMirrorFiles\\rPPG-data-local-inference\\train\\checkpoints\\exp3x_dual_head_best.pt",
+  "best_epoch": 55,
+  "val_batches": 114,
+  "val_samples": 3640,
+  "mask_ratio": 0.3,
+  "weighted_loss_model": 0.1821559779999549,
+  "weighted_loss_zero": 0.41315300579656633,
+  "ecg": {
+    "mae_model": 0.4370449483394623,
+    "mae_zero": 0.6472744345664978,
+    "rmse_model": 0.7171041369438171,
+    "rmse_zero": 0.997759222984314,
+    "corr_model": 0.695387706831572,
+    "corr_zero": 0.0,
+    "grad_mae_model": 0.35529065132141113,
+    "grad_mae_zero": 0.38786473870277405
+  },
+  "rppg": {
+    "mae_model": 0.23285478353500366,
+    "mae_zero": 0.8635014295578003,
+    "rmse_model": 0.35509979724884033,
+    "rmse_zero": 1.000236988067627,
+    "corr_model": 0.9350800806486356,
+    "corr_zero": 0.0,
+    "grad_mae_model": 0.06462624669075012,
+    "grad_mae_zero": 0.11131147295236588
+  },
+  "corr_clean_vs_model_err": -0.23403171452094035,
+  "corr_clean_vs_zero_err": 0.015594403470201397
+}

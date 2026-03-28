@@ -1,0 +1,32 @@
+{
+  "model": "cross_attention",
+  "checkpoint": "d:\\HealthMirrorFiles\\rPPG-data-local-inference\\train\\checkpoints\\exp3x_cross_attention_best.pt",
+  "best_epoch": 59,
+  "val_batches": 114,
+  "val_samples": 3640,
+  "mask_ratio": 0.3,
+  "weighted_loss_model": 0.19568588022600142,
+  "weighted_loss_zero": 0.4164893415413405,
+  "ecg": {
+    "mae_model": 0.4772252142429352,
+    "mae_zero": 0.6503392457962036,
+    "rmse_model": 0.7938816547393799,
+    "rmse_zero": 1.0025399923324585,
+    "corr_model": 0.6121329889593523,
+    "corr_zero": 0.0,
+    "grad_mae_model": 0.37345781922340393,
+    "grad_mae_zero": 0.3902047276496887
+  },
+  "rppg": {
+    "mae_model": 0.2351778894662857,
+    "mae_zero": 0.8689377903938293,
+    "rmse_model": 0.36508601903915405,
+    "rmse_zero": 1.0047008991241455,
+    "corr_model": 0.932183172338218,
+    "corr_zero": 0.0,
+    "grad_mae_model": 0.07231497019529343,
+    "grad_mae_zero": 0.1110682561993599
+  },
+  "corr_clean_vs_model_err": -0.18516975938365962,
+  "corr_clean_vs_zero_err": 0.020478087090057873
+}

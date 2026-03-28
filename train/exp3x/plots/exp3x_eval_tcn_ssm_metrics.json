@@ -1,0 +1,32 @@
+{
+  "model": "tcn_ssm",
+  "checkpoint": "d:\\HealthMirrorFiles\\rPPG-data-local-inference\\train\\checkpoints\\exp3x_tcn_ssm_best.pt",
+  "best_epoch": 59,
+  "val_batches": 114,
+  "val_samples": 3640,
+  "mask_ratio": 0.3,
+  "weighted_loss_model": 0.1872031926585917,
+  "weighted_loss_zero": 0.4143911913821572,
+  "ecg": {
+    "mae_model": 0.47231578826904297,
+    "mae_zero": 0.6506375670433044,
+    "rmse_model": 0.7756146788597107,
+    "rmse_zero": 1.001956820487976,
+    "corr_model": 0.6355404113355247,
+    "corr_zero": 0.0,
+    "grad_mae_model": 0.36308807134628296,
+    "grad_mae_zero": 0.3892095983028412
+  },
+  "rppg": {
+    "mae_model": 0.21680493652820587,
+    "mae_zero": 0.8608463406562805,
+    "rmse_model": 0.341325044631958,
+    "rmse_zero": 0.9986892342567444,
+    "corr_model": 0.9399828079139398,
+    "corr_zero": 0.0,
+    "grad_mae_model": 0.06406446546316147,
+    "grad_mae_zero": 0.11069690436124802
+  },
+  "corr_clean_vs_model_err": -0.20276435807955756,
+  "corr_clean_vs_zero_err": 0.037777786394070596
+}

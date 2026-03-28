@@ -22,6 +22,12 @@ CHECKPOINT_DIR = os.path.join(ROOT_DIR, "train", "checkpoints")
 def parse_args():
     parser = argparse.ArgumentParser(description="Visualize Exp4-X SQI prediction")
     parser.add_argument("--model", choices=["exp4-1", "exp4-2", "exp4-3"], default="exp4-1")
+    parser.add_argument(
+        "--data-source",
+        choices=["sqi", "cleaned"],
+        default="sqi",
+        help="Use mirror*_auto_cleaned_sqi (sqi) or mirror*_auto_cleaned (cleaned)",
+    )
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--val-ratio", type=float, default=0.2)
@@ -97,6 +103,7 @@ def main():
         window_sec=args.window_sec,
         step_sec=args.step_sec,
         target_length=args.target_length,
+        data_source=args.data_source,
         max_windows_per_patient=args.max_windows_per_patient,
         max_patients=args.max_patients,
         return_meta=True,

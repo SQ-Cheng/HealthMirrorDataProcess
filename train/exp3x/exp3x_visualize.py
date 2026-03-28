@@ -36,6 +36,12 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def parse_args():
     parser = argparse.ArgumentParser(description="Exp3X full-validation evaluation and visualization")
     parser.add_argument("--model", choices=["unet_gated", "dual_head", "tcn_ssm", "cross_attention"], default="tcn_ssm")
+    parser.add_argument(
+        "--data-source",
+        choices=["sqi", "cleaned"],
+        default="sqi",
+        help="Use mirror*_auto_cleaned_sqi (sqi) or mirror*_auto_cleaned (cleaned)",
+    )
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=42)
@@ -120,6 +126,7 @@ def evaluate(args):
         window_sec=args.window_sec,
         step_sec=args.step_sec,
         target_length=args.target_length,
+        data_source=args.data_source,
         max_windows_per_patient=args.max_windows_per_patient,
         max_patients=args.max_patients,
     )

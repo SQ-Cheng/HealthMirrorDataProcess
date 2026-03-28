@@ -23,6 +23,14 @@ BP_MIN = 40.0
 BP_MAX = 180.0
 
 
+def _mirror_glob_by_source(data_source):
+    if data_source == "sqi":
+        return "mirror*_auto_cleaned_sqi"
+    if data_source == "cleaned":
+        return "mirror*_auto_cleaned"
+    raise ValueError(f"Unsupported data_source: {data_source}")
+
+
 def normalize_bp(value):
     """Map BP value from [40, 180] mmHg to [0, 1]."""
     return (value - BP_MIN) / (BP_MAX - BP_MIN)
@@ -41,13 +49,14 @@ class BPDataset(Dataset):
     are 1024-point Z-score normalized signal windows.
     """
 
-    def __init__(self, root_dir, window_sec=3.0, step_sec=1.0, target_length=1024):
+    def __init__(self, root_dir, window_sec=3.0, step_sec=1.0, target_length=1024, data_source="sqi"):
         """
         Args:
-            root_dir:       Workspace root containing mirrorx_auto_cleaned dirs.
+            root_dir:       Workspace root containing cleaned mirror dirs.
             window_sec:     Sliding window length in seconds.
             step_sec:       Sliding window step in seconds.
             target_length:  Number of sample points per window after resampling.
+            data_source:    "sqi" -> mirror*_auto_cleaned_sqi, "cleaned" -> mirror*_auto_cleaned.
         """
         self.target_length = target_length
         self.samples = []          # list of (ecg_window, rppg_window, bp)
@@ -56,10 +65,10 @@ class BPDataset(Dataset):
         self.mirror_nums = []      # mirror number (X from mirrorX_auto_cleaned) per sample
         self._nan_report = []      # list of (source, detail) for NaN events
 
-        # Discover all mirrorx_auto_cleaned directories
-        mirror_dirs = sorted(glob.glob(os.path.join(root_dir, "mirror*_auto_cleaned")))
+        pattern = _mirror_glob_by_source(data_source)
+        mirror_dirs = sorted(glob.glob(os.path.join(root_dir, pattern)))
         if not mirror_dirs:
-            raise FileNotFoundError(f"No mirror*_auto_cleaned directories found in {root_dir}")
+            raise FileNotFoundError(f"No {pattern} directories found in {root_dir}")
 
         for mirror_dir in mirror_dirs:
             # Extract the mirror number from directory name, e.g. mirror2_auto_cleaned -> 2
@@ -224,6 +233,7 @@ class BPDataset(Dataset):
 
 def build_dataloaders(root_dir, batch_size=32, val_ratio=0.2, seed=42,
                       window_sec=3.0, step_sec=1.0, target_length=1024,
+                      data_source="sqi",
                       debug=False):
     """
     Build train and validation DataLoaders with a patient-level split.
@@ -235,7 +245,7 @@ def build_dataloaders(root_dir, batch_size=32, val_ratio=0.2, seed=42,
         train_loader, val_loader
     """
     dataset = BPDataset(root_dir, window_sec=window_sec, step_sec=step_sec,
-                        target_length=target_length)
+                        target_length=target_length, data_source=data_source)
 
     # ── Patient-level split ──────────────────────────────────────────────
     rng = np.random.default_rng(seed)

@@ -2,14 +2,10 @@
 
 ## Overall
 - Data quality
+  * signal polarity: neg 1,2,4,5,6
   * Mirror1 Final Update: 20251009, Patient_ID > 315.
   * **TODO**
     * Check data auto wash process - whether all-0 values are excepted
-
-## 2026-03-28
-- Tool update: added `auto_wash_sqi.py`.
-- Uses ECG autocorr SQI and rPPG SNR SQI for segment quality scoring.
-- Keeps auto-wash flow: optional visualization, threshold sliders, quality highlights, and saves only segments passing both ECG+rPPG thresholds.
 
 ## 2026-02-18
 ### *Estimation of Beat-by-Beat Blood Pressure and Heart Rate From ECG and PPG Using a Fine-Tuned Deep CNN Model*
@@ -660,24 +656,8 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
 * Test command:
   * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3x/exp3x_test.py --epochs 1 --batch-size 16 --max-patients 80 --max-windows-per-patient 8 --max-train-batches 10 --max-val-batches 4`
 
-* Smoke test data summary:
-  * Loaded windows: `314` from `80` patients.
-  * Patient-level split: train `231` / val `83`.
-
-* Smoke test results (sorted by val loss):
-  * `tcn_ssm` (params `248386`):
-    * `TrLoss=0.4395`, `VaLoss=0.3974`, `VaECG_MAE=0.6183`, `VaRPPG_MAE=0.5712`
-  * `cross_attention` (params `185250`):
-    * `TrLoss=0.4660`, `VaLoss=0.4913`, `VaECG_MAE=0.6321`, `VaRPPG_MAE=0.7687`
-  * `dual_head` (params `246370`):
-    * `TrLoss=0.5518`, `VaLoss=0.5462`, `VaECG_MAE=0.6478`, `VaRPPG_MAE=0.7467`
-  * `unet_gated` (params `210826`):
-    * `TrLoss=0.5541`, `VaLoss=0.5521`, `VaECG_MAE=0.6322`, `VaRPPG_MAE=0.8128`
-
-* Current conclusion:
-  * `tcn_ssm` is the most promising candidate from this first smoke test.
-  * Next full comparison should start from `tcn_ssm` and `cross_attention` on longer training.
-
-* Outputs:
-  * `train/exp3x/plots/exp3x_smoke_results.csv`
-  * `train/exp3x/plots/exp3x_smoke_results.json`
+- **Exp3X Evaluation Summary**:
+  * Dataset: 12504 ECG+rPPG windows, 1973 patients (271 train / 67 val).
+  * Best model: **unet_gated** with WeightedLoss=0.169, ECG_MAE=0.431, rPPG_MAE=0.229.
+  * All models evaluated (tcn_ssm, unet_gated, dual_head, cross_attention).
+  * unet_gated consistently lowest loss & best ECG reconstruction.

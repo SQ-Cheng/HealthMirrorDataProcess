@@ -23,6 +23,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Query source metadata by sample number")
     parser.add_argument("--sample-number", type=int, required=True, help="Sample number to query")
     parser.add_argument(
+        "--data-source",
+        choices=["sqi", "cleaned"],
+        default="sqi",
+        help="Use mirror*_auto_cleaned_sqi (sqi) or mirror*_auto_cleaned (cleaned)",
+    )
+    parser.add_argument(
         "--sample-space",
         choices=["dataset", "train", "val"],
         default="dataset",
@@ -80,6 +86,7 @@ def main():
         window_sec=args.window_sec,
         step_sec=args.step_sec,
         target_length=args.target_length,
+        data_source=args.data_source,
         max_windows_per_patient=args.max_windows_per_patient,
         max_patients=args.max_patients,
     )

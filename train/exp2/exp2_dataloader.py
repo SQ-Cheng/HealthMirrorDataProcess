@@ -19,6 +19,14 @@ def _zscore(x):
     return (x - x.mean()) / std
 
 
+def _mirror_glob_by_source(data_source):
+    if data_source == "sqi":
+        return "mirror*_auto_cleaned_sqi"
+    if data_source == "cleaned":
+        return "mirror*_auto_cleaned"
+    raise ValueError(f"Unsupported data_source: {data_source}")
+
+
 class PairedSignalDataset(Dataset):
     """Paired ECG/rPPG windows without any BP-label dependency."""
 
@@ -28,6 +36,7 @@ class PairedSignalDataset(Dataset):
         window_sec=3.0,
         step_sec=1.0,
         target_length=1024,
+        data_source="sqi",
         max_windows_per_patient=None,
         max_patients=None,
     ):
@@ -36,9 +45,10 @@ class PairedSignalDataset(Dataset):
         self.lab_pids = []
         self.mirror_nums = []
 
-        mirror_dirs = sorted(glob.glob(os.path.join(root_dir, "mirror*_auto_cleaned")))
+        pattern = _mirror_glob_by_source(data_source)
+        mirror_dirs = sorted(glob.glob(os.path.join(root_dir, pattern)))
         if not mirror_dirs:
-            raise FileNotFoundError(f"No mirror*_auto_cleaned directories found in {root_dir}")
+            raise FileNotFoundError(f"No {pattern} directories found in {root_dir}")
 
         patient_count = 0
         stop_loading = False
@@ -158,6 +168,7 @@ def build_paired_dataloaders(
     window_sec=3.0,
     step_sec=1.0,
     target_length=1024,
+    data_source="sqi",
     debug=False,
     max_windows_per_patient=None,
     max_patients=None,
@@ -173,6 +184,7 @@ def build_paired_dataloaders(
         window_sec=window_sec,
         step_sec=step_sec,
         target_length=target_length,
+        data_source=data_source,
         max_windows_per_patient=max_windows_per_patient,
         max_patients=max_patients,
     )

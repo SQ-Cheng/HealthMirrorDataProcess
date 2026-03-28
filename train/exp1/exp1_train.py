@@ -4,6 +4,7 @@ Experiment 01 Training Script
 Trains the LSCN model on CPU for blood pressure estimation.
 """
 
+import argparse
 import os
 import sys
 import time
@@ -31,6 +32,17 @@ TARGET_LENGTH = 512
 DEVICE = torch.device("cpu")
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SAVE_DIR = os.path.join(ROOT_DIR, "train", "checkpoints")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Experiment 01 training")
+    parser.add_argument(
+        "--data-source",
+        choices=["sqi", "cleaned"],
+        default="sqi",
+        help="Use mirror*_auto_cleaned_sqi (sqi) or mirror*_auto_cleaned (cleaned)",
+    )
+    return parser.parse_args()
 
 
 def train_one_epoch(model, loader, criterion, optimizer):
@@ -106,6 +118,7 @@ def validate(model, loader, criterion):
 
 
 def main():
+    args = parse_args()
     torch.manual_seed(SEED)
 
     # ─── Data ─────────────────────────────────────────────────────
@@ -118,6 +131,7 @@ def main():
         window_sec=WINDOW_SEC,
         step_sec=STEP_SEC,
         target_length=TARGET_LENGTH,
+        data_source=args.data_source,
         debug=True,
     )
 

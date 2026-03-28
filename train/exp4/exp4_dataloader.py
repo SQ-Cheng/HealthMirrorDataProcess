@@ -17,6 +17,14 @@ def _zscore(x):
     return (x - x.mean()) / std
 
 
+def _mirror_glob_by_source(data_source):
+    if data_source == "sqi":
+        return "mirror*_auto_cleaned_sqi"
+    if data_source == "cleaned":
+        return "mirror*_auto_cleaned"
+    raise ValueError(f"Unsupported data_source: {data_source}")
+
+
 def compute_snr_db(x, fs):
     """Estimate narrow-band physiological SNR around dominant cardiac frequency."""
     n = len(x)
@@ -46,6 +54,7 @@ class RPPGWindowDataset(Dataset):
         window_sec=3.0,
         step_sec=1.0,
         target_length=512,
+        data_source="sqi",
         max_windows_per_patient=None,
         max_patients=None,
     ):
@@ -53,9 +62,10 @@ class RPPGWindowDataset(Dataset):
         self.snr_db = []
         self.hospital_pids = []
 
-        mirror_dirs = sorted(glob.glob(os.path.join(root_dir, "mirror*_auto_cleaned")))
+        pattern = _mirror_glob_by_source(data_source)
+        mirror_dirs = sorted(glob.glob(os.path.join(root_dir, pattern)))
         if not mirror_dirs:
-            raise FileNotFoundError(f"No mirror*_auto_cleaned directories found in {root_dir}")
+            raise FileNotFoundError(f"No {pattern} directories found in {root_dir}")
 
         patient_count = 0
         stop_loading = False
@@ -159,6 +169,7 @@ def build_artifact_dataloaders(
     window_sec=3.0,
     step_sec=1.0,
     target_length=512,
+    data_source="sqi",
     clean_percentile=90.0,
     max_windows_per_patient=None,
     max_patients=None,
@@ -168,6 +179,7 @@ def build_artifact_dataloaders(
         window_sec=window_sec,
         step_sec=step_sec,
         target_length=target_length,
+        data_source=data_source,
         max_windows_per_patient=max_windows_per_patient,
         max_patients=max_patients,
     )
