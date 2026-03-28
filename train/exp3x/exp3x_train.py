@@ -37,7 +37,11 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Experiment 03X: full-scale training for candidate models")
-    parser.add_argument("--model", choices=["unet_gated", "dual_head", "tcn_ssm", "cross_attention"], default="tcn_ssm")
+    parser.add_argument(
+        "--model",
+        choices=["unet_gated", "dual_head", "tcn_ssm", "cross_attention", "mamba"],
+        default="tcn_ssm",
+    )
     parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],

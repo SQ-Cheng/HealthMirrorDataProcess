@@ -213,6 +213,89 @@ class Exp3XCrossAttention(nn.Module):
         return self.out(h)
 
 
+class MambaLikeBlock(nn.Module):
+    """Lightweight real-valued Mamba-style token mixer for 1D signals."""
+
+    def __init__(self, channels, kernel=5, expand=2, dropout=0.1):
+        super().__init__()
+        hidden = channels * expand
+        self.norm = nn.LayerNorm(channels)
+        self.in_proj = nn.Linear(channels, hidden * 2)
+        self.dwconv = nn.Conv1d(hidden, hidden, kernel_size=kernel, padding=kernel // 2, groups=hidden)
+        self.out_proj = nn.Linear(hidden, channels)
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x):
+        # x: [B,C,T] -> [B,T,C]
+        y = x.transpose(1, 2)
+        y = self.norm(y)
+        v, g = torch.chunk(self.in_proj(y), 2, dim=-1)
+        v = v.transpose(1, 2)
+        v = self.dwconv(v)
+        v = v.transpose(1, 2)
+        y = F.silu(v) * F.silu(g)
+        y = self.drop(self.out_proj(y))
+        return x + y.transpose(1, 2)
+
+
+class Exp3XMamba(nn.Module):
+    """Optimized Mamba-style encoder-decoder for masked ECG+rPPG reconstruction."""
+
+    def __init__(self):
+        super().__init__()
+        self.stem = nn.Sequential(
+            ConvNormAct(4, 48, kernel=7, stride=1, dropout=0.08),
+            ConvNormAct(48, 64, kernel=5, stride=1, dropout=0.08),
+        )
+        self.b1 = MambaLikeBlock(64, kernel=5, expand=2, dropout=0.1)
+        self.b2 = MambaLikeBlock(64, kernel=7, expand=2, dropout=0.1)
+        self.b3 = MambaLikeBlock(64, kernel=9, expand=2, dropout=0.1)
+        self.b4 = MambaLikeBlock(64, kernel=11, expand=2, dropout=0.1)
+        self.b5 = MambaLikeBlock(64, kernel=7, expand=2, dropout=0.1)
+        self.b6 = MambaLikeBlock(64, kernel=5, expand=2, dropout=0.1)
+
+        self.ecg_refine = nn.Sequential(
+            GatedResidual(64, dilation=1, dropout=0.08),
+            GatedResidual(64, dilation=2, dropout=0.08),
+        )
+        self.rppg_refine = nn.Sequential(
+            GatedResidual(64, dilation=1, dropout=0.08),
+            GatedResidual(64, dilation=4, dropout=0.08),
+        )
+
+        self.ecg_out = nn.Sequential(
+            ConvNormAct(64, 32, kernel=5, stride=1, dropout=0.05),
+            nn.Conv1d(32, 1, kernel_size=5, padding=2),
+        )
+        self.rppg_out = nn.Sequential(
+            ConvNormAct(64, 32, kernel=7, stride=1, dropout=0.05),
+            nn.Conv1d(32, 1, kernel_size=7, padding=3),
+        )
+
+    def forward(self, x_masked, visible_mask):
+        x = torch.cat([x_masked, visible_mask], dim=1)
+        h0 = self.stem(x)
+        
+        # Mamba with dense inward skip connections
+        h1 = self.b1(h0)
+        h2 = self.b2(h1)
+        h3 = self.b3(h2)
+        h4 = self.b4(h3) + h2
+        h5 = self.b5(h4) + h1
+        h6 = self.b6(h5) + h0
+        
+        ecg_feat = self.ecg_refine(h6)
+        rppg_feat = self.rppg_refine(h6)
+
+        ecg = self.ecg_out(ecg_feat)
+        rppg = self.rppg_out(rppg_feat)
+
+        out = torch.cat([ecg, rppg], dim=1)
+        if out.shape[-1] != x_masked.shape[-1]:
+            out = F.interpolate(out, size=x_masked.shape[-1], mode="linear", align_corners=False)
+        return out
+
+
 def build_exp3x_model(model_name):
     name = model_name.lower()
     if name == "unet_gated":
@@ -223,4 +306,6 @@ def build_exp3x_model(model_name):
         return Exp3XTCNSSM()
     if name == "cross_attention":
         return Exp3XCrossAttention()
-    raise ValueError("model_name must be one of: unet_gated, dual_head, tcn_ssm, cross_attention")
+    if name == "mamba":
+        return Exp3XMamba()
+    raise ValueError("model_name must be one of: unet_gated, dual_head, tcn_ssm, cross_attention, mamba")
