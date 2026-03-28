@@ -1,10 +1,12 @@
 """Experiment 03 training: masked ECG+rPPG reconstruction (self-supervised)."""
 
 import argparse
+import csv
 import os
 import sys
 import time
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
@@ -23,6 +25,8 @@ SAVE_DIR = os.path.join(ROOT_DIR, "train", "checkpoints")
 def parse_args():
     parser = argparse.ArgumentParser(description="Experiment 03: Masked ECG+rPPG reconstruction")
     parser.add_argument("--variant", choices=["light", "full"], default="light")
+    parser.add_argument("--checkpoint-tag", type=str, default="")
+    parser.add_argument("--resume-checkpoint", type=str, default=None)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=50)
@@ -35,6 +39,10 @@ def parse_args():
     parser.add_argument("--mask-block-min", type=int, default=8)
     parser.add_argument("--mask-block-max", type=int, default=32)
     parser.add_argument("--context-weight", type=float, default=0.20)
+    parser.add_argument("--ecg-point-weight", type=float, default=1.0)
+    parser.add_argument("--rppg-point-weight", type=float, default=1.0)
+    parser.add_argument("--grad-loss-weight", type=float, default=0.0)
+    parser.add_argument("--ecg-fft-loss-weight", type=float, default=0.0)
     parser.add_argument("--max-windows-per-patient", type=int, default=None)
     parser.add_argument("--max-patients", type=int, default=None)
     parser.add_argument("--max-train-batches", type=int, default=None)
@@ -68,10 +76,22 @@ def build_visible_mask(x, mask_ratio, block_min, block_max):
     return visible
 
 
-def weighted_masked_loss(pred, target, visible_mask, clean_score, criterion, context_weight):
+def weighted_masked_loss(
+    pred,
+    target,
+    visible_mask,
+    clean_score,
+    criterion,
+    context_weight,
+    ecg_point_weight=1.0,
+    rppg_point_weight=1.0,
+    grad_loss_weight=0.0,
+    ecg_fft_loss_weight=0.0,
+):
     masked_mask = 1.0 - visible_mask
 
-    per_point = criterion(pred, target)
+    ch_weight = torch.tensor([ecg_point_weight, rppg_point_weight], device=pred.device, dtype=pred.dtype).view(1, 2, 1)
+    per_point = criterion(pred, target) * ch_weight
 
     masked_num = (per_point * masked_mask).sum(dim=(1, 2))
     masked_den = masked_mask.sum(dim=(1, 2)).clamp_min(1.0)
@@ -81,9 +101,30 @@ def weighted_masked_loss(pred, target, visible_mask, clean_score, criterion, con
     context_den = visible_mask.sum(dim=(1, 2)).clamp_min(1.0)
     context_loss = context_num / context_den
 
+    grad_loss = torch.zeros_like(masked_loss)
+    if grad_loss_weight > 0:
+        pred_diff = pred[:, :, 1:] - pred[:, :, :-1]
+        target_diff = target[:, :, 1:] - target[:, :, :-1]
+        grad_mask = torch.minimum(masked_mask[:, :, 1:], masked_mask[:, :, :-1])
+        grad_err = (pred_diff - target_diff).abs() * grad_mask * ch_weight
+        grad_num = grad_err.sum(dim=(1, 2))
+        grad_den = grad_mask.sum(dim=(1, 2)).clamp_min(1.0)
+        grad_loss = grad_num / grad_den
+
+    ecg_fft_loss = torch.zeros_like(masked_loss)
+    if ecg_fft_loss_weight > 0:
+        pred_fft = torch.fft.rfft(pred[:, 0, :], dim=-1)
+        target_fft = torch.fft.rfft(target[:, 0, :], dim=-1)
+        ecg_fft_loss = torch.mean(torch.abs(torch.abs(pred_fft) - torch.abs(target_fft)), dim=-1)
+
     # Keep all data, but trust high-quality windows slightly more.
     sample_weight = 0.5 + 0.5 * clean_score
-    sample_loss = (masked_loss + context_weight * context_loss) * sample_weight
+    sample_loss = (
+        masked_loss
+        + context_weight * context_loss
+        + grad_loss_weight * grad_loss
+        + ecg_fft_loss_weight * ecg_fft_loss
+    ) * sample_weight
     return sample_loss.mean()
 
 
@@ -103,6 +144,10 @@ def run_epoch(
     mask_block_min=8,
     mask_block_max=32,
     context_weight=0.2,
+    ecg_point_weight=1.0,
+    rppg_point_weight=1.0,
+    grad_loss_weight=0.0,
+    ecg_fft_loss_weight=0.0,
 ):
     is_train = optimizer is not None
     model.train(is_train)
@@ -138,6 +183,10 @@ def run_epoch(
             clean_score,
             criterion,
             context_weight=context_weight,
+            ecg_point_weight=ecg_point_weight,
+            rppg_point_weight=rppg_point_weight,
+            grad_loss_weight=grad_loss_weight,
+            ecg_fft_loss_weight=ecg_fft_loss_weight,
         )
 
         if is_train:
@@ -158,9 +207,60 @@ def run_epoch(
     return out
 
 
+def save_history(history_rows, csv_path, plot_path, title):
+    fieldnames = [
+        "epoch",
+        "tr_loss",
+        "va_loss",
+        "tr_ecg_mae",
+        "tr_rppg_mae",
+        "va_ecg_mae",
+        "va_rppg_mae",
+        "seconds",
+    ]
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(history_rows)
+
+    epochs = [r["epoch"] for r in history_rows]
+    tr_loss = [r["tr_loss"] for r in history_rows]
+    va_loss = [r["va_loss"] for r in history_rows]
+    tr_ecg = [r["tr_ecg_mae"] for r in history_rows]
+    va_ecg = [r["va_ecg_mae"] for r in history_rows]
+    tr_rppg = [r["tr_rppg_mae"] for r in history_rows]
+    va_rppg = [r["va_rppg_mae"] for r in history_rows]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    axes[0].plot(epochs, tr_loss, label="train")
+    axes[0].plot(epochs, va_loss, label="val")
+    axes[0].set_title("Loss")
+    axes[0].set_xlabel("Epoch")
+    axes[0].grid(alpha=0.2)
+    axes[0].legend()
+
+    axes[1].plot(epochs, tr_ecg, label="ECG train")
+    axes[1].plot(epochs, va_ecg, label="ECG val")
+    axes[1].plot(epochs, tr_rppg, label="rPPG train")
+    axes[1].plot(epochs, va_rppg, label="rPPG val")
+    axes[1].set_title("Masked MAE")
+    axes[1].set_xlabel("Epoch")
+    axes[1].grid(alpha=0.2)
+    axes[1].legend(fontsize=8)
+
+    fig.suptitle(title)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(plot_path, dpi=180)
+
+
 def main():
     args = parse_args()
     torch.manual_seed(args.seed)
+    np_seed = args.seed
+    if np_seed is not None:
+        import numpy as _np
+
+        _np.random.seed(np_seed)
 
     print("Loading data ...")
     train_loader, val_loader = build_masked_recon_dataloaders(
@@ -183,8 +283,24 @@ def main():
     criterion = nn.SmoothL1Loss(reduction="none")
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
+    start_epoch = 1
+    if args.resume_checkpoint:
+        resume = torch.load(args.resume_checkpoint, map_location=DEVICE)
+        model.load_state_dict(resume["model_state_dict"])
+        if "optimizer_state_dict" in resume:
+            optimizer.load_state_dict(resume["optimizer_state_dict"])
+        start_epoch = int(resume.get("epoch", 0)) + 1
+        print(f"Resumed from {args.resume_checkpoint} at epoch {start_epoch}")
+
     os.makedirs(SAVE_DIR, exist_ok=True)
+    plot_dir = os.path.join(ROOT_DIR, "train", "exp3", "plots")
+    os.makedirs(plot_dir, exist_ok=True)
+
+    tag = args.checkpoint_tag.strip()
+    ckpt_prefix = f"exp3_{args.variant}{tag}"
+
     best_val = float("inf")
+    history_rows = []
 
     print(
         f"\n{'Epoch':>5}  {'TrLoss':>8}  {'VaLoss':>8}  {'TrECG_MAE':>10}  {'TrRPPG_MAE':>11}  "
@@ -192,7 +308,7 @@ def main():
     )
     print("-" * 96)
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch, args.epochs + 1):
         t0 = time.time()
         tr = run_epoch(
             model,
@@ -204,6 +320,10 @@ def main():
             mask_block_min=args.mask_block_min,
             mask_block_max=args.mask_block_max,
             context_weight=args.context_weight,
+            ecg_point_weight=args.ecg_point_weight,
+            rppg_point_weight=args.rppg_point_weight,
+            grad_loss_weight=args.grad_loss_weight,
+            ecg_fft_loss_weight=args.ecg_fft_loss_weight,
         )
         with torch.no_grad():
             va = run_epoch(
@@ -216,6 +336,10 @@ def main():
                 mask_block_min=args.mask_block_min,
                 mask_block_max=args.mask_block_max,
                 context_weight=args.context_weight,
+                ecg_point_weight=args.ecg_point_weight,
+                rppg_point_weight=args.rppg_point_weight,
+                grad_loss_weight=args.grad_loss_weight,
+                ecg_fft_loss_weight=args.ecg_fft_loss_weight,
             )
 
         elapsed = time.time() - t0
@@ -229,12 +353,30 @@ def main():
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "val_loss": best_val,
+                    "checkpoint_tag": tag,
                     "mask_ratio": args.mask_ratio,
                     "target_length": args.target_length,
+                    "ecg_point_weight": args.ecg_point_weight,
+                    "rppg_point_weight": args.rppg_point_weight,
+                    "grad_loss_weight": args.grad_loss_weight,
+                    "ecg_fft_loss_weight": args.ecg_fft_loss_weight,
                 },
-                os.path.join(SAVE_DIR, f"exp3_{args.variant}_best.pt"),
+                os.path.join(SAVE_DIR, f"{ckpt_prefix}_best.pt"),
             )
             marker = " *"
+
+        history_rows.append(
+            {
+                "epoch": epoch,
+                "tr_loss": tr["loss"],
+                "va_loss": va["loss"],
+                "tr_ecg_mae": tr["ecg_mae"],
+                "tr_rppg_mae": tr["rppg_mae"],
+                "va_ecg_mae": va["ecg_mae"],
+                "va_rppg_mae": va["rppg_mae"],
+                "seconds": elapsed,
+            }
+        )
 
         print(
             f"{epoch:5d}  {tr['loss']:8.4f}  {va['loss']:8.4f}  "
@@ -250,11 +392,23 @@ def main():
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "val_loss": best_val,
+            "checkpoint_tag": tag,
             "mask_ratio": args.mask_ratio,
             "target_length": args.target_length,
+            "ecg_point_weight": args.ecg_point_weight,
+            "rppg_point_weight": args.rppg_point_weight,
+            "grad_loss_weight": args.grad_loss_weight,
+            "ecg_fft_loss_weight": args.ecg_fft_loss_weight,
         },
-        os.path.join(SAVE_DIR, f"exp3_{args.variant}_final.pt"),
+        os.path.join(SAVE_DIR, f"{ckpt_prefix}_final.pt"),
     )
+
+    history_csv = os.path.join(plot_dir, f"{ckpt_prefix}_history.csv")
+    history_png = os.path.join(plot_dir, f"{ckpt_prefix}_history.png")
+    save_history(history_rows, history_csv, history_png, title=f"Exp3 Training History ({ckpt_prefix})")
+
+    print(f"Saved history: {history_csv}")
+    print(f"Saved history plot: {history_png}")
 
     print(f"\nDone. Best val loss: {best_val:.4f}")
 

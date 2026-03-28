@@ -6,6 +6,11 @@
   * **TODO**
     * Check data auto wash process - whether all-0 values are excepted
 
+## 2026-03-28
+- Tool update: added `auto_wash_sqi.py`.
+- Uses ECG autocorr SQI and rPPG SNR SQI for segment quality scoring.
+- Keeps auto-wash flow: optional visualization, threshold sliders, quality highlights, and saves only segments passing both ECG+rPPG thresholds.
+
 ## 2026-02-18
 ### *Estimation of Beat-by-Beat Blood Pressure and Heart Rate From ECG and PPG Using a Fine-Tuned Deep CNN Model*
 - Structure
@@ -588,3 +593,91 @@ This "Informed Deep Learning" gives you the pattern-recognition of CNNs with the
   * Legacy frequency-based SNR is not a good standalone ECG SQI proxy in this dataset.
   * Non-frequency ECG quality features (template correlation + autocorrelation + morphology/artifact terms) provide a more coherent quality ranking.
   * For Exp03 weighting and downstream quality control, prioritize `composite_nonfreq` over `legacy_freq_snr`.
+
+## 2026-03-28
+### Experiment 03 Optimization Summary
+* Goal:
+  * Summarize Exp3 optimization history into 3 clear approaches and pick one final default.
+  * Comparison uses the same full validation set (`3222` windows) from `exp3_eval_*_metrics.json`.
+
+* Approach 1 - Baseline full reconstruction:
+  * Checkpoint: `train/checkpoints/exp3_full_best.pt` (epoch `48`)
+  * Idea: balanced ECG/rPPG reconstruction without extra ECG-focused penalties.
+  * Result:
+    * `weighted_loss_model=0.106877`
+    * `ECG_MAE=0.462225`, `rPPG_MAE=0.238847`
+    * `ECG+rPPG MAE sum=0.701072`
+
+* Approach 2 - ECG-plus strong emphasis:
+  * Checkpoint: `train/checkpoints/exp3_full_ecgplus_best.pt` (epoch `51`)
+  * Idea: stronger ECG reconstruction pressure.
+  * Key settings:
+    * `ecg_point_weight=1.4`, `grad_loss_weight=0.2`, `ecg_fft_loss_weight=0.05`
+  * Result:
+    * `weighted_loss_model=0.107773`
+    * `ECG_MAE=0.461137`, `rPPG_MAE=0.242826`
+    * `ECG+rPPG MAE sum=0.703964`
+
+* Approach 3 - ECG-focus moderate emphasis (final):
+  * Checkpoint: `train/checkpoints/exp3_full_ecgfocus_best.pt` (epoch `52`)
+  * Idea: improve ECG detail while keeping rPPG quality stable.
+  * Key settings:
+    * `ecg_point_weight=1.25`, `grad_loss_weight=0.1`, `ecg_fft_loss_weight=0.02`
+  * Result:
+    * `weighted_loss_model=0.107069`
+    * `ECG_MAE=0.460197`, `rPPG_MAE=0.240319`
+    * `ECG+rPPG MAE sum=0.700517` (best overall balance)
+
+* Final decision:
+  * Use **Approach 3 (ECG-focus moderate emphasis)** as Exp3 default.
+  * Reason:
+    * Best combined MAE, better ECG MAE than baseline, and strong rPPG correlation.
+    * Baseline has slightly lower weighted loss, but Approach 3 gives the better practical tradeoff for joint reconstruction quality.
+  * Keep shared defaults unchanged:
+    * `target_length=256`, `mask_ratio=0.30`, patient-level split, quality-weighted loss.
+    * ECG quality ranking uses autocorr SQI in current Exp3 dataloader.
+
+* Recommended commands:
+  * Train:
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3/exp3_train.py --variant full --epochs 60 --batch-size 32 --target-length 256 --mask-ratio 0.30 --ecg-point-weight 1.25 --rppg-point-weight 1.0 --grad-loss-weight 0.1 --ecg-fft-loss-weight 0.02 --checkpoint-tag _ecgfocus`
+  * Evaluate:
+    * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3/exp3_eval.py --variant full --checkpoint train/checkpoints/exp3_full_ecgfocus_best.pt --output-tag full_ecgfocus`
+
+### Experiment 03-X (New): 4 Candidate Model Structures Smoke Test
+* Goal:
+  * Build and test 4 high-potential model structures for Exp3 improvement.
+
+* New files:
+  * `train/exp3x/exp3x_model.py`
+  * `train/exp3x/exp3x_test.py`
+
+* Implemented 4 structures:
+  * `unet_gated`: mask-aware U-Net with gated skip fusion.
+  * `dual_head`: shared encoder + separate ECG and rPPG decoder heads.
+  * `tcn_ssm`: dilated TCN with gated residual/state-space-like mixing.
+  * `cross_attention`: temporal self-attention based ECG<->rPPG coupling.
+
+* Test command:
+  * `E:/Miniconda/envs/healthmirrordataproc/python.exe train/exp3x/exp3x_test.py --epochs 1 --batch-size 16 --max-patients 80 --max-windows-per-patient 8 --max-train-batches 10 --max-val-batches 4`
+
+* Smoke test data summary:
+  * Loaded windows: `314` from `80` patients.
+  * Patient-level split: train `231` / val `83`.
+
+* Smoke test results (sorted by val loss):
+  * `tcn_ssm` (params `248386`):
+    * `TrLoss=0.4395`, `VaLoss=0.3974`, `VaECG_MAE=0.6183`, `VaRPPG_MAE=0.5712`
+  * `cross_attention` (params `185250`):
+    * `TrLoss=0.4660`, `VaLoss=0.4913`, `VaECG_MAE=0.6321`, `VaRPPG_MAE=0.7687`
+  * `dual_head` (params `246370`):
+    * `TrLoss=0.5518`, `VaLoss=0.5462`, `VaECG_MAE=0.6478`, `VaRPPG_MAE=0.7467`
+  * `unet_gated` (params `210826`):
+    * `TrLoss=0.5541`, `VaLoss=0.5521`, `VaECG_MAE=0.6322`, `VaRPPG_MAE=0.8128`
+
+* Current conclusion:
+  * `tcn_ssm` is the most promising candidate from this first smoke test.
+  * Next full comparison should start from `tcn_ssm` and `cross_attention` on longer training.
+
+* Outputs:
+  * `train/exp3x/plots/exp3x_smoke_results.csv`
+  * `train/exp3x/plots/exp3x_smoke_results.json`

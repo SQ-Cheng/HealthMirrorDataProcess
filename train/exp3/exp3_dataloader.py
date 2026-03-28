@@ -6,7 +6,7 @@ import os
 import numpy as np
 import pandas as pd
 import torch
-from scipy.signal import find_peaks, resample
+from scipy.signal import resample
 from torch.utils.data import DataLoader, Dataset, Subset
 
 
@@ -53,49 +53,6 @@ def compute_snr_db(x, fs, lo_hz, hi_hz, peak_width_hz):
     return 10.0 * np.log10(max(signal_power, 1e-12) / noise_power)
 
 
-def ecg_sqi_template_corr(ecg, fs):
-    """Beat-template similarity SQI in [0,1]."""
-    prominence = max(0.2, 0.25 * np.std(ecg))
-    min_dist = max(1, int(fs * 0.25))
-    peaks, _ = find_peaks(ecg, distance=min_dist, prominence=prominence)
-    if len(peaks) < 4:
-        return 0.0
-
-    pre = max(1, int(fs * 0.20))
-    post = max(1, int(fs * 0.40))
-    beats = []
-    for p in peaks:
-        s = p - pre
-        e = p + post
-        if s < 0 or e > len(ecg):
-            continue
-        beats.append(ecg[s:e])
-
-    if len(beats) < 3:
-        return 0.0
-
-    beats = np.stack(beats, axis=0)
-    template = np.median(beats, axis=0)
-    t_std = template.std()
-    if t_std < 1e-8:
-        return 0.0
-
-    corrs = []
-    for b in beats:
-        b_std = b.std()
-        if b_std < 1e-8:
-            continue
-        c = np.corrcoef(b, template)[0, 1]
-        if np.isfinite(c):
-            corrs.append(c)
-
-    if not corrs:
-        return 0.0
-
-    c_mean = float(np.mean(corrs))
-    return float(np.clip((c_mean + 1.0) * 0.5, 0.0, 1.0))
-
-
 def ecg_sqi_autocorr(ecg, fs):
     """Autocorrelation periodicity SQI in [0,1]."""
     x = ecg - np.mean(ecg)
@@ -114,57 +71,6 @@ def ecg_sqi_autocorr(ecg, fs):
     return float(np.clip(peak, 0.0, 1.0))
 
 
-def ecg_sqi_morph_stability(ecg, n_splits=6):
-    """Morphology stability from adjacent split correlation in [0,1]."""
-    chunks = np.array_split(ecg, n_splits)
-    if len(chunks) < 2:
-        return 0.0
-
-    corrs = []
-    for i in range(len(chunks) - 1):
-        a = chunks[i]
-        b = chunks[i + 1]
-        n = min(len(a), len(b))
-        if n < 8:
-            continue
-        a = a[:n]
-        b = b[:n]
-        if a.std() < 1e-8 or b.std() < 1e-8:
-            continue
-        c = np.corrcoef(a, b)[0, 1]
-        if np.isfinite(c):
-            corrs.append(c)
-
-    if not corrs:
-        return 0.0
-
-    c_mean = float(np.mean(corrs))
-    return float(np.clip((c_mean + 1.0) * 0.5, 0.0, 1.0))
-
-
-def ecg_sqi_artifact_penalty(ecg):
-    """Artifact-based SQI in [0,1]; higher is cleaner."""
-    diff = np.abs(np.diff(ecg))
-    flat_ratio = float((diff < 1e-3).mean()) if len(diff) else 1.0
-    spike_ratio = float((np.abs(ecg) > 3.5).mean())
-    jump_ratio = float((diff > 2.0).mean()) if len(diff) else 0.0
-
-    penalty = 0.45 * flat_ratio + 0.30 * spike_ratio + 0.25 * jump_ratio
-    score = 1.0 - penalty
-    return float(np.clip(score, 0.0, 1.0))
-
-
-def ecg_sqi_composite(ecg, fs):
-    """Non-frequency ECG SQI composite from multiple time-domain methods."""
-    s_template = ecg_sqi_template_corr(ecg, fs)
-    s_ac = ecg_sqi_autocorr(ecg, fs)
-    s_morph = ecg_sqi_morph_stability(ecg)
-    s_art = ecg_sqi_artifact_penalty(ecg)
-
-    # Emphasize beat consistency and periodicity; keep artifact and stability as supports.
-    return float(0.40 * s_template + 0.30 * s_ac + 0.20 * s_art + 0.10 * s_morph)
-
-
 class MaskedReconDataset(Dataset):
     """Per-window ECG+rPPG samples with quality score derived from ranked quality proxies."""
 
@@ -179,11 +85,14 @@ class MaskedReconDataset(Dataset):
     ):
         self.samples = []
         self.hospital_pids = []
+        self.source_records = []
 
         self.rppg_snr_db = []
         self.ecg_quality = []
-        self.ecg_template_sqi = []
         self.ecg_autocorr_sqi = []
+
+        # Deprecated: kept as placeholders for backward compatibility only.
+        self.ecg_template_sqi = []
         self.ecg_morph_sqi = []
         self.ecg_artifact_sqi = []
         self.ecg_legacy_freq_snr = []
@@ -257,8 +166,10 @@ class MaskedReconDataset(Dataset):
                 patient_windows = 0
                 start = 0
                 while start + window_samples <= len(rppg):
-                    rppg_win = rppg[start:start + window_samples].copy()
-                    ecg_win = ecg[start:start + window_samples].copy()
+                    win_start = start
+                    win_end = start + window_samples
+                    rppg_win = rppg[win_start:win_end].copy()
+                    ecg_win = ecg[win_start:win_end].copy()
                     start += step_samples
 
                     if np.isnan(rppg_win).any() or np.isnan(ecg_win).any():
@@ -282,25 +193,39 @@ class MaskedReconDataset(Dataset):
 
                     fs_target = target_length / window_sec
                     rppg_snr = compute_snr_db(rppg_win, fs_target, lo_hz=0.5, hi_hz=5.0, peak_width_hz=0.15)
-
-                    s_template = ecg_sqi_template_corr(ecg_win, fs_target)
-                    s_ac = ecg_sqi_autocorr(ecg_win, fs_target)
-                    s_morph = ecg_sqi_morph_stability(ecg_win)
-                    s_art = ecg_sqi_artifact_penalty(ecg_win)
-                    s_ecg = ecg_sqi_composite(ecg_win, fs_target)
-
-                    ecg_snr_legacy = compute_snr_db(ecg_win, fs_target, lo_hz=1.0, hi_hz=30.0, peak_width_hz=0.8)
+                    s_ecg = ecg_sqi_autocorr(ecg_win, fs_target)
 
                     self.samples.append(pair)
                     self.hospital_pids.append(hospital_pid)
+                    self.source_records.append(
+                        {
+                            "dataset_index": len(self.samples) - 1,
+                            "mirror": mirror_name,
+                            "file_path": fpath,
+                            "file_name": fname,
+                            "lab_patient_id": int(lab_pid),
+                            "hospital_patient_id": str(hospital_pid),
+                            "window_start_index": int(win_start),
+                            "window_end_index": int(win_end),
+                            "window_start_time": float(timestamps[win_start]),
+                            "window_end_time": float(timestamps[win_end - 1]),
+                            "window_samples": int(window_samples),
+                            "step_samples": int(step_samples),
+                            "sampling_rate_hz": float(fs),
+                            "window_sec": float(window_sec),
+                            "target_length": int(target_length),
+                        }
+                    )
 
                     self.rppg_snr_db.append(float(rppg_snr))
                     self.ecg_quality.append(float(s_ecg))
-                    self.ecg_template_sqi.append(float(s_template))
-                    self.ecg_autocorr_sqi.append(float(s_ac))
-                    self.ecg_morph_sqi.append(float(s_morph))
-                    self.ecg_artifact_sqi.append(float(s_art))
-                    self.ecg_legacy_freq_snr.append(float(ecg_snr_legacy))
+                    self.ecg_autocorr_sqi.append(float(s_ecg))
+
+                    # Deprecated fields: no longer computed in Exp3, filled with NaN placeholders.
+                    self.ecg_template_sqi.append(float("nan"))
+                    self.ecg_morph_sqi.append(float("nan"))
+                    self.ecg_artifact_sqi.append(float("nan"))
+                    self.ecg_legacy_freq_snr.append(float("nan"))
 
                     patient_windows += 1
                     if max_windows_per_patient is not None and patient_windows >= max_windows_per_patient:
@@ -316,7 +241,7 @@ class MaskedReconDataset(Dataset):
         print(
             f"[Exp3 Dataset] Loaded {len(self.samples)} ECG+rPPG windows from {patient_count} patients. "
             f"rPPG SNR range {np.min(self.rppg_snr_db):.2f}..{np.max(self.rppg_snr_db):.2f} dB, "
-            f"ECG SQI range {np.min(self.ecg_quality):.3f}..{np.max(self.ecg_quality):.3f}"
+            f"ECG autocorr SQI range {np.min(self.ecg_quality):.3f}..{np.max(self.ecg_quality):.3f}"
         )
 
     def __len__(self):
@@ -330,6 +255,9 @@ class MaskedReconDataset(Dataset):
             torch.tensor(self.ecg_quality[idx], dtype=torch.float32),
             torch.tensor(self.rppg_snr_db[idx], dtype=torch.float32),
         )
+
+    def get_source_record(self, idx):
+        return self.source_records[idx]
 
 
 def build_masked_recon_dataloaders(

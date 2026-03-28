@@ -1,0 +1,32 @@
+{
+  "model": "unet_gated",
+  "checkpoint": "d:\\HealthMirrorFiles\\rPPG-data-local-inference\\train\\checkpoints\\exp3x_unet_gated_best.pt",
+  "best_epoch": 60,
+  "val_batches": 101,
+  "val_samples": 3222,
+  "mask_ratio": 0.3,
+  "weighted_loss_model": 0.18516064280330544,
+  "weighted_loss_zero": 0.4171756095815413,
+  "ecg": {
+    "mae_model": 0.452242374420166,
+    "mae_zero": 0.642409086227417,
+    "rmse_model": 0.7503846287727356,
+    "rmse_zero": 1.005793809890747,
+    "corr_model": 0.666537727355024,
+    "corr_zero": 0.0,
+    "grad_mae_model": 0.3519631326198578,
+    "grad_mae_zero": 0.3791429102420807
+  },
+  "rppg": {
+    "mae_model": 0.2401055544614792,
+    "mae_zero": 0.8610697388648987,
+    "rmse_model": 0.3810636103153229,
+    "rmse_zero": 1.0045428276062012,
+    "corr_model": 0.9255432410921427,
+    "corr_zero": 0.0,
+    "grad_mae_model": 0.06707761436700821,
+    "grad_mae_zero": 0.10887417197227478
+  },
+  "corr_clean_vs_model_err": -0.3147030787908629,
+  "corr_clean_vs_zero_err": 0.009784221667629411
+}

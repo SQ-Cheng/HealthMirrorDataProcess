@@ -976,7 +976,7 @@ class AutoWasher:
             print(f"Saved {filepath}")
 
 if __name__ == "__main__":
-    mirror_id = 6
+    mirror_id = 5
     parser = argparse.ArgumentParser(description="Auto Wash Patient Data")
     parser.add_argument("--data_dir", type=str, default=f"./mirror{mirror_id}_data", help="Directory containing patient folders")
     parser.add_argument("--output_dir", type=str, default=f"./mirror{mirror_id}_auto_cleaned", help="Directory to save cleaned segments")

@@ -47,7 +47,6 @@ class MaskedReconNetLight(nn.Module):
             nn.ConvTranspose1d(24, 16, kernel_size=8, stride=2, padding=3),
             nn.ReLU(inplace=True),
             nn.Conv1d(16, 2, kernel_size=5, padding=2),
-            nn.Tanh(),
         )
 
     def forward(self, x_masked, visible_mask):
@@ -83,7 +82,7 @@ class MaskedReconNetFull(nn.Module):
             nn.ConvTranspose1d(32, 24, kernel_size=8, stride=2, padding=3),
             nn.ReLU(inplace=True),
             nn.Conv1d(24, 2, kernel_size=5, padding=2),
-            nn.Tanh(),
+            # nn.Tanh(),
         )
 
     def forward(self, x_masked, visible_mask):
