@@ -14,4 +14,5 @@ rppg2ecg.onnx
 /mirror*
 *.csv
 *.zip
+*.png
 /train/checkpoints
