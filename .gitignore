@@ -16,3 +16,4 @@ rppg2ecg.onnx
 *.zip
 *.png
 /train/checkpoints
+/.conda
