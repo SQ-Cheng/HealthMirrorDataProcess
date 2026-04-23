@@ -41,16 +41,39 @@ def parse_args(exp_name):
     return parser.parse_args()
 
 
-def find_checkpoint(exp_name, variant, explicit_path=None):
+def list_candidate_checkpoints(exp_name, variant, explicit_path=None):
     if explicit_path:
-        return explicit_path
+        return [explicit_path]
+
     best = os.path.join(CHECKPOINT_DIR, f"{exp_name}_{variant}_best.pt")
     final = os.path.join(CHECKPOINT_DIR, f"{exp_name}_{variant}_final.pt")
+    candidates = []
+
     if os.path.exists(best):
-        return best
+        candidates.append(best)
     if os.path.exists(final):
-        return final
-    raise FileNotFoundError(f"No checkpoint found for {exp_name}/{variant}. Tried {best} and {final}")
+        candidates.append(final)
+
+    if not candidates:
+        raise FileNotFoundError(f"No checkpoint found for {exp_name}/{variant}. Tried {best} and {final}")
+    return candidates
+
+
+def load_first_compatible_checkpoint(model, checkpoint_candidates):
+    errors = []
+    for ckpt_path in checkpoint_candidates:
+        ckpt = torch.load(ckpt_path, map_location=DEVICE)
+        try:
+            model.load_state_dict(ckpt["model_state_dict"])
+            return ckpt_path, ckpt
+        except RuntimeError as exc:
+            errors.append(f"{os.path.basename(ckpt_path)} -> {exc}")
+
+    msg = "No compatible checkpoint found for current model definition.\n"
+    msg += "Tried:\n  - " + "\n  - ".join(checkpoint_candidates)
+    if errors:
+        msg += "\nLoad errors:\n  - " + "\n  - ".join(errors)
+    raise RuntimeError(msg)
 
 
 def run_visualization(signal_type, exp_name):
@@ -58,11 +81,10 @@ def run_visualization(signal_type, exp_name):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    ckpt_path = find_checkpoint(exp_name, args.variant, args.checkpoint)
+    ckpt_candidates = list_candidate_checkpoints(exp_name, args.variant, args.checkpoint)
 
     model = build_single_recon_model(args.variant).to(DEVICE)
-    ckpt = torch.load(ckpt_path, map_location=DEVICE)
-    model.load_state_dict(ckpt["model_state_dict"])
+    ckpt_path, _ = load_first_compatible_checkpoint(model, ckpt_candidates)
     model.eval()
 
     _, val_loader = build_single_signal_dataloaders(

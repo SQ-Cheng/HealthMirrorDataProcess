@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import AdamW
 
 from single_recon_dataloader import build_single_signal_dataloaders
@@ -42,8 +41,6 @@ def parse_args(exp_name):
     parser.add_argument("--target-length", type=int, default=256)
     parser.add_argument("--mask-ratio", type=float, default=0.30)
     parser.add_argument("--context-weight", type=float, default=0.20)
-    parser.add_argument("--grad-loss-weight", type=float, default=0.1)
-    parser.add_argument("--fft-loss-weight", type=float, default=0.02)
     parser.add_argument("--max-windows-per-patient", type=int, default=None)
     parser.add_argument("--max-patients", type=int, default=None)
     parser.add_argument("--max-train-batches", type=int, default=None)
@@ -71,7 +68,7 @@ def build_single_window_visible_mask(x, mask_ratio):
     return visible
 
 
-def weighted_masked_loss(pred, target, visible_mask, quality_score, criterion, context_weight, grad_loss_weight=0.1, fft_loss_weight=0.02):
+def weighted_masked_loss(pred, target, visible_mask, quality_score, criterion, context_weight):
     masked_mask = 1.0 - visible_mask
     per_point = criterion(pred, target)
 
@@ -85,19 +82,7 @@ def weighted_masked_loss(pred, target, visible_mask, quality_score, criterion, c
 
     sample_weight = 0.5 + 0.5 * quality_score
     sample_loss = (masked_loss + context_weight * context_loss) * sample_weight
-    loss = sample_loss.mean()
-
-    if grad_loss_weight > 0.0:
-        pred_diff = pred[:, :, 1:] - pred[:, :, :-1]
-        target_diff = target[:, :, 1:] - target[:, :, :-1]
-        loss = loss + grad_loss_weight * F.l1_loss(pred_diff, target_diff)
-
-    if fft_loss_weight > 0.0:
-        pred_fft = torch.fft.rfft(pred, dim=-1)
-        target_fft = torch.fft.rfft(target, dim=-1)
-        loss = loss + fft_loss_weight * F.l1_loss(torch.abs(pred_fft), torch.abs(target_fft))
-
-    return loss
+    return sample_loss.mean()
 
 
 def masked_mae(pred, target, masked_mask):
@@ -113,8 +98,6 @@ def run_epoch(
     max_batches=None,
     mask_ratio=0.3,
     context_weight=0.2,
-    grad_loss_weight=0.1,
-    fft_loss_weight=0.02,
 ):
     is_train = optimizer is not None
     model.train(is_train)
@@ -144,8 +127,6 @@ def run_epoch(
             quality_score,
             criterion,
             context_weight=context_weight,
-            grad_loss_weight=grad_loss_weight,
-            fft_loss_weight=fft_loss_weight,
         )
 
         if is_train:
@@ -257,8 +238,6 @@ def run_experiment(signal_type, exp_name):
             max_batches=args.max_train_batches,
             mask_ratio=args.mask_ratio,
             context_weight=args.context_weight,
-            grad_loss_weight=args.grad_loss_weight,
-            fft_loss_weight=args.fft_loss_weight,
         )
         with torch.no_grad():
             va = run_epoch(
@@ -269,8 +248,6 @@ def run_experiment(signal_type, exp_name):
                 max_batches=args.max_val_batches,
                 mask_ratio=args.mask_ratio,
                 context_weight=args.context_weight,
-                grad_loss_weight=args.grad_loss_weight,
-                fft_loss_weight=args.fft_loss_weight,
             )
 
         elapsed = time.time() - t0
@@ -288,6 +265,7 @@ def run_experiment(signal_type, exp_name):
                     "checkpoint_tag": tag,
                     "mask_ratio": args.mask_ratio,
                     "target_length": args.target_length,
+                    "model_family": "single_recon_v1",
                 },
                 os.path.join(SAVE_DIR, f"{ckpt_prefix}_best.pt"),
             )
@@ -320,6 +298,7 @@ def run_experiment(signal_type, exp_name):
             "checkpoint_tag": tag,
             "mask_ratio": args.mask_ratio,
             "target_length": args.target_length,
+            "model_family": "single_recon_v1",
         },
         os.path.join(SAVE_DIR, f"{ckpt_prefix}_final.pt"),
     )

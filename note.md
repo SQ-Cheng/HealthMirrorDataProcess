@@ -89,9 +89,9 @@
     * `train/exp3_rppg/*`
 
 - Model and training design
-  * U-Net style 1D reconstruction (both `light` and `full`) with skip connections for temporal alignment.
+  * Baseline encoder-decoder reconstruction (pre-U-Net version) is now the active default after rollback.
   * Mask-aware input: concatenated masked signal and visible mask.
-  * Compound masked loss: MAE + gradient loss + FFT loss.
+  * Baseline weighted masked SmoothL1 loss is used in training.
   * Quality weighting:
     * ECG uses ranked autocorrelation SQI.
     * rPPG uses ranked SNR SQI.
@@ -105,4 +105,33 @@
   * Plots:
     * `train/exp3_ecg/plots/*`
     * `train/exp3_rppg/plots/*`
+
+### Experiment 03 Rollback Update (Baseline Recovery)
+- Background
+  * Re-training after the U-Net/extra-loss modification showed worse quality than the prior baseline.
+
+- Rollback actions
+  * Restored `train/exp3_common/single_recon_model.py` to the original single-recon baseline architecture:
+    * `light`: stride-2 encoder + residual body + transposed-conv decoder.
+    * `full`: `stem` + 3 residual blocks + transposed-conv decoder.
+  * Restored `train/exp3_common/single_recon_train.py` loss path to baseline weighted masked SmoothL1 (removed gradient/FFT terms from default training flow).
+
+- Additional helpful improvements
+  * Improved checkpoint robustness in `train/exp3_common/single_recon_visualize.py`:
+    * Visualization now tries candidate checkpoints (`best`, then `final`) and loads the first one compatible with current model keys.
+    * This avoids breakage when checkpoint files come from mixed architecture generations.
+  * Added `model_family="single_recon_v1"` metadata to newly saved checkpoints for clearer future compatibility tracking.
+
+- Verification (local smoke)
+  * Visualization smoke (full variant) completed successfully and saved plot:
+    * `train/exp3_ecg/plots/exp3_ecg_full_masked_recon.png`
+    * Masked MAE: `0.140958`
+  * Training smoke (full variant, 1 epoch capped subset) completed successfully:
+    * Best val loss: `0.2573`
+    * History: `train/exp3_ecg/plots/exp3_ecg_full_rollback_smoke_history.csv`
+
+- Recommended usage after rollback
+  * Use explicit tags for new rollback runs to avoid mixed-generation checkpoint confusion:
+    * `python train/exp3_ecg/exp3_ecg_train.py --variant full --checkpoint-tag _legacyv1`
+    * `python train/exp3_rppg/exp3_rppg_train.py --variant full --checkpoint-tag _legacyv1`
 
