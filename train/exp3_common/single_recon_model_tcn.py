@@ -13,7 +13,7 @@ class ConvBlock(nn.Module):
             nn.Conv1d(in_ch, out_ch, kernel_size=kernel, padding=pad, dilation=dilation, bias=False),
             nn.BatchNorm1d(out_ch),
             nn.SiLU(inplace=True),
-            nn.Dropout(dropout),
+            nn.Dropout1d(dropout),
         )
 
     def forward(self, x):
@@ -28,7 +28,7 @@ class DilatedResBlock(nn.Module):
         self.bn1 = nn.BatchNorm1d(channels)
         self.conv2 = nn.Conv1d(channels, channels, kernel_size=kernel, padding=pad, dilation=dilation, bias=False)
         self.bn2 = nn.BatchNorm1d(channels)
-        self.drop = nn.Dropout(dropout)
+        self.drop = nn.Dropout1d(dropout)
 
     def forward(self, x):
         h = self.conv1(x)
