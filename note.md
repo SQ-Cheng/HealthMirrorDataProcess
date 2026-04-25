@@ -135,3 +135,15 @@
     * `python train/exp3_ecg/exp3_ecg_train.py --variant full --checkpoint-tag _legacyv1`
     * `python train/exp3_rppg/exp3_rppg_train.py --variant full --checkpoint-tag _legacyv1`
 
+## 2026-04-26
+### Experiment 03-TCN
+- Baseline: Best val loss: 0.1506
+- Ablation 01
+  * Delete `silu` in `dialatedresblock`
+  Best val loss: 0.1533
+- Ablation 02
+  * Change `nn.Dropout` to `nn.Dropout1d`
+  Best val loss: 0.1536
+ - Ablation 03
+  * 
+
