@@ -145,7 +145,9 @@
   * Change `nn.Dropout` to `nn.Dropout1d`
   Best val loss: 0.1536
  - Ablation 03
-  * 
+  * targht-length 512, mask-ratio 0.2
+  Best val loss: 0.1980
+
 
 ### Experiment 03-Transformer
 - Baseline: Best val loss: 0.2196

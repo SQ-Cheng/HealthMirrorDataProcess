@@ -14,6 +14,7 @@ from single_recon_train_transformer import build_single_window_visible_mask
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+EXP_DIR = os.path.dirname(os.path.abspath(__file__))
 CHECKPOINT_DIR = os.path.join(ROOT_DIR, "train", "checkpoints")
 
 
@@ -163,7 +164,7 @@ def run_visualization(signal_type, exp_name):
     fig.tight_layout(rect=[0, 0, 1, 0.96])
 
     if args.output is None:
-        out_dir = os.path.join(ROOT_DIR, "train", exp_name, "plots")
+        out_dir = os.path.join(EXP_DIR, "plots")
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, f"{exp_name}_{args.variant}_masked_recon.png")
     else:
