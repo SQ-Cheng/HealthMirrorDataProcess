@@ -179,7 +179,7 @@ class AutoWasherSQI:
         self.output_dir = output_dir
         self.reference_dir = reference_dir
         self.patient_info_csv = patient_info_csv
-        self.threshold = threshold or {"rPPG": 0.4, "ECG": 0.4}
+        self.threshold = threshold or {"rPPG": 0.4, "ECG": 0.35}
         self.visualize = visualize
         self.mirror_version = str(mirror_version)
 
