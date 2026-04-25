@@ -22,6 +22,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Visualize Exp4-X SQI prediction")
     parser.add_argument("--model", choices=["exp4-1", "exp4-2", "exp4-3"], default="exp4-1")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -86,6 +92,7 @@ def stacked_segments(ax, dataset, indices, title, window_sec):
 
 def main():
     args = parse_args()
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
 
     ckpt_path = find_checkpoint(args.model, args.checkpoint)
 
@@ -95,7 +102,7 @@ def main():
     model.eval()
 
     _, val_loader, meta = build_exp4x_dataloaders(
-        ROOT_DIR,
+        data_dir,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,
         seed=args.seed,

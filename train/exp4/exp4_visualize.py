@@ -23,6 +23,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Visualize Exp4 clean/noisy rPPG reconstruction")
     parser.add_argument("--variant", choices=["light", "full"], default="full")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -84,6 +90,7 @@ def reconstruct_segments(model, dataset, indices):
 
 def main():
     args = parse_args()
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     rng = np.random.default_rng(args.seed)
 
     ckpt_path = find_checkpoint(args.variant, args.checkpoint)
@@ -93,7 +100,7 @@ def main():
     model.load_state_dict(ckpt["model_state_dict"])
 
     dataset = RPPGWindowDataset(
-        ROOT_DIR,
+        data_dir,
         window_sec=args.window_sec,
         step_sec=args.step_sec,
         target_length=args.target_length,

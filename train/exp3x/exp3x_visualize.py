@@ -37,6 +37,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Exp3X full-validation evaluation and visualization")
     parser.add_argument("--model", choices=["unet_gated", "dual_head", "tcn_ssm", "cross_attention"], default="tcn_ssm")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -108,6 +114,7 @@ def find_checkpoint(model_name, explicit_path=None):
 
 
 def evaluate(args):
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
@@ -119,7 +126,7 @@ def evaluate(args):
     model.eval()
 
     _, val_loader = build_masked_recon_dataloaders(
-        ROOT_DIR,
+        data_dir,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,
         seed=args.seed,

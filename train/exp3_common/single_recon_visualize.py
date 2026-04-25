@@ -21,6 +21,16 @@ def parse_args(exp_name):
     parser = argparse.ArgumentParser(description=f"Visualize {exp_name} masked reconstruction")
     parser.add_argument("--variant", choices=["light", "full"], default="light")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help=(
+            "Optional data folder override. Supports either a single mirror folder "
+            "(contains patient_*.csv) or a parent folder that contains "
+            "mirror*_auto_cleaned[_sqi] folders."
+        ),
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -78,6 +88,7 @@ def load_first_compatible_checkpoint(model, checkpoint_candidates):
 
 def run_visualization(signal_type, exp_name):
     args = parse_args(exp_name)
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
@@ -88,7 +99,7 @@ def run_visualization(signal_type, exp_name):
     model.eval()
 
     _, val_loader = build_single_signal_dataloaders(
-        ROOT_DIR,
+        data_dir,
         signal_type=signal_type,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,

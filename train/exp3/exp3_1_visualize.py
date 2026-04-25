@@ -18,6 +18,12 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 def parse_args():
     parser = argparse.ArgumentParser(description="Exp3-1 visualize ECG autocorr SQI")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -64,10 +70,11 @@ def maybe_subsample(indices, max_samples, rng):
 
 def main():
     args = parse_args()
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     rng = np.random.default_rng(args.seed)
 
     dataset = MaskedReconDataset(
-        ROOT_DIR,
+        data_dir,
         window_sec=args.window_sec,
         step_sec=args.step_sec,
         target_length=args.target_length,

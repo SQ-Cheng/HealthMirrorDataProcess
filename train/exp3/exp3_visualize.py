@@ -24,6 +24,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Visualize Exp3 masked ECG+rPPG reconstruction")
     parser.add_argument("--variant", choices=["light", "full"], default="light")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -60,6 +66,7 @@ def find_checkpoint(variant, explicit_path=None):
 
 def main():
     args = parse_args()
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     np.random.seed(args.seed)
 
     ckpt_path = find_checkpoint(args.variant, args.checkpoint)
@@ -70,7 +77,7 @@ def main():
     model.eval()
 
     _, val_loader = build_masked_recon_dataloaders(
-        ROOT_DIR,
+        data_dir,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,
         seed=args.seed,
