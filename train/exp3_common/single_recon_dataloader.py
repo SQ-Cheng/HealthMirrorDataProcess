@@ -35,6 +35,26 @@ def _mirror_glob_by_source(data_source):
     raise ValueError(f"Unsupported data_source: {data_source}")
 
 
+def _resolve_mirror_dirs(root_dir, data_source):
+    root_dir = os.path.abspath(root_dir)
+    if not os.path.isdir(root_dir):
+        raise FileNotFoundError(f"Data directory does not exist: {root_dir}")
+
+    # Support passing a single mirror folder directly.
+    if glob.glob(os.path.join(root_dir, "patient_*.csv")):
+        return [root_dir]
+
+    pattern = _mirror_glob_by_source(data_source)
+    mirror_dirs = sorted(glob.glob(os.path.join(root_dir, pattern)))
+    if mirror_dirs:
+        return mirror_dirs
+
+    raise FileNotFoundError(
+        f"No training data found under {root_dir}. "
+        f"Expected either patient_*.csv files directly or subfolders matching '{pattern}'."
+    )
+
+
 def compute_snr_db(x, fs, lo_hz, hi_hz, peak_width_hz):
     """Estimate narrow-band SNR around dominant frequency in a target band."""
     n = len(x)
@@ -106,10 +126,7 @@ class SingleSignalMaskedReconDataset(Dataset):
         self.raw_quality = []
         self.quality_score = []
 
-        pattern = _mirror_glob_by_source(data_source)
-        mirror_dirs = sorted(glob.glob(os.path.join(root_dir, pattern)))
-        if not mirror_dirs:
-            raise FileNotFoundError(f"No {pattern} directories found in {root_dir}")
+        mirror_dirs = _resolve_mirror_dirs(root_dir, data_source)
 
         patient_count = 0
         stop_loading = False
