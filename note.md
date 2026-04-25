@@ -147,3 +147,12 @@
  - Ablation 03
   * 
 
+### Experiment 03-Transformer
+- Baseline: Best val loss: 0.2196
+
+### Experiment 03-mamba
+- waiting to be modified to real mamba
+- baseline: Best val loss: 0.2279
+
+
+

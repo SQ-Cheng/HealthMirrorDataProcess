@@ -22,7 +22,8 @@ class ConvNormAct(nn.Module):
 class TemporalSelfAttention(nn.Module):
     def __init__(self, channels, heads=4, dropout=0.1):
         super().__init__()
-        self.norm = nn.LayerNorm(channels)
+        self.norm1 = nn.LayerNorm(channels)
+        self.norm2 = nn.LayerNorm(channels)
         self.attn = nn.MultiheadAttention(channels, heads, dropout=dropout, batch_first=True)
         self.ffn = nn.Sequential(
             nn.Linear(channels, channels * 2),
@@ -33,10 +34,10 @@ class TemporalSelfAttention(nn.Module):
 
     def forward(self, x):
         y = x.transpose(1, 2)
-        y_norm = self.norm(y)
+        y_norm = self.norm1(y)
         y_attn, _ = self.attn(y_norm, y_norm, y_norm, need_weights=False)
         y = y + y_attn
-        y = y + self.ffn(self.norm(y))
+        y = y + self.ffn(self.norm2(y))
         return y.transpose(1, 2)
 
 
