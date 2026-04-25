@@ -25,6 +25,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Experiment 04: Autoencoder artifact detection")
     parser.add_argument("--variant", choices=["light", "full"], default="full")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -112,11 +118,12 @@ def run_epoch(
 
 def main():
     args = parse_args()
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     torch.manual_seed(args.seed)
 
-    print("Loading data ...")
+    print(f"Loading data from: {data_dir} (source={args.data_source}) ...")
     train_loader, val_loader, threshold = build_artifact_dataloaders(
-        ROOT_DIR,
+        data_dir,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,
         seed=args.seed,

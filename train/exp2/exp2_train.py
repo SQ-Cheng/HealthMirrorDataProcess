@@ -35,6 +35,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Experiment 02: Bidirectional ECG<->rPPG GAN")
     parser.add_argument("--variant", choices=["light", "full"], default="light")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -199,11 +205,12 @@ def validate(g_e2r, g_r2e, loader, l1_criterion, max_batches=None):
 
 def main():
     args = parse_args()
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     torch.manual_seed(args.seed)
 
-    print("Loading data ...")
+    print(f"Loading data from: {data_dir} (source={args.data_source}) ...")
     train_loader, val_loader = build_paired_dataloaders(
-        ROOT_DIR,
+        data_dir,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,
         seed=args.seed,

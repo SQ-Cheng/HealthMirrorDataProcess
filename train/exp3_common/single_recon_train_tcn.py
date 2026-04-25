@@ -24,6 +24,16 @@ def parse_args(exp_name):
     parser = argparse.ArgumentParser(description=f"{exp_name}: single-signal masked reconstruction (TCN)")
     parser.add_argument("--variant", choices=["light", "full"], default="light")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help=(
+            "Optional data folder override. Supports either a single mirror folder "
+            "(contains patient_*.csv) or a parent folder that contains "
+            "mirror*_auto_cleaned[_sqi] folders."
+        ),
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -178,13 +188,14 @@ def save_history(history_rows, csv_path, plot_path, title):
 
 def run_experiment(signal_type, exp_name):
     args = parse_args(exp_name)
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 
-    print("Loading data ...")
+    print(f"Loading data from: {data_dir} (source={args.data_source}) ...")
     train_loader, val_loader = build_single_signal_dataloaders(
-        ROOT_DIR,
+        data_dir,
         signal_type=signal_type,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,

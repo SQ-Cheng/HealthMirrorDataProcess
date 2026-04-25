@@ -37,6 +37,12 @@ SAVE_DIR = os.path.join(ROOT_DIR, "train", "checkpoints")
 def parse_args():
     parser = argparse.ArgumentParser(description="Experiment 01 training")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -119,12 +125,13 @@ def validate(model, loader, criterion):
 
 def main():
     args = parse_args()
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     torch.manual_seed(SEED)
 
     # ─── Data ─────────────────────────────────────────────────────
-    print("Loading data ...")
+    print(f"Loading data from: {data_dir} (source={args.data_source}) ...")
     train_loader, val_loader = build_dataloaders(
-        ROOT_DIR,
+        data_dir,
         batch_size=BATCH_SIZE,
         val_ratio=VAL_RATIO,
         seed=SEED,

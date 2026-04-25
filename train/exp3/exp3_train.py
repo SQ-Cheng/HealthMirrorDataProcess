@@ -26,6 +26,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Experiment 03: Masked ECG+rPPG reconstruction")
     parser.add_argument("--variant", choices=["light", "full"], default="light")
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -261,6 +267,7 @@ def save_history(history_rows, csv_path, plot_path, title):
 
 def main():
     args = parse_args()
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     torch.manual_seed(args.seed)
     np_seed = args.seed
     if np_seed is not None:
@@ -268,9 +275,9 @@ def main():
 
         _np.random.seed(np_seed)
 
-    print("Loading data ...")
+    print(f"Loading data from: {data_dir} (source={args.data_source}) ...")
     train_loader, val_loader = build_masked_recon_dataloaders(
-        ROOT_DIR,
+        data_dir,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,
         seed=args.seed,

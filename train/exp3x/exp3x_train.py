@@ -43,6 +43,12 @@ def parse_args():
         default="tcn_ssm",
     )
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Optional data root directory containing mirror*_auto_cleaned[_sqi] folders",
+    )
+    parser.add_argument(
         "--data-source",
         choices=["sqi", "cleaned"],
         default="sqi",
@@ -177,11 +183,12 @@ def save_history(rows, csv_path, plot_path, title):
 
 def main():
     args = parse_args()
+    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
     set_seed(args.seed)
 
-    print("Loading Exp3X data ...")
+    print(f"Loading Exp3X data from: {data_dir} (source={args.data_source}) ...")
     train_loader, val_loader = build_masked_recon_dataloaders(
-        ROOT_DIR,
+        data_dir,
         batch_size=args.batch_size,
         val_ratio=args.val_ratio,
         seed=args.seed,
