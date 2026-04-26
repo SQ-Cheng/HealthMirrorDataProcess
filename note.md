@@ -144,9 +144,10 @@
 - Ablation 02
   * Change `nn.Dropout` to `nn.Dropout1d`
   Best val loss: 0.1536
- - Ablation 03
+ - Ablation 03 *wating to be fixed: larger receptive field*
   * targht-length 512, mask-ratio 0.2
   Best val loss: 0.1980
+- Ablation 04
 
 
 ### Experiment 03-Transformer
@@ -156,5 +157,6 @@
 - waiting to be modified to real mamba
 - baseline: Best val loss: 0.2279
 
+### Experiment 03-GAN
 
 
