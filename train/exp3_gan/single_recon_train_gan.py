@@ -52,7 +52,6 @@ def parse_args(exp_name):
     parser.add_argument("--target-length", type=int, default=256)
     parser.add_argument("--mask-ratio", type=float, default=0.30)
     parser.add_argument("--context-weight", type=float, default=0.20)
-    parser.add_argument("--derivative-loss-weight", type=float, default=1.0)
     parser.add_argument("--adv-loss-weight", type=float, default=0.5)
     parser.add_argument("--max-windows-per-patient", type=int, default=None)
     parser.add_argument("--max-patients", type=int, default=None)
@@ -80,8 +79,8 @@ def build_single_window_visible_mask(x, mask_ratio):
     return visible
 
 
-def reconstruction_loss(pred, target, visible_mask, quality_score, context_weight, derivative_loss_weight):
-    criterion = nn.L1Loss(reduction="none")
+def reconstruction_loss(pred, target, visible_mask, quality_score, context_weight):
+    criterion = nn.SmoothL1Loss(reduction="none")
 
     masked_mask = 1.0 - visible_mask
     per_point = criterion(pred, target)
@@ -94,27 +93,8 @@ def reconstruction_loss(pred, target, visible_mask, quality_score, context_weigh
     context_den = visible_mask.sum(dim=(1, 2)).clamp_min(1.0)
     context_loss = context_num / context_den
 
-    pred_diff = pred[:, :, 1:] - pred[:, :, :-1]
-    target_diff = target[:, :, 1:] - target[:, :, :-1]
-    per_diff = criterion(pred_diff, target_diff)
-
-    masked_mask_diff = torch.minimum(masked_mask[:, :, 1:], masked_mask[:, :, :-1])
-    visible_mask_diff = torch.minimum(visible_mask[:, :, 1:], visible_mask[:, :, :-1])
-
-    masked_diff_num = (per_diff * masked_mask_diff).sum(dim=(1, 2))
-    masked_diff_den = masked_mask_diff.sum(dim=(1, 2)).clamp_min(1.0)
-    masked_diff_loss = masked_diff_num / masked_diff_den
-
-    context_diff_num = (per_diff * visible_mask_diff).sum(dim=(1, 2))
-    context_diff_den = visible_mask_diff.sum(dim=(1, 2)).clamp_min(1.0)
-    context_diff_loss = context_diff_num / context_diff_den
-
     sample_weight = 0.5 + 0.5 * quality_score
-    sample_loss = (
-        masked_loss
-        + context_weight * context_loss
-        + derivative_loss_weight * (masked_diff_loss + context_weight * context_diff_loss)
-    ) * sample_weight
+    sample_loss = (masked_loss + context_weight * context_loss) * sample_weight
     return sample_loss.mean()
 
 
@@ -138,7 +118,6 @@ def train_epoch(
     max_batches=None,
     mask_ratio=0.3,
     context_weight=0.2,
-    derivative_loss_weight=1.0,
     adv_loss_weight=0.5,
 ):
     generator.train()
@@ -184,7 +163,6 @@ def train_epoch(
             visible,
             quality_score,
             context_weight=context_weight,
-            derivative_loss_weight=derivative_loss_weight,
         )
         g_adv = adv_criterion(pred_fake_for_g, _adv_targets_like(pred_fake_for_g, True))
         g_loss = rec_loss + adv_loss_weight * g_adv
@@ -210,7 +188,6 @@ def validate_epoch(
     max_batches=None,
     mask_ratio=0.3,
     context_weight=0.2,
-    derivative_loss_weight=1.0,
 ):
     generator.eval()
 
@@ -235,7 +212,6 @@ def validate_epoch(
             visible,
             quality_score,
             context_weight=context_weight,
-            derivative_loss_weight=derivative_loss_weight,
         )
 
         losses.append(loss.item())
@@ -360,7 +336,6 @@ def run_experiment(signal_type, exp_name):
             max_batches=args.max_train_batches,
             mask_ratio=args.mask_ratio,
             context_weight=args.context_weight,
-            derivative_loss_weight=args.derivative_loss_weight,
             adv_loss_weight=args.adv_loss_weight,
         )
         va = validate_epoch(
@@ -369,7 +344,6 @@ def run_experiment(signal_type, exp_name):
             max_batches=args.max_val_batches,
             mask_ratio=args.mask_ratio,
             context_weight=args.context_weight,
-            derivative_loss_weight=args.derivative_loss_weight,
         )
 
         elapsed = time.time() - t0
