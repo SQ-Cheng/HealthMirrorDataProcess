@@ -57,21 +57,28 @@ def merge_patient_info(extracted_file, marked_file, output_file):
     print(f"Output written to {output_file}")
 
 
-def main():
-    lab = False
-    mirror_id = 6
-    
-    if lab:
-        extracted_file = 'lab_overall_patient_info.csv'
-        marked_file = 'lab_overall_patient_info.csv'
-        output_file = 'lab_merged_patient_info.csv'
+def main(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Merge two patient info CSV files")
+    parser.add_argument("--lab", action="store_true", help="Use lab data file naming")
+    parser.add_argument("--mirror-id", type=int, default=6, help="Mirror ID for file naming")
+    parser.add_argument("--extracted", type=str, default=None, help="Primary extracted CSV path (overrides --mirror-id)")
+    parser.add_argument("--marked", type=str, default=None, help="Secondary marked CSV path (overrides --mirror-id)")
+    parser.add_argument("--output", type=str, default=None, help="Output merged CSV path")
+    args = parser.parse_args(argv)
+
+    if args.lab:
+        extracted_file = args.extracted or 'lab_overall_patient_info.csv'
+        marked_file = args.marked or 'lab_overall_patient_info.csv'
+        output_file = args.output or 'lab_merged_patient_info.csv'
     else:
-        extracted_file = f'overall_patient_info_{mirror_id}.csv'
-        marked_file = f'extracted_vitals_{mirror_id}.csv'
-        output_file = f'merged_patient_info_{mirror_id}.csv'
-    
+        extracted_file = args.extracted or f'overall_patient_info_{args.mirror_id}.csv'
+        marked_file = args.marked or f'extracted_vitals_{args.mirror_id}.csv'
+        output_file = args.output or f'merged_patient_info_{args.mirror_id}.csv'
+
     merge_patient_info(extracted_file, marked_file, output_file)
 
 
-if __name__ == '__main__': 
+if __name__ == '__main__':
     main()

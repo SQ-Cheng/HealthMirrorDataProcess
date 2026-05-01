@@ -1,6 +1,5 @@
 from data.patient_info import PatientInfo
 from data.load_data import DataLoader
-import scipy.signal as signal
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
@@ -9,6 +8,7 @@ import os
 import pandas as pd
 import neurokit2 as nk
 from ecg.ecg_process import ECGProcess
+from utils.signal_processing import calculate_ptt
 
 lab = False
 
@@ -56,58 +56,6 @@ def load_reference_waveforms(ref_dir):
                 continue
 
             yield int(f[4:7]), timestamps, ecg_signal
-
-def filter_signal(data, fs=512, lowcut=0.5, highcut=5.0, order=4):
-    nyquist = 0.5 * fs
-    low = lowcut / nyquist
-    high = highcut / nyquist
-    b, a = signal.butter(order, [low, high], btype='band')
-    data = signal.filtfilt(b, a, data)
-    return data
-
-def find_rppg_peaks(signal_data, fs=512, min_distance=None):
-    if min_distance is None:
-        min_distance = int(fs * 0.35)
-    peaks, properties = signal.find_peaks(signal_data, distance=min_distance, height=0)
-    return peaks
-
-def calculate_ptt(time, rppg_signal, ecg_signal, ecg_processor):
-    rppg_peaks = find_rppg_peaks(rppg_signal, fs=512)
-    ecg_processor.process(ecg_signal)
-    ecg_peaks = ecg_processor.get_peaks()
-    
-    if len(rppg_peaks) == 0 or len(ecg_peaks) == 0:
-        return None, None, None
-    
-    matched_pairs = []
-    ptt_values = []
-    
-    for ecg_idx in ecg_peaks:
-        ecg_time = time[ecg_idx]
-        future_rppg_peaks = rppg_peaks[rppg_peaks > ecg_idx]
-        
-        if len(future_rppg_peaks) > 0:
-            rppg_idx = future_rppg_peaks[0]
-            rppg_time = time[rppg_idx]
-            ptt = rppg_time - ecg_time
-
-            if 0.05 < ptt < 0.4:
-                matched_pairs.append((ecg_idx, rppg_idx))
-                ptt_values.append(ptt)
-    
-    if len(ptt_values) == 0:
-        return None, None, None
-    
-    ptt_median = np.median(ptt_values)
-    ptt_filtered = [p for p in ptt_values if abs(p - ptt_median) < 0.1]
-    
-    if len(ptt_filtered) == 0:
-        return None, None, None
-    
-    ptt_final = np.mean(ptt_filtered)
-    std = np.std(ptt_filtered)
-    
-    return ptt_final, None, std
 
 class RawSignalViewer:
     def __init__(self, dataloader, reference_waveforms=None, method='nk', reference_dir='./reference_signals'):
@@ -378,7 +326,7 @@ class RawSignalViewer:
             self.current_ptt = None
             self.current_std = None
             return
-        ptt, _, std = calculate_ptt(timestamps, rppg_values, values, self.ecg_processor)
+        ptt, std = calculate_ptt(timestamps, rppg_values, values, self.ecg_peaks)
         self.current_ptt = ptt
         self.current_std = std
         additional = self.ecg_processor.get_additional_signals()

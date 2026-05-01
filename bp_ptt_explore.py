@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import csv
 from scipy.stats import spearmanr
+from utils.signal_processing import filter_signal
 
 lab = False
 
@@ -37,14 +38,6 @@ def load_data_for_patients(patient_list, raw_dir=data_dir, cleaned_dir=cleaned_d
     raw_data = list(data_loader.load_raw_data(patient_id=patient_ids))
     cleaned_data = list(data_loader.load_cleaned_data(patient_id=patient_ids))
     return raw_data, cleaned_data
-
-def filter_signal(data, fs=512, lowcut=0.5, highcut=5.0, order=4):
-    nyquist = 0.5 * fs
-    low = lowcut / nyquist
-    high = highcut / nyquist
-    b, a = signal.butter(order, [low, high], btype='band')
-    data = signal.filtfilt(b, a, data)
-    return data
 
 def ecg_peak_pantompkins(ecg_signal, fs=512):
     # Bandpass filter

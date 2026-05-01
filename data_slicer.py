@@ -1,4 +1,5 @@
 import os
+import sys
 import pandas as pd
 import numpy as np
 from scipy.interpolate import interp1d
@@ -715,31 +716,25 @@ class DataSlicerPipeline:
         print(f"{'='*60}")
 
 
-def main():
-    input_folder = input("Enter input folder path: ").strip()
-    output_folder = input("Enter output folder pat" \
-    "h: ").strip()
-    
-    try:
-        segment_duration = float(input("Enter segment duration in seconds (default 10.0): ").strip() or "10.0")
-    except ValueError:
-        segment_duration = 10.0
-        print("Invalid input, using default 10.0 seconds")
+def main(argv=None):
+    import argparse
+    if argv is None:
+        argv = sys.argv[1:] if len(sys.argv) > 1 else []
 
-    try:
-        target_fs = int(input("Enter target sampling rate in Hz (default 512): ").strip() or "512")
-    except ValueError:
-        target_fs = 512
-        print("Invalid input, using default 512 Hz")
-    
-    starting_point_input = input("Enter starting patient number (default 0): ").strip()
-    starting_point = int(starting_point_input) if starting_point_input.isdigit() else 0
-    
-    ending_point_input = input("Enter ending patient number (default None): ").strip()
-    ending_point = int(ending_point_input) if ending_point_input.isdigit() else None
-    
-    pipeline = DataSlicerPipeline(input_folder, output_folder, segment_duration, target_fs,
-                                   starting_point, ending_point)
+    parser = argparse.ArgumentParser(description="Slice raw recordings into fixed-duration segments")
+    parser.add_argument("--input", type=str, default=None, help="Input folder path")
+    parser.add_argument("--output", type=str, default=None, help="Output folder path")
+    parser.add_argument("--segment-duration", type=float, default=10.0, help="Segment duration in seconds (default 10.0)")
+    parser.add_argument("--target-fs", type=int, default=512, help="Target sampling rate in Hz (default 512)")
+    parser.add_argument("--start", type=int, default=0, help="Starting patient number (default 0)")
+    parser.add_argument("--end", type=int, default=None, help="Ending patient number (default None)")
+    args = parser.parse_args(argv)
+
+    input_folder = args.input or input("Enter input folder path: ").strip()
+    output_folder = args.output or input("Enter output folder path: ").strip()
+
+    pipeline = DataSlicerPipeline(input_folder, output_folder, args.segment_duration, args.target_fs,
+                                   args.start, args.end)
     pipeline.run()
 
 

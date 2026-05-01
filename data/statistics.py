@@ -4,14 +4,7 @@ import numpy as np
 import scipy.signal as signal
 import os
 import pandas as pd
-
-def filter_signal(data, fs=512, lowcut=0.5, highcut=5.0, order=2):
-    nyquist = 0.5 * fs
-    low = lowcut / nyquist
-    high = highcut / nyquist
-    b, a = signal.butter(order, [low, high], btype='band')
-    data = signal.filtfilt(b, a, data)
-    return data
+from utils.signal_processing import filter_signal
 
 def find_peaks(data, threshold=-0.2, fs=512):
     peaks, _ = signal.find_peaks(data, height=threshold, distance=fs*0.5)

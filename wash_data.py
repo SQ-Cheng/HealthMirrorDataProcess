@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -421,16 +422,22 @@ class WashDataController:
         self._load_next_cleaned()
 
 
-def main():
-    data_path = input('Input data path:').strip()
-    log_path = input('Input log path:').strip()
-    start = input('Input starting point (default 0):').strip()
-    end = input('Input ending point (default None):').strip()
+def main(argv=None):
+    import argparse
+    if argv is None:
+        argv = sys.argv[1:] if len(sys.argv) > 1 else []
 
-    start_idx = int(start) if start.isdigit() else 0
-    end_idx = int(end) if end.isdigit() else None
+    parser = argparse.ArgumentParser(description="Interactive data washing with slider-based review")
+    parser.add_argument("--data-path", type=str, default=None, help="Path to patient data directory")
+    parser.add_argument("--log-path", type=str, default=None, help="Path to log output directory")
+    parser.add_argument("--start", type=int, default=0, help="Starting patient index")
+    parser.add_argument("--end", type=int, default=None, help="Ending patient index (exclusive)")
+    args = parser.parse_args(argv)
 
-    controller = WashDataController(data_path, log_path, start_idx, end_idx)
+    data_path = args.data_path or input('Input data path: ').strip()
+    log_path = args.log_path or input('Input log path: ').strip()
+
+    controller = WashDataController(data_path, log_path, args.start, args.end)
 
     print('\n--- Starting Cleaning Phase ---')
     controller.run_cleaning()
