@@ -17,3 +17,17 @@ rppg2ecg.onnx
 *.png
 /train/checkpoints
 /.conda
+
+# Python cache
+__pycache__/
+
+# Model weight files (large binaries)
+model/models/onnx/physnet.onnx
+model/models/onnx/state.json
+
+# Generated reports
+sample_length_report_output.txt
+
+# IDE
+.vscode/
+.idea/
