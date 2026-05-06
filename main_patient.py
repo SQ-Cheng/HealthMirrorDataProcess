@@ -2,8 +2,9 @@
 """Unified entry point for patient info management tasks.
 
 Subcommands:
-    extract   Extract patient info from data directories (extract_patient_info.py)
-    merge     Merge two patient info CSV files (merge_patient_info.py)
+    extract    Extract patient info from data directories (extract_patient_info.py)
+    merge      Merge two patient info CSV files (merge_patient_info.py)
+    merge-lab  Merge lab test XLSX data into merged patient info CSV (merge_lab_xlsx.py)
 """
 
 import os
@@ -20,6 +21,10 @@ COMMANDS = {
     "merge": {
         "script": "merge_patient_info.py",
         "help": "Merge extracted and marked patient info CSV files",
+    },
+    "merge-lab": {
+        "script": "merge_lab_xlsx.py",
+        "help": "Merge lab test XLSX data into merged patient info CSV",
     },
 }
 
