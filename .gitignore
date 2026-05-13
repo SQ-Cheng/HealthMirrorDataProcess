@@ -17,6 +17,7 @@ rppg2ecg.onnx
 *.png
 /train/checkpoints
 /.conda
+*.xlsx
 
 # Python cache
 __pycache__/

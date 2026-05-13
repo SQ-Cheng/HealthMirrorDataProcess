@@ -135,6 +135,35 @@
     * `python train/exp3_ecg/exp3_ecg_train.py --variant full --checkpoint-tag _legacyv1`
     * `python train/exp3_rppg/exp3_rppg_train.py --variant full --checkpoint-tag _legacyv1`
 
+## 2026-05-11
+### Lactate Association Analysis (思路1)
+- **Objective**: Find relationships between lactate values and other features (BP, age, gender, HR, SpO2, RR, temperature).
+- **Data**: 814 lactate records from 245 unique patients across mirrors 1,2,4,5,6.
+- **Lactate stats**: mean=1.99±0.47 mmol/L, median=1.94, range=[1.02, 5.45].
+- **Visualizations**: 9 plots saved to `lactate_analysis/` directory.
+
+#### Key Results
+| Feature | vs Lactate Mean | p-value | Interpretation |
+|---------|----------------|---------|----------------|
+| DBP | r=0.098 | 0.025 | Very weak positive (barely significant) |
+| SBP | r=0.010 | 0.827 | No correlation |
+| Age | r=0.042 | 0.230 | No correlation |
+| Gender | M:2.01, F:1.94 | 0.152 | No significant difference |
+| Heart Rate | r=0.119 | 0.001 | Weak positive (significant) |
+| SpO2 | r=0.021 | 0.574 | No correlation |
+| Respiratory Rate | r=0.038 | 0.358 | No correlation |
+| Temperature | r=0.114 | 0.359 | No correlation (n=66) |
+
+#### Threshold Analysis (High vs Normal Lactate)
+- No threshold (1.0-3.0 mmol/L) showed significant BP differences.
+- Best (still non-significant): >=1.5 mmol/L → DBP +2.43 mmHg (p=0.118).
+
+#### Conclusion
+- **Lactate has very weak to no correlation** with all available features.
+- The strongest (still weak) signal: **lactate_mean vs HR** (r=0.119, p=0.001) and **lactate_mean vs DBP** (r=0.098, p=0.025).
+- These correlations are too weak for predictive modeling.
+- Possible reasons: (1) Lactate is a time-varying acute marker, but our data uses per-patient aggregates (mean/min/max). (2) The population may be generally healthy with normal lactate ranges. (3) Lab measurements and vital signs may not be temporally aligned.
+
 ## 2026-04-26
 ### Experiment 03-TCN
 - Baseline: Best val loss: 0.1506
@@ -160,3 +189,47 @@
 ### Experiment 03-GAN
 
 
+
+## 2026-05-12
+### Temporal Lactate Analysis (Δ-Lactate)
+- **Objective**: Use temporal alignment of individual lactate measurements with recording sessions to detect Δ-lactate ↔ Δ-vital relationships.
+
+#### Data & Matching
+- Lactate measurements parsed: 5152 from 329 unique patients in XLSX
+- Recording sessions extracted: 1403 from 441 patients (mirrors 1,2,4,5,6)
+- Temporally matched sessions: 850 (60.6%)
+  - Primary match (≤24h before): 426
+  - Secondary match (≤7d): 394
+  - Tertiary match (beyond 7d): 30
+
+#### Δ-Feature Analysis
+- Patients with ≥2 matched sessions: 209
+- Consecutive session pairs: 598
+- Mean Δ-lactate: 0.065 ± 0.881 mmol/L
+- Δ-time between sessions: mean=2.3 days, median=1.1 days
+
+#### Δ-Lactate vs Δ-Vital Correlations
+| Δ-Vital | N (pairs) | Pearson r | p-value | Spearman ρ | Interpretation |
+|---------|-----------|-----------|---------|------------|----------------|
+| SBP | 20 | -0.543 | p=0.0134 | 0.017 | Strong |
+| DBP | 20 | -0.363 | p=0.1160 | 0.083 | Not significant |
+| HR | 8 | 0.056 | p=0.8947 | 0.125 | Not significant |
+| SpO2 | 3 | — | — | — | Insufficient data |
+| RR | 5 | 0.250 | p=0.6850 | 0.250 | Not significant |
+| Temp | 13 | -0.377 | p=0.2047 | -0.121 | Not significant |
+
+#### Key Findings
+- Strongest signal: SBP (r=-0.543, p=0.0134) — Strong
+- Significant correlations (p<0.05): 1/5
+**Unusable. Influenced by probably error values**
+
+#### Comparison with Static Analysis (2026-05-11)
+- Static analysis found very weak correlations (best: lactate_mean vs HR r=0.119, lactate_mean vs DBP r=0.098)
+- The temporal Δ-approach examines **within-patient changes over time**, removing inter-subject variability
+- Temporal analysis reveals relationships not visible in static aggregate analysis, confirming the value of temporal alignment.
+
+#### Output Files
+- `lactate_analysis/delta_lactate_vs_delta_*` — scatter plots for each vital
+- `lactate_analysis/delta_correlation_heatmap.png` — full Δ-feature correlation matrix
+- `lactate_analysis/delta_subgroup_analysis.png` — Δ-lactate tertile comparison
+- `lactate_analysis/match_type_summary.png` — quality of temporal matching
