@@ -8,6 +8,9 @@ from matplotlib.widgets import Slider
 import glob
 import argparse
 import sys
+import re
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime
 import neurokit2 as nk
 from ecg.ecg_process import ECGProcess
 from utils.signal_processing import filter_signal, notch_filter, find_rppg_peaks
@@ -18,6 +21,8 @@ RAW_SIGNAL_COLUMNS = {
     'rppg': ['timestamp', 'rppg'],
     'ppg': ['timestamp', 'ppg_red', 'ppg_ir', 'ppg_green'],
 }
+
+SEGMENT_FILE_RE = re.compile(r"^(patient_\d{6})_(\d+)\.csv$")
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +142,8 @@ class AutoWasher:
                  ecg_method='reference', mirror_version='1',
                  rppg_weight_snr=0.2, rppg_weight_autocorr=0.8,
                  ecg_weight_autocorr=0.4, ecg_weight_btb_corr=0.3,
-                 ecg_weight_template=0.3, polarity='neg'):
+                 ecg_weight_template=0.3, polarity='neg',
+                 skip_existing=True, overwrite=False):
         self.data_dir = data_dir
         self.output_dir = output_dir
         self.reference_dir = reference_dir
@@ -160,6 +166,10 @@ class AutoWasher:
         self.sqi_window_sec = 3.0
         self.sqi_step_sec = 0.25
         self.polarity = polarity
+        self.overwrite = bool(overwrite)
+        self.skip_existing = bool(skip_existing) and not self.overwrite
+        self.existing_washed_patients = self._find_existing_washed_patients()
+        self.failed_patients = []
 
         if self.mirror_version not in {'1', '2'}:
             raise ValueError("mirror_version must be '1' or '2'")
@@ -199,6 +209,7 @@ class AutoWasher:
 
         # Storage for cleaned patient info
         self.cleaned_patient_info = []
+        self.existing_cleaned_patient_info = self._load_existing_cleaned_patient_info()
 
         # Load patient info lookup
         self.patient_info_lookup = {}
@@ -439,14 +450,87 @@ class AutoWasher:
             return np.nan
         return float(np.nanpercentile(seg, 25))
 
+    def _find_existing_washed_patients(self):
+        """Return patient IDs that already have at least one cleaned segment."""
+        existing = set()
+        if not os.path.isdir(self.output_dir):
+            return existing
+
+        for filename in os.listdir(self.output_dir):
+            match = SEGMENT_FILE_RE.match(filename)
+            if match:
+                existing.add(match.group(1))
+        return existing
+
+    def _load_existing_cleaned_patient_info(self):
+        cleaned_csv = os.path.join(self.output_dir, 'cleaned_patient_info.csv')
+        if not os.path.exists(cleaned_csv):
+            return pd.DataFrame()
+
+        try:
+            df = pd.read_csv(cleaned_csv)
+            print(f"Loaded existing cleaned patient info: {len(df)} rows from {cleaned_csv}")
+            return df
+        except Exception as e:
+            print(f"  [Warning] Could not load existing cleaned patient info {cleaned_csv}: {e}")
+            return pd.DataFrame()
+
+    def _write_cleaned_patient_info(self):
+        if not self.cleaned_patient_info:
+            if self.existing_cleaned_patient_info.empty:
+                return
+            print("\n[Cleaned Patient Info] No new rows to append; existing file left unchanged.")
+            return
+
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+
+        new_df = pd.DataFrame(self.cleaned_patient_info)
+        frames = []
+        if not self.overwrite and not self.existing_cleaned_patient_info.empty:
+            frames.append(self.existing_cleaned_patient_info)
+        if not new_df.empty:
+            frames.append(new_df)
+        if self.overwrite and not self.existing_cleaned_patient_info.empty:
+            frames.append(self.existing_cleaned_patient_info)
+
+        cleaned_df = pd.concat(frames, ignore_index=True, sort=False) if frames else pd.DataFrame()
+        if 'Lab_Patient_ID' in cleaned_df.columns:
+            cleaned_df = cleaned_df.drop_duplicates(subset=['Lab_Patient_ID'], keep='first')
+
+        cleaned_csv = os.path.join(self.output_dir, 'cleaned_patient_info.csv')
+        tmp_csv = f"{cleaned_csv}.tmp"
+        cleaned_df.to_csv(tmp_csv, index=False, float_format='%.4f')
+        os.replace(tmp_csv, cleaned_csv)
+        print(f"\n[Cleaned Patient Info] Saved to {cleaned_csv}")
+        print(f"  Total patients: {len(cleaned_df)}")
+
+    def _has_existing_segment_collision(self, patient_id, block_count):
+        if self.overwrite:
+            return False
+        for i in range(block_count):
+            filename = f"{patient_id}_{i + 1}.csv"
+            if os.path.exists(os.path.join(self.output_dir, filename)):
+                return True
+        return False
+
     # -----------------------------------------------------------------------
     # Main processing
     # -----------------------------------------------------------------------
 
     def process_all(self):
         """Main processing loop."""
-        patient_dirs = glob.glob(os.path.join(self.data_dir, "patient_*"))
+        patient_dirs = sorted(glob.glob(os.path.join(self.data_dir, "patient_*")))
+        if self.skip_existing:
+            print(f"Found {len(self.existing_washed_patients)} already-washed patients in {self.output_dir}")
+
+        skipped = 0
         for p_dir in patient_dirs:
+            patient_id = os.path.basename(p_dir)
+            if self.skip_existing and patient_id in self.existing_washed_patients:
+                print(f"Skipping {p_dir}: existing cleaned segment found")
+                skipped += 1
+                continue
             self.process_patient(p_dir)
         
         # Save PTT results to CSV
@@ -460,13 +544,15 @@ class AutoWasher:
                 print(f"  Mean PTT: {ptt_df['ptt'].mean():.4f}s")
                 print(f"  PTT Range: {ptt_df['ptt'].min():.4f}s - {ptt_df['ptt'].max():.4f}s")
         
-        # Save cleaned patient info to CSV
-        if self.cleaned_patient_info:
-            cleaned_csv = os.path.join(self.output_dir, 'cleaned_patient_info.csv')
-            cleaned_df = pd.DataFrame(self.cleaned_patient_info)
-            cleaned_df.to_csv(cleaned_csv, index=False, float_format='%.4f')
-            print(f"\n[Cleaned Patient Info] Saved to {cleaned_csv}")
-            print(f"  Total patients: {len(cleaned_df)}")
+        self._write_cleaned_patient_info()
+
+        print(f"\n[Summary] Processed raw patient dirs: {len(patient_dirs)}")
+        if self.skip_existing:
+            print(f"  Skipped existing: {skipped}")
+        if self.failed_patients:
+            print(f"  Failed patients: {len(self.failed_patients)}")
+            for patient_id in self.failed_patients:
+                print(f"    - {patient_id}")
 
     def process_patient(self, patient_dir):
         """Process a single patient directory."""
@@ -482,6 +568,10 @@ class AutoWasher:
             ecg_signal = notch_filter(ecg_signal, fs=self.fs, freq=50.0, quality=30.0)
             rppg_signal = df['RPPG'].to_numpy()
             rppg_signal = filter_signal(rppg_signal, fs=self.fs, lowcut=0.5, highcut=5.0, order=4)
+            peaks = self._detect_peaks(ecg_signal)
+            if len(peaks) < 3:
+                print(f"Skipping {patient_dir}: Fewer than 3 ECG peaks detected")
+                return
             
             if self.sqi_method == 'fused':
                 # ---- Fused SQI pipeline ----
@@ -627,9 +717,9 @@ class AutoWasher:
                     save_blocks = True
 
                 if save_blocks and blocks:
-                    self._save_blocks(df, blocks, patient_dir)
-                    self._save_patient_info(patient_dir, segments_info, blocks,
-                                           ptt=None, ptt_std=None, ptt_length=0)
+                    if self._save_blocks(df, blocks, patient_dir):
+                        self._save_patient_info(patient_dir, segments_info, blocks,
+                                               ptt=None, ptt_std=None, ptt_length=0)
                 return
 
             # ---- Reference SQI pipeline ----
@@ -777,11 +867,12 @@ class AutoWasher:
 
             # Save blocks and patient info
             if save_blocks and blocks:
-                self._save_blocks(df, blocks, patient_dir)
-                self._save_patient_info(patient_dir, segments_info, blocks, ptt_mean, ptt_std, ptt_length, hr_mean, hr_std, sdnn, rmssd)
+                if self._save_blocks(df, blocks, patient_dir):
+                    self._save_patient_info(patient_dir, segments_info, blocks, ptt_mean, ptt_std, ptt_length, hr_mean, hr_std, sdnn, rmssd)
 
         except Exception as e:
             print(f"Error processing {patient_dir}: {e}")
+            self.failed_patients.append(os.path.basename(patient_dir))
             import traceback
             traceback.print_exc()
 
@@ -1413,6 +1504,10 @@ class AutoWasher:
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
+        if self._has_existing_segment_collision(patient_id, len(blocks)):
+            print(f"  [Skip] Existing segment file found for {patient_id}; preserving existing cleaned data.")
+            return False
+
         for i, block in enumerate(blocks):
             start_idx = block[0]['start']
             end_idx = block[-1]['end']
@@ -1428,9 +1523,102 @@ class AutoWasher:
 
             filename = f"{patient_id}_{i+1}.csv"
             filepath = os.path.join(self.output_dir, filename)
+            if os.path.exists(filepath) and not self.overwrite:
+                print(f"  [Skip] Existing file appeared during save: {filepath}")
+                return False
 
             block_df.to_csv(filepath, index=False)
             print(f"Saved {filepath}")
+
+        self.existing_washed_patients.add(patient_id)
+        return True
+
+
+class Tee:
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for stream in self.streams:
+            stream.write(data)
+            stream.flush()
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
+
+
+def mirror_version_for_id(mirror_id):
+    return '1' if int(mirror_id) in {1, 2} else '2'
+
+
+def build_washer_from_args(args, data_dir=None, output_dir=None, patient_info_csv=None, mirror_version=None):
+    return AutoWasher(
+        data_dir=data_dir or args.data_dir,
+        output_dir=output_dir or args.output_dir,
+        reference_dir=args.reference_dir,
+        patient_info_csv=patient_info_csv if patient_info_csv is not None else args.patient_info_csv,
+        threshold={'ECG': args.threshold_ecg, 'rPPG': args.threshold_rppg},
+        visualize=args.visualize,
+        sqi_method=args.sqi_method,
+        ecg_method=args.ecg_method,
+        mirror_version=mirror_version or args.mirror_version,
+        polarity=args.polarity,
+        rppg_weight_snr=args.rppg_weight_snr,
+        rppg_weight_autocorr=args.rppg_weight_autocorr,
+        ecg_weight_autocorr=args.ecg_weight_autocorr,
+        ecg_weight_btb_corr=args.ecg_weight_btb_corr,
+        ecg_weight_template=args.ecg_weight_template,
+        skip_existing=args.skip_existing,
+        overwrite=args.overwrite,
+    )
+
+
+def run_washer_with_log(washer, log_path=None):
+    if log_path is None:
+        washer.process_all()
+        return
+
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, 'a', encoding='utf-8') as log_file:
+        tee_out = Tee(sys.stdout, log_file)
+        tee_err = Tee(sys.stderr, log_file)
+        with redirect_stdout(tee_out), redirect_stderr(tee_err):
+            print(f"[Run started] {datetime.now().isoformat(timespec='seconds')}")
+            washer.process_all()
+            print(f"[Run finished] {datetime.now().isoformat(timespec='seconds')}")
+
+
+def run_all_mirrors(args):
+    dataset_root = args.dataset_root
+    for mirror_id in args.mirrors:
+        data_dir = os.path.join(dataset_root, f"mirror{mirror_id}_data")
+        output_dir = os.path.join(dataset_root, f"mirror{mirror_id}_auto_cleaned_sqi")
+        patient_info_csv = f"./merged_patient_info_{mirror_id}.csv"
+        if not os.path.exists(patient_info_csv):
+            patient_info_csv = None
+        if not os.path.isdir(data_dir):
+            print(f"Skipping mirror{mirror_id}: missing data dir {data_dir}")
+            continue
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = os.path.join(output_dir, f"auto_wash_{timestamp}.log")
+        print(f"\n=== mirror{mirror_id}: {data_dir} -> {output_dir} ===")
+        os.makedirs(output_dir, exist_ok=True)
+        with open(log_path, 'a', encoding='utf-8') as log_file:
+            tee_out = Tee(sys.stdout, log_file)
+            tee_err = Tee(sys.stderr, log_file)
+            with redirect_stdout(tee_out), redirect_stderr(tee_err):
+                print(f"[Run started] {datetime.now().isoformat(timespec='seconds')}")
+                washer = build_washer_from_args(
+                    args,
+                    data_dir=data_dir,
+                    output_dir=output_dir,
+                    patient_info_csv=patient_info_csv,
+                    mirror_version=mirror_version_for_id(mirror_id),
+                )
+                washer.process_all()
+                print(f"[Run finished] {datetime.now().isoformat(timespec='seconds')}")
 
 if __name__ == "__main__":
     mirror_id = 5
@@ -1451,25 +1639,21 @@ if __name__ == "__main__":
     parser.add_argument("--ecg_weight_autocorr", type=float, default=0.4, help="[fused SQI] Weight of autocorr in fused ECG SQI")
     parser.add_argument("--ecg_weight_btb_corr", type=float, default=0.3, help="[fused SQI] Weight of beat-to-beat corr in fused ECG SQI")
     parser.add_argument("--ecg_weight_template", type=float, default=0.3, help="[fused SQI] Weight of template matching in fused ECG SQI")
+    parser.add_argument("--skip_existing", action=argparse.BooleanOptionalAction, default=True, help="Skip patients that already have cleaned segment files")
+    parser.add_argument("--overwrite", action="store_true", help="Allow regenerating existing cleaned outputs")
+    parser.add_argument("--dataset_root", type=str, default="/root/shared/HealthMirrorDataset", help="Root containing mirror*_data directories")
+    parser.add_argument("--all_mirrors", action="store_true", help="Process mirrors 1, 2, 4, 5, 6, and 7 under dataset_root")
+    parser.add_argument("--mirrors", type=int, nargs="+", default=[1, 2, 4, 5, 6, 7], help="Mirror IDs for --all_mirrors")
+    parser.add_argument("--log_file", type=str, default=None, help="Optional log path for a single-mirror run")
 
     args = parser.parse_args()
 
-    washer = AutoWasher(
-        data_dir=args.data_dir,
-        output_dir=args.output_dir,
-        reference_dir=args.reference_dir,
-        patient_info_csv=args.patient_info_csv,
-        threshold={'ECG': args.threshold_ecg, 'rPPG': args.threshold_rppg},
-        visualize=args.visualize,
-        sqi_method=args.sqi_method,
-        ecg_method=args.ecg_method,
-        mirror_version=args.mirror_version,
-        polarity=args.polarity,
-        rppg_weight_snr=args.rppg_weight_snr,
-        rppg_weight_autocorr=args.rppg_weight_autocorr,
-        ecg_weight_autocorr=args.ecg_weight_autocorr,
-        ecg_weight_btb_corr=args.ecg_weight_btb_corr,
-        ecg_weight_template=args.ecg_weight_template,
-    )
+    if args.overwrite:
+        args.skip_existing = False
 
-    washer.process_all()
+    if args.all_mirrors:
+        args.sqi_method = "fused"
+        run_all_mirrors(args)
+    else:
+        washer = build_washer_from_args(args)
+        run_washer_with_log(washer, log_path=args.log_file)
