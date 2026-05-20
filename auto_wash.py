@@ -148,7 +148,7 @@ class AutoWasher:
         self.output_dir = output_dir
         self.reference_dir = reference_dir
         self.patient_info_csv = patient_info_csv
-        self.threshold = threshold or {'rPPG': 0.6, 'ECG': 0.5}
+        self.threshold = threshold or {'rPPG': 0.45, 'ECG': 0.38}
         self.visualize = visualize
         self.sqi_method = sqi_method  # 'reference' or 'fused'
         self.ecg_method = ecg_method  # for 'reference' sqi_method: 'reference', 'neurokit', 'mixture'
@@ -1628,10 +1628,10 @@ if __name__ == "__main__":
     parser.add_argument("--reference_dir", type=str, default="./reference_signals", help="Directory containing reference signals")
     parser.add_argument("--patient_info_csv", type=str, default=f"./merged_patient_info_{mirror_id}.csv", help="CSV file with patient info including blood pressure")
     parser.add_argument("--mirror_version", type=str, default='1', choices=['1', '2'], help="Mirror data version: 1 for mirror1/2, 2 for mirror4/5/6")
-    parser.add_argument("--threshold_ecg", type=float, default=0.6, help="ECG SQI threshold")
-    parser.add_argument("--threshold_rppg", type=float, default=0.75, help="rPPG SQI threshold")
+    parser.add_argument("--threshold_ecg", type=float, default=0.38, help="ECG SQI threshold")
+    parser.add_argument("--threshold_rppg", type=float, default=0.45, help="rPPG SQI threshold")
     parser.add_argument("--visualize", action="store_true", help="Enable visualization and manual review")
-    parser.add_argument("--sqi_method", type=str, default="reference", choices=["reference", "fused"], help="SQI method: reference (NK/template-based) or fused (multi-metric)")
+    parser.add_argument("--sqi_method", type=str, default="fused", choices=["reference", "fused"], help="SQI method: reference (NK/template-based) or fused (multi-metric)")
     parser.add_argument("--ecg_method", type=str, default="reference", choices=["reference", "neurokit", "mixture"], help="[reference SQI only] Method for ECG quality assessment")
     parser.add_argument("--polarity", type=str, default="neg", choices=["neg", "pos"], help="[fused SQI only] ECG signal polarity")
     parser.add_argument("--rppg_weight_snr", type=float, default=0.2, help="[fused SQI] Weight of SNR in fused rPPG SQI")
@@ -1652,7 +1652,6 @@ if __name__ == "__main__":
         args.skip_existing = False
 
     if args.all_mirrors:
-        args.sqi_method = "fused"
         run_all_mirrors(args)
     else:
         washer = build_washer_from_args(args)

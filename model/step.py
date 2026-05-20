@@ -14,7 +14,26 @@ class Step(ModelBase):
         super().__init__()
         self.model_path = model_path
         self.state_path = state_path
-        self.model = ort.InferenceSession(model_path)
+        if hasattr(ort, "preload_dlls"):
+            ort.preload_dlls(directory="")
+        providers = ort.get_available_providers()
+        if "CUDAExecutionProvider" not in providers:
+            raise RuntimeError(
+                "CUDAExecutionProvider is not available. "
+                "Please install/activate onnxruntime-gpu for GPU inference."
+            )
+        sess_options = ort.SessionOptions()
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+        self.model = ort.InferenceSession(
+            model_path,
+            sess_options=sess_options,
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+        )
+        if "CUDAExecutionProvider" not in self.model.get_providers():
+            raise RuntimeError(
+                "CUDAExecutionProvider failed to initialize. "
+                "Please ensure CUDA 12.x and cuDNN 9.x libraries are loadable."
+            )
         with open(state_path, "rb") as f:
             self.state = pickle.load(f)
         self.dt = np.array(dt).astype("float16")

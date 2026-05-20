@@ -103,13 +103,18 @@ class LocalInference:
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     path = input("Input inference path:").strip()
+    mirror_version = input("Input mirror version (1 or 2, default 1):").strip() or "1"
+    if mirror_version not in {"1", "2"}:
+        print(f"[Inference] Error: {mirror_version} is not a valid mirror version.")
+        return
+    global_vars.mirror_version = mirror_version
     starting_point = input("Input starting point (default no limit):").strip()
     ending_point = input("Input ending point (default no limit):").strip()
     
     start = int(starting_point) if starting_point.isdigit() else None
     end = int(ending_point) if ending_point.isdigit() else None
 
-    local_inference = LocalInference(data_dir=path)
+    local_inference = LocalInference(data_dir=path, mirror_version=mirror_version)
     local_inference(starting_point=start, ending_point=end)
 
 
