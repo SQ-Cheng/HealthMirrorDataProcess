@@ -35,7 +35,7 @@ def get_curriculum_mask_ratio(epoch, total_epochs, min_ratio=0.15, max_ratio=0.6
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Exp3 ECG TCN Curriculum Learning: mask_ratio 0.15→0.60 across 300 epochs"
+        description="Exp3 ECG TCN Curriculum Learning: mask_ratio 0.15→0.60 across epochs"
     )
     parser.add_argument("--variant", choices=["light", "full"], default="full")
     parser.add_argument(
@@ -47,9 +47,9 @@ def parse_args():
         help="Use mirror*_auto_cleaned_sqi (sqi) or mirror*_auto_cleaned (cleaned)",
     )
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--epochs", type=int, default=300)
-    parser.add_argument("--mask-min", type=float, default=0.15)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--epochs", type=int, default=600)
+    parser.add_argument("--mask-min", type=float, default=0.1)
     parser.add_argument("--mask-max", type=float, default=0.60)
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
@@ -57,6 +57,8 @@ def parse_args():
     parser.add_argument("--step-sec", type=float, default=1.0)
     parser.add_argument("--target-length", type=int, default=256)
     parser.add_argument("--context-weight", type=float, default=0.20)
+    parser.add_argument("--best-tolerance", type=float, default=0.008,
+                        help="Save checkpoint as long as val_loss <= best_val + tolerance (curriculum-friendly).")
     parser.add_argument("--max-windows-per-patient", type=int, default=None)
     parser.add_argument("--max-patients", type=int, default=None)
     parser.add_argument("--max-train-batches", type=int, default=None)
@@ -198,8 +200,9 @@ def main():
     best_val = float("inf")
     history_rows = []
 
-    print(f"\n{'Epoch':>5}  {'Mask%':>6}  {'TrLoss':>8}  {'VaLoss':>8}  {'TrMAE':>8}  {'VaMAE':>8}  {'Time':>6}")
-    print("-" * 64)
+    print(f"[Curriculum] Checkpoint tolerance: {args.best_tolerance:.4f}")
+    print(f"\n{'Epoch':>5}  {'Mask%':>6}  {'TrLoss':>8}  {'VaLoss':>8}  {'TrMAE':>8}  {'VaMAE':>8}  {'Time':>6}  Note")
+    print("-" * 78)
 
     for epoch in range(start_epoch, args.epochs + 1):
         mask_ratio = get_curriculum_mask_ratio(
@@ -225,9 +228,18 @@ def main():
             )
 
         elapsed = time.time() - t0
-        marker = ""
+
+        # Curriculum-aware checkpointing:
+        # Save if val_loss is an improvement OR within tolerance of best.
+        should_save = va["loss"] < best_val or va["loss"] <= best_val + args.best_tolerance
+        note = ""
         if va["loss"] < best_val:
             best_val = va["loss"]
+            note = "best"
+        elif should_save:
+            note = "tol"
+
+        if should_save:
             torch.save(
                 {
                     "signal_type": "ecg",
@@ -236,16 +248,17 @@ def main():
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "val_loss": best_val,
+                    "epoch_loss": va["loss"],
                     "mask_ratio": mask_ratio,
                     "mask_min": args.mask_min,
                     "mask_max": args.mask_max,
+                    "best_tolerance": args.best_tolerance,
                     "target_length": args.target_length,
                     "model_family": "single_recon_tcn_v1",
                     "curriculum": True,
                 },
                 os.path.join(SAVE_DIR, f"{ckpt_prefix}_best.pt"),
             )
-            marker = " *"
 
         history_rows.append({
             "epoch": epoch,
@@ -259,7 +272,7 @@ def main():
 
         print(
             f"{epoch:5d}  {mask_ratio:5.3f}  {tr['loss']:8.4f}  {va['loss']:8.4f}  "
-            f"{tr['mae']:8.4f}  {va['mae']:8.4f}  {elapsed:5.1f}s{marker}"
+            f"{tr['mae']:8.4f}  {va['mae']:8.4f}  {elapsed:5.1f}s  {note:>4s}"
         )
 
     torch.save(
