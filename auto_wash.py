@@ -1621,10 +1621,11 @@ def run_all_mirrors(args):
                 print(f"[Run finished] {datetime.now().isoformat(timespec='seconds')}")
 
 if __name__ == "__main__":
-    mirror_id = 5
+    mirror_id = 7
     parser = argparse.ArgumentParser(description="Auto Wash Patient Data (reference or fused SQI)")
-    parser.add_argument("--data_dir", type=str, default=f"./mirror{mirror_id}_data", help="Directory containing patient folders")
-    parser.add_argument("--output_dir", type=str, default=f"./mirror{mirror_id}_auto_cleaned", help="Directory to save cleaned segments")
+    parser.add_argument("--mirror_id", type=int, default=-1, help="Mirror ID (1, 2, 4, 5, 6, or 7)")
+    parser.add_argument("--data_dir", type=str, default=f"/root/shared/HealthMirrorDataset/mirror{mirror_id}_data", help="Directory containing patient folders")
+    parser.add_argument("--output_dir", type=str, default=f"/root/shared/HealthMirrorDataset/mirror{mirror_id}_auto_cleaned_sqi", help="Directory to save cleaned segments")
     parser.add_argument("--reference_dir", type=str, default="./reference_signals", help="Directory containing reference signals")
     parser.add_argument("--patient_info_csv", type=str, default=f"./merged_patient_info_{mirror_id}.csv", help="CSV file with patient info including blood pressure")
     parser.add_argument("--mirror_version", type=str, default='1', choices=['1', '2'], help="Mirror data version: 1 for mirror1/2, 2 for mirror4/5/6")
