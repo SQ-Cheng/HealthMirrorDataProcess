@@ -7,6 +7,7 @@ import preprocess.video2frame as v2f
 import threading
 import time
 import pandas as pd
+import numpy as np
 import os
 import signal
 from tqdm import tqdm
@@ -17,11 +18,12 @@ def signal_handler(sig, frame):
     global_vars.user_interrupt = True
 
 class LocalInference:
-    def __init__(self, model_choice="Step", mirror_version="1", data_dir=None):
+    def __init__(self, model_choice="Step", mirror_version="1", data_dir=None, skip_existing=True):
         self.model_choice = model_choice
         self.mirror_version = mirror_version
         self.data_dir = data_dir
-        self.model = self._init_model()
+        self.skip_existing = skip_existing
+        self.model = None
         self.preprocess_queue = Queue()
         self.result_queue = Queue()
         self.video2frame = None
@@ -34,6 +36,28 @@ class LocalInference:
                 dt=1 / 30
             )
         return model
+
+    def _ensure_model(self):
+        if self.model is None:
+            self.model = self._init_model()
+
+    def _has_existing_results(self, path=None):
+        log_path = os.path.join(path, "rppg_log.csv")
+        if not os.path.isfile(log_path):
+            return False
+        try:
+            df = pd.read_csv(log_path)
+        except Exception as e:
+            print(f"[Inference] Warning: Cannot read existing result {log_path}: {e}")
+            return False
+        required_columns = {"timestamp", "rppg"}
+        if df.empty or not required_columns.issubset(df.columns):
+            return False
+
+        timestamp = pd.to_numeric(df["timestamp"], errors="coerce")
+        rppg = pd.to_numeric(df["rppg"], errors="coerce")
+        valid_rows = np.isfinite(timestamp) & np.isfinite(rppg)
+        return bool(valid_rows.all())
 
     def _log_results(self, path=None):
         timestamps = []
@@ -57,6 +81,7 @@ class LocalInference:
 
         inference_vars.inference_completed = False
         inference_vars.preprocess_completed = False
+        self._ensure_model()
 
         self.video2frame = v2f.Video2Frame(path)
 
@@ -95,8 +120,12 @@ class LocalInference:
                 dirs.append(dir)
 
         for dir in tqdm(dirs):
+            path = os.path.join(self.data_dir, dir)
+            if self.skip_existing and self._has_existing_results(path):
+                print(f"[Inference] Skipping already inferenced directory: {dir}")
+                continue
             print(f"[Inference] Processing directory: {dir}")
-            self._inference(path=os.path.join(self.data_dir, dir))
+            self._inference(path=path)
             if global_vars.user_interrupt:
                 break
 
@@ -108,13 +137,21 @@ def main():
         print(f"[Inference] Error: {mirror_version} is not a valid mirror version.")
         return
     global_vars.mirror_version = mirror_version
+    skip_existing_input = input("Skip already inferenced folders? (Y/n, default y):").strip().lower()
+    if skip_existing_input in {"", "y", "yes", "1", "true"}:
+        skip_existing = True
+    elif skip_existing_input in {"n", "no", "0", "false"}:
+        skip_existing = False
+    else:
+        print(f"[Inference] Error: {skip_existing_input} is not a valid skip option.")
+        return
     starting_point = input("Input starting point (default no limit):").strip()
     ending_point = input("Input ending point (default no limit):").strip()
     
     start = int(starting_point) if starting_point.isdigit() else None
     end = int(ending_point) if ending_point.isdigit() else None
 
-    local_inference = LocalInference(data_dir=path, mirror_version=mirror_version)
+    local_inference = LocalInference(data_dir=path, mirror_version=mirror_version, skip_existing=skip_existing)
     local_inference(starting_point=start, ending_point=end)
 
 
