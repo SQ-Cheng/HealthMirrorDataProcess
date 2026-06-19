@@ -1,235 +1,176 @@
-# Notes
+# 笔记
 
-## Overall
-- Data quality
-  * Signal polarity: negative in mirrors 1, 2, 4, 5, 6.
-  * Mirror1 final update: 20251009, patient_id > 315.
-  * TODO: verify whether all-zero windows are correctly excluded during auto wash.
+## 总体情况
+- 数据质量
+  * 信号极性：mirror 1, 2, 4, 5, 6 均为负向。
+  * Mirror1 最后更新：20251009，patient_id > 315。
+  * TODO：确认 auto wash 是否正确排除了全零窗口。
 
-## Experiments Before 2026-04 (Compact)
+## 2026-04 之前的实验（精简版）
 
-### Experiment 01: ECG+rPPG to BP Estimation
-- Introduction
-  * Goal: end-to-end blood pressure estimation from paired ECG/rPPG windows with patient-level split.
-- Latest structure information
-  * CNN + sequence modeling pipeline.
-  * Latest tracked variant: Experiment 01T uses dual-branch CNN encoder (ECG/rPPG) + Transformer encoder + regression head (SBP/DBP).
-- Latest result
-  * Experiment 01 series remained validation-limited with frequent overfitting.
-  * Experiment 01T status: implementation complete, local validation and CLI checks complete, full benchmark run still pending.
+### 实验 01：ECG+rPPG → 血压估计
+- 目标：从配对 ECG/rPPG 窗口端到端估计血压，按患者划分训练/验证。
+- 结构：CNN + 序列建模。最新变体 01T 采用双分支 CNN（ECG/rPPG）+ Transformer + 回归头（SBP/DBP）。
+- 结果：01 系列验证受限、频繁过拟合。01T 实现完成，但完整 benchmark 还没跑。
 
-### Experiment 02: Cross-modal ECG<->rPPG Translation (GAN)
-- Introduction
-  * Goal: unsupervised bidirectional signal translation between ECG and rPPG.
-- Latest structure information
-  * Two generators (ECG->rPPG, rPPG->ECG) + two patch discriminators.
-  * Generator: 1D encoder-residual-decoder; discriminator: 1D patch CNN.
-  * Training loss: adversarial + paired L1 + cycle L1 + identity L1.
-- Latest result
-  * Refined pipeline runs successfully after removing BP-label filtering from the dataloader.
-  * Quick smoke baseline (`light`, capped data): Val_pair=1.5329, Val_cycle=1.1251, combined=2.6580.
+### 实验 02：ECG ↔ rPPG 跨模态互转（GAN）
+- 目标：无监督双向信号转换。
+- 结构：两个生成器（ECG→rPPG，rPPG→ECG）+ 两个 Patch 判别器。损失 = 对抗 + 配对 L1 + cycle L1 + identity L1。
+- 结果：去掉 BP 标签过滤后跑通。快速基线（light，截断数据）：Val_pair=1.53，Val_cycle=1.13，combined=2.66。
 
-### Experiment 03: Masked Reconstruction (Joint ECG+rPPG)
-- Introduction
-  * Old target (rPPG->HR+SpO2) was deprecated due to label reliability and task mismatch.
-  * Reframed as self-supervised masked reconstruction of joint ECG+rPPG.
-- Latest structure information
-  * Mask-aware reconstruction model with quality-weighted training.
-  * Final pre-2026-04 direction selected from comparison: ECG-focus moderate emphasis.
-  * Selected setting: `ecg_point_weight=1.25`, `grad_loss_weight=0.1`, `ecg_fft_loss_weight=0.02`.
-- Latest result
-  * Best balance from evaluated approaches: weighted_loss=0.107069, ECG_MAE=0.460197, rPPG_MAE=0.240319.
-  * Combined ECG+rPPG MAE sum=0.700517 (best among compared pre-2026-04 approaches).
+### 实验 03：联合 Masked Reconstruction（ECG+rPPG）
+- 背景：旧目标（rPPG→HR+SpO2）因标签不可靠和任务不匹配被废弃。改为自监督联合掩码重建。
+- 配置：mask-aware 重建模型 + 质量加权训练，ECG 侧重中度强调（ecg_point_weight=1.25，grad_loss_weight=0.1，ecg_fft_loss_weight=0.02）。
+- 最佳结果：weighted_loss=0.107，ECG_MAE=0.460，rPPG_MAE=0.240。联合 MAE=0.701。
 
-### Experiment 03-X: Candidate Structure Screening
-- Introduction
-  * Goal: screen high-potential architectures for Exp3 improvement.
-- Latest structure information
-  * Evaluated: `unet_gated`, `dual_head`, `tcn_ssm`, `cross_attention`.
-- Latest result
-  * Best model: `unet_gated` with WeightedLoss=0.169, ECG_MAE=0.431, rPPG_MAE=0.229.
+### 实验 03-X：候选架构筛选
+- 评估了 unet_gated、dual_head、tcn_ssm、cross_attention。
+- 最佳：unet_gated（WeightedLoss=0.169，ECG_MAE=0.431，rPPG_MAE=0.229）。
 
-### Experiment 03-1: ECG SQI Method Comparison
-- Introduction
-  * Goal: compare ECG signal quality indices and validate quality proxy choice.
-- Latest structure information
-  * Compared frequency-based SNR and non-frequency SQI features (template correlation, autocorrelation, morphology stability, artifact penalty, composite score).
-- Latest result
-  * Legacy frequency SNR showed weak relation to ECG quality cues.
-  * Composite non-frequency SQI showed strong internal consistency and was preferred for Exp3 weighting.
+### 实验 03-1：ECG 质量指标对比
+- 比较了频域 SNR 和时域 SQI（模板相关、自相关、形态稳定性、伪差惩罚、综合评分）。
+- 结论：频域 SNR 与 ECG 质量关系弱；综合时域 SQI 内部一致性更好，被选作 Exp3 权重依据。
 
-### Experiment 04: Autoencoder-based Artifact/SQI Direction
-- Introduction
-  * Goal: replace fixed-rule quality filtering with reconstruction-based quality modeling.
-- Latest structure information
-  * Exp4: reconstruction error as quality signal with SNR-linked analysis.
-  * Exp4-X: direct SQI regression from full data, with three models (`exp4-1`, `exp4-2`, `exp4-3`).
-- Latest result
-  * Full-data Exp4-X benchmark winner: `exp4-2`.
-  * `exp4-2`: Val MAE=0.065481, Pearson=0.943353, Corr(Pred,SNR)=0.927810.
+### 实验 04：自编码器做质量/SQI
+- 目标：用重建误差替代固定规则做质量建模。
+- Exp4：重建误差作为质量信号。Exp4-X：三个模型直接回归 SQI。
+- 最佳：exp4-2（Val MAE=0.065，Pearson=0.943，Corr(Pred,SNR)=0.928）。
 
-## Experiments On/After 2026-04 (Key Details)
+---
+
+## 2026-04 及之后的实验
 
 ## 2026-04-23
-### Experiment 03 Split Update (ECG-only / rPPG-only)
-- Target
-  * Split Exp3 into two independent single-signal tasks:
-    * `exp3_ecg`: ECG-only masked reconstruction.
-    * `exp3_rppg`: rPPG-only masked reconstruction.
-  * Keep `target_length=256` and use one contiguous masked window per segment.
+### Exp3 拆分：ECG-only / rPPG-only
+- 将 Exp3 拆成两个独立单信号任务：
+  * exp3_ecg：仅 ECG 掩码重建
+  * exp3_rppg：仅 rPPG 掩码重建
+- 参数：target_length=256，每段一个连续掩码窗口。
 
-- Implementation
-  * Shared core modules:
-    * `train/exp3_common/single_recon_dataloader.py`
-    * `train/exp3_common/single_recon_model.py`
-    * `train/exp3_common/single_recon_train.py`
-    * `train/exp3_common/single_recon_visualize.py`
-  * Task-specific entrypoints:
-    * `train/exp3_ecg/*`
-    * `train/exp3_rppg/*`
+- 实现：
+  * 共享模块：`exp3_common/single_recon_dataloader.py`、`single_recon_model.py`、`single_recon_train.py`、`single_recon_visualize.py`
+  * 入口：`exp3_ecg/*`、`exp3_rppg/*`
 
-- Model and training design
-  * Baseline encoder-decoder reconstruction (pre-U-Net version) is now the active default after rollback.
-  * Mask-aware input: concatenated masked signal and visible mask.
-  * Baseline weighted masked SmoothL1 loss is used in training.
-  * Quality weighting:
-    * ECG uses ranked autocorrelation SQI.
-    * rPPG uses ranked SNR SQI.
+- 训练设计：
+  * 回滚后的基线 Encoder-Decoder 架构（非 U-Net 版本）
+  * 输入：掩码信号 + 可见掩码拼接
+  * 损失：质量加权 SmoothL1（掩码区域 + 可见区域 context loss，权重 0.2）
+  * 质量权重：ECG 用自相关 SQI 排序，rPPG 用 SNR 排序
 
-- Outputs
-  * Checkpoints:
-    * `train/checkpoints/exp3_ecg_<variant>_best.pt`
-    * `train/checkpoints/exp3_ecg_<variant>_final.pt`
-    * `train/checkpoints/exp3_rppg_<variant>_best.pt`
-    * `train/checkpoints/exp3_rppg_<variant>_final.pt`
-  * Plots:
-    * `train/exp3_ecg/plots/*`
-    * `train/exp3_rppg/plots/*`
+- 输出物：
+  * 检查点：`checkpoints/exp3_ecg_<variant>_{best,final}.pt`、`exp3_rppg_<variant>_{best,final}.pt`
+  * 图片：`exp3_ecg/plots/*`、`exp3_rppg/plots/*`
 
-### Experiment 03 Rollback Update (Baseline Recovery)
-- Background
-  * Re-training after the U-Net/extra-loss modification showed worse quality than the prior baseline.
-
-- Rollback actions
-  * Restored `train/exp3_common/single_recon_model.py` to the original single-recon baseline architecture:
-    * `light`: stride-2 encoder + residual body + transposed-conv decoder.
-    * `full`: `stem` + 3 residual blocks + transposed-conv decoder.
-  * Restored `train/exp3_common/single_recon_train.py` loss path to baseline weighted masked SmoothL1 (removed gradient/FFT terms from default training flow).
-
-- Additional helpful improvements
-  * Improved checkpoint robustness in `train/exp3_common/single_recon_visualize.py`:
-    * Visualization now tries candidate checkpoints (`best`, then `final`) and loads the first one compatible with current model keys.
-    * This avoids breakage when checkpoint files come from mixed architecture generations.
-  * Added `model_family="single_recon_v1"` metadata to newly saved checkpoints for clearer future compatibility tracking.
-
-- Verification (local smoke)
-  * Visualization smoke (full variant) completed successfully and saved plot:
-    * `train/exp3_ecg/plots/exp3_ecg_full_masked_recon.png`
-    * Masked MAE: `0.140958`
-  * Training smoke (full variant, 1 epoch capped subset) completed successfully:
-    * Best val loss: `0.2573`
-    * History: `train/exp3_ecg/plots/exp3_ecg_full_rollback_smoke_history.csv`
-
-- Recommended usage after rollback
-  * Use explicit tags for new rollback runs to avoid mixed-generation checkpoint confusion:
-    * `python train/exp3_ecg/exp3_ecg_train.py --variant full --checkpoint-tag _legacyv1`
-    * `python train/exp3_rppg/exp3_rppg_train.py --variant full --checkpoint-tag _legacyv1`
-
-## 2026-05-11
-### Lactate Association Analysis (思路1)
-- **Objective**: Find relationships between lactate values and other features (BP, age, gender, HR, SpO2, RR, temperature).
-- **Data**: 814 lactate records from 245 unique patients across mirrors 1,2,4,5,6.
-- **Lactate stats**: mean=1.99±0.47 mmol/L, median=1.94, range=[1.02, 5.45].
-- **Visualizations**: 9 plots saved to `lactate_analysis/` directory.
-
-#### Key Results
-| Feature | vs Lactate Mean | p-value | Interpretation |
-|---------|----------------|---------|----------------|
-| DBP | r=0.098 | 0.025 | Very weak positive (barely significant) |
-| SBP | r=0.010 | 0.827 | No correlation |
-| Age | r=0.042 | 0.230 | No correlation |
-| Gender | M:2.01, F:1.94 | 0.152 | No significant difference |
-| Heart Rate | r=0.119 | 0.001 | Weak positive (significant) |
-| SpO2 | r=0.021 | 0.574 | No correlation |
-| Respiratory Rate | r=0.038 | 0.358 | No correlation |
-| Temperature | r=0.114 | 0.359 | No correlation (n=66) |
-
-#### Threshold Analysis (High vs Normal Lactate)
-- No threshold (1.0-3.0 mmol/L) showed significant BP differences.
-- Best (still non-significant): >=1.5 mmol/L → DBP +2.43 mmHg (p=0.118).
-
-#### Conclusion
-- **Lactate has very weak to no correlation** with all available features.
-- The strongest (still weak) signal: **lactate_mean vs HR** (r=0.119, p=0.001) and **lactate_mean vs DBP** (r=0.098, p=0.025).
-- These correlations are too weak for predictive modeling.
-- Possible reasons: (1) Lactate is a time-varying acute marker, but our data uses per-patient aggregates (mean/min/max). (2) The population may be generally healthy with normal lactate ranges. (3) Lab measurements and vital signs may not be temporally aligned.
+### Exp3 回滚（恢复基线）
+- 背景：U-Net/额外 loss 改版训练后质量不如原基线。
+- 操作：
+  * 恢复 `single_recon_model.py` 为原 Encoder-Decoder 架构（light: stride-2 + residual body + transpose conv；full: stem + 3 residual block + transpose conv）
+  * 恢复 `single_recon_train.py` 为纯 SmoothL1（去掉梯度/FFT 项）
+- 改进：
+  * 可视化脚本支持同时尝试 best 和 final 检查点，避免架构不匹配崩溃
+  * 新增 `model_family="single_recon_v1"` 元数据
+- 烟雾测试：full 变体可视化 MAE=0.141，训练 1 epoch val_loss=0.257。
+- 建议：回滚运行加 `--checkpoint-tag _legacyv1` 避免混淆。
 
 ## 2026-04-26
-### Experiment 03-TCN
-- Baseline: Best val loss: 0.1506
-- Ablation 01
-  * Delete `silu` in `dialatedresblock`
-  Best val loss: 0.1533
-- Ablation 02
-  * Change `nn.Dropout` to `nn.Dropout1d`
-  Best val loss: 0.1536
- - Ablation 03 *wating to be fixed: larger receptive field*
-  * targht-length 512, mask-ratio 0.2
-  Best val loss: 0.1980
-- Ablation 04
+### Exp3 TCN 消融
+- 基线：val_loss=0.1506
+- 消融 01（删 SiLU）：0.1533 ❌
+- 消融 02（Dropout→Dropout1d）：0.1536 ❌
+- 消融 03（target_length=512, mask=0.2）：0.1980 ❌
+- 消融 04：未记录
 
+### Exp3 Transformer
+- 基线：val_loss=0.2196
 
-### Experiment 03-Transformer
-- Baseline: Best val loss: 0.2196
+### Exp3 Mamba
+- 待替换为真正的 Mamba 实现
+- 基线：val_loss=0.2279
 
-### Experiment 03-mamba
-- waiting to be modified to real mamba
-- baseline: Best val loss: 0.2279
+### Exp3 GAN
+- （空）
 
-### Experiment 03-GAN
+## 2026-05-11
+### 乳酸关联分析
+- 目标：探究乳酸与血压、年龄、性别、心率、血氧、呼吸率、体温的关系。
+- 数据：814 条乳酸记录，245 个患者（mirror 1,2,4,5,6）。乳酸均值 1.99±0.47 mmol/L，中位数 1.94，范围 [1.02, 5.45]。
 
+| 特征 | 与乳酸均值 | p 值 | 解读 |
+|------|----------|------|------|
+| 舒张压 | r=0.098 | 0.025 | 极弱正相关 |
+| 收缩压 | r=0.010 | 0.827 | 无相关 |
+| 年龄 | r=0.042 | 0.230 | 无相关 |
+| 性别 | 男2.01, 女1.94 | 0.152 | 无显著差异 |
+| 心率 | r=0.119 | 0.001 | 弱正相关 |
+| 血氧 | r=0.021 | 0.574 | 无相关 |
+| 呼吸率 | r=0.038 | 0.358 | 无相关 |
+| 体温 | r=0.114 | 0.359 | 无相关（n=66） |
 
+- 阈值分析：所有阈值（1.0-3.0 mmol/L）均未显示显著血压差异。最佳（仍不显著）：≥1.5 mmol/L → 舒张压 +2.43 mmHg（p=0.118）。
+- 结论：**乳酸与所有现有特征几乎无相关**。最强的信号（仍很弱）是心率（r=0.119）和舒张压（r=0.098），不足以做预测。
+- 可能原因：(1) 乳酸是时间敏感的急症标志物，但用的是患者平均聚合值；(2) 人群整体健康，乳酸范围窄；(3) 检验时间与体征记录可能未对齐。
 
 ## 2026-05-12
-### Temporal Lactate Analysis (Δ-Lactate)
-- **Objective**: Use temporal alignment of individual lactate measurements with recording sessions to detect Δ-lactate ↔ Δ-vital relationships.
+### 时序乳酸分析（Δ-Lactate）
+- 目标：对齐个体乳酸测量与记录会话，检测 Δ-lactate ↔ Δ-vital 关系。
+- 数据匹配：
+  * 从 XLSX 解析乳酸测量：5152 条，329 个患者
+  * 提取记录会话：1403 个，441 个患者
+  * 时序匹配成功：850 个（60.6%），其中 ≤24h 匹配 426，≤7d 匹配 394，超 7d 匹配 30
 
-#### Data & Matching
-- Lactate measurements parsed: 5152 from 329 unique patients in XLSX
-- Recording sessions extracted: 1403 from 441 patients (mirrors 1,2,4,5,6)
-- Temporally matched sessions: 850 (60.6%)
-  - Primary match (≤24h before): 426
-  - Secondary match (≤7d): 394
-  - Tertiary match (beyond 7d): 30
+- Δ 特征：
+  * ≥2 次匹配的患者：209 个，连续会话对：598
+  * 平均 Δ-lactate：0.065±0.881 mmol/L
+  * Δ 时间间隔：均值 2.3 天，中位数 1.1 天
 
-#### Δ-Feature Analysis
-- Patients with ≥2 matched sessions: 209
-- Consecutive session pairs: 598
-- Mean Δ-lactate: 0.065 ± 0.881 mmol/L
-- Δ-time between sessions: mean=2.3 days, median=1.1 days
+| Δ 体征 | N | r | p | 解读 |
+|--------|---|----|-----|------|
+| SBP | 20 | -0.543 | 0.013 | 强 |
+| DBP | 20 | -0.363 | 0.116 | 不显著 |
+| HR | 8 | 0.056 | 0.895 | 不显著 |
+| SpO2 | 3 | — | — | 数据不足 |
+| RR | 5 | 0.250 | 0.685 | 不显著 |
+| 体温 | 13 | -0.377 | 0.205 | 不显著 |
 
-#### Δ-Lactate vs Δ-Vital Correlations
-| Δ-Vital | N (pairs) | Pearson r | p-value | Spearman ρ | Interpretation |
-|---------|-----------|-----------|---------|------------|----------------|
-| SBP | 20 | -0.543 | p=0.0134 | 0.017 | Strong |
-| DBP | 20 | -0.363 | p=0.1160 | 0.083 | Not significant |
-| HR | 8 | 0.056 | p=0.8947 | 0.125 | Not significant |
-| SpO2 | 3 | — | — | — | Insufficient data |
-| RR | 5 | 0.250 | p=0.6850 | 0.250 | Not significant |
-| Temp | 13 | -0.377 | p=0.2047 | -0.121 | Not significant |
+- 结论：SBP 信号最强（r=-0.543），但 1/5 显著率**不可用，可能受误差值影响**。
+- 与静态分析对比：静态分析几乎找不到相关（最佳 r=0.119），而 Δ 方法通过去除个体间差异发现了隐藏关系，证实了时序对齐的价值。
 
-#### Key Findings
-- Strongest signal: SBP (r=-0.543, p=0.0134) — Strong
-- Significant correlations (p<0.05): 1/5
-**Unusable. Influenced by probably error values**
+## 2026-06-18
+### Exp3 TCN 256 课程学习
+- 目标：通过逐步增加掩码难度提高 TCN 鲁棒性。
+- 方法：线性课程，mask_ratio 0.10→0.30，200 epoch。
+- 检查点策略：只要 val_loss ≤ best_val + 0.008 就保存。
+- 训练结果：最佳 epoch=162，val_loss=0.1524，val_MAE=0.4645；最终 epoch=200，val_loss=0.1642，val_MAE=0.5002。
+- 入口：`train/exp3_tcn/train_ecg_curriculum.py`。
+- 检查点：`checkpoints/exp3_ecg_tcn_full_curriculum_{best,final}.pt`。
 
-#### Comparison with Static Analysis (2026-05-11)
-- Static analysis found very weak correlations (best: lactate_mean vs HR r=0.119, lactate_mean vs DBP r=0.098)
-- The temporal Δ-approach examines **within-patient changes over time**, removing inter-subject variability
-- Temporal analysis reveals relationships not visible in static aggregate analysis, confirming the value of temporal alignment.
+## 2026-06-19
+### Exp3 TCN 512 课程学习
+- 模型：TCN 512，10 层膨胀残差（kernel=5，RF≈513），544K 参数。
+- 数据：5s 窗口，target_length=512（从 ~512Hz 原始数据降采样）。
+- 方法：线性课程，mask_ratio 0.10→0.30，200 epoch。容忍保存（阈值 0.008）。
+- 训练结果：最佳 epoch=94，val_loss=0.1182，val_MAE=0.4079（mask=0.194）；最终 epoch=200，val_loss=0.1291，val_MAE=0.4295（mask=0.30）。
 
-#### Output Files
-- `lactate_analysis/delta_lactate_vs_delta_*` — scatter plots for each vital
-- `lactate_analysis/delta_correlation_heatmap.png` — full Δ-feature correlation matrix
-- `lactate_analysis/delta_subgroup_analysis.png` — Δ-lactate tertile comparison
-- `lactate_analysis/match_type_summary.png` — quality of temporal matching
+- 多掩码 MSE 评估（200 个随机样本，仅掩码区域）：
+
+| 检查点 | mask=0.10 | mask=0.20 | mask=0.35 |
+|--------|:---------:|:---------:|:---------:|
+| best（ep193） | 0.820 | 0.857 | 0.926 |
+| final（ep200） | 0.880 | 0.850 | 0.928 |
+
+- 观察：
+  * val_loss=0.1182 是所有 Exp3 TCN 跑中最低的，远超 tcn256（0.1524）和原始 TCN（0.1506）。
+  * final 在中高掩码（0.20/0.35）上略优于 best。
+  * MSE 数值高于 tcn256 是因为窗口更长（点数更多），不同长度之间不可直接对比。
+  * 5s 窗口带来更丰富的时序上下文，模型受益于更长的感受野。
+
+- 文件：
+  * 检查点：`checkpoints/exp3_ecg_tcn_tcn512_curriculum_{best,final}.pt`
+  * 可视化：`exp3_ecg_tcn_curriculum/plots/curriculum_eval_tcn512_{best,final}.png`
+  * 历史：`exp3_ecg_tcn_curriculum/plots/exp3_ecg_tcn_tcn512_curriculum_history.csv`
+
+### 计划: 512-5s-0.10->0.40->300epoch, 对比256-3-0.1-0.4-300
+
+## 计划: 训练ECG质量判别模型: 
+首先预训练encoder. 用所有真实数据
+
