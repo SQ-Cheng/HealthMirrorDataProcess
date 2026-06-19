@@ -36,11 +36,10 @@ def parse_args():
         description="Exp1-SQAPreTrain: quick visualization"
     )
 
-    parser.add_argument("--model", type=str, default="baseline",
-                        choices=["baseline", "tcn", "mamba", "transformer", "gan", "joint"])
-    parser.add_argument("--variant", type=str, default=None)
+    parser.add_argument("--model", type=str, default="cnn",
+                        choices=["cnn", "tcn"])
     parser.add_argument("--signal-type", type=str, default="ecg",
-                        choices=["ecg", "rppg", "joint"])
+                        choices=["ecg", "rppg"])
 
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--checkpoint-dir", type=str, default=None)
@@ -73,10 +72,10 @@ def find_checkpoint(args):
     checkpoint_dir = (os.path.abspath(args.checkpoint_dir)
                       if args.checkpoint_dir else DEFAULT_CHECKPOINT_DIR)
 
-    variant_tag = args.variant if args.variant else "default"
     signal_tag = args.signal_type
     model_tag = args.model
-    ckpt_prefix = f"exp1_{signal_tag}_{model_tag}_{variant_tag}"
+    len_tag = f"L{args.target_length}"
+    ckpt_prefix = f"exp1_{signal_tag}_{model_tag}_{len_tag}"
 
     candidates = [
         os.path.join(checkpoint_dir, f"{ckpt_prefix}_best.pt"),
@@ -106,9 +105,9 @@ def main():
     ckpt_path = find_checkpoint(args)
 
     # Load model
-    model = build_model(args.model, args.variant).to(DEVICE)
+    model = build_model(args.model, target_length=args.target_length).to(DEVICE)
     ckpt = torch.load(ckpt_path, map_location=DEVICE)
-    model.load_state_dict(ckpt["model_state_dict"])
+    model.load_state_dict(ckpt["model_state_dict"], strict=False)
     model.eval()
 
     # Load validation data
@@ -181,9 +180,9 @@ def main():
     if handles:
         fig.legend(handles, labels, loc="upper center", ncol=3)
 
-    variant_tag = args.variant if args.variant else "default"
+    len_tag = f"L{args.target_length}"
     fig.suptitle(
-        f"Exp1 {args.signal_type}/{args.model}/{variant_tag} | "
+        f"Exp1 {args.signal_type}/{args.model} {len_tag} | "
         f"mask={args.mask_ratio:.2f} | "
         + ", ".join(mae_strs),
         y=1.01, fontsize=11
@@ -193,7 +192,7 @@ def main():
     if args.output is None:
         out_path = os.path.join(
             plot_dir,
-            f"exp1_viz_{args.signal_type}_{args.model}_{variant_tag}_mask{args.mask_ratio:.2f}.png"
+            f"exp1_viz_{args.signal_type}_{args.model}_{len_tag}_mask{args.mask_ratio:.2f}.png"
         )
     else:
         out_path = args.output

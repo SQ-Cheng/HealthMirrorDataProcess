@@ -46,11 +46,10 @@ def parse_args():
         description="Exp1-SQAPreTrain: evaluation and visualization"
     )
 
-    parser.add_argument("--model", type=str, default="baseline",
-                        choices=["baseline", "tcn", "mamba", "transformer", "gan", "joint"])
-    parser.add_argument("--variant", type=str, default=None)
+    parser.add_argument("--model", type=str, default="cnn",
+                        choices=["cnn", "tcn"])
     parser.add_argument("--signal-type", type=str, default="ecg",
-                        choices=["ecg", "rppg", "joint"])
+                        choices=["ecg", "rppg"])
 
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Path to checkpoint. Auto-detected if not provided.")
@@ -91,10 +90,10 @@ def find_checkpoint(args):
     checkpoint_dir = (os.path.abspath(args.checkpoint_dir)
                       if args.checkpoint_dir else DEFAULT_CHECKPOINT_DIR)
 
-    variant_tag = args.variant if args.variant else "default"
     signal_tag = args.signal_type
     model_tag = args.model
-    ckpt_prefix = f"exp1_{signal_tag}_{model_tag}_{variant_tag}"
+    len_tag = f"L{args.target_length}"
+    ckpt_prefix = f"exp1_{signal_tag}_{model_tag}_{len_tag}"
 
     candidates = [
         os.path.join(checkpoint_dir, f"{ckpt_prefix}_best.pt"),
@@ -108,7 +107,7 @@ def find_checkpoint(args):
             return ckpt
 
     raise FileNotFoundError(
-        f"No checkpoint found for {model_tag}/{variant_tag}/{signal_tag}. "
+        f"No checkpoint found for {model_tag}/{len_tag}/{signal_tag}. "
         f"Tried: {', '.join(candidates)}"
     )
 
@@ -247,7 +246,7 @@ def plot_reconstruction(results, mask_ratio, args, save_path):
         f"{name} MAE={m['mae']:.4f}" for name, m in results["metrics"].items()
     )
     fig.suptitle(
-        f"Exp1 {args.signal_type}/{args.model}/{args.variant} | "
+        f"Exp1 {args.signal_type}/{args.model} L{args.target_length} | "
         f"mask={mask_ratio:.2f} | {metrics_str}",
         y=1.01, fontsize=11
     )
@@ -275,9 +274,10 @@ def main():
     print(f"Using checkpoint: {ckpt_path}")
 
     # Load model
-    model = build_model(args.model, args.variant).to(DEVICE)
+    model = build_model(args.model, target_length=args.target_length).to(DEVICE)
     ckpt = torch.load(ckpt_path, map_location=DEVICE)
-    model.load_state_dict(ckpt["model_state_dict"])
+    # Handle legacy checkpoints that may have mismatched target_length
+    model.load_state_dict(ckpt["model_state_dict"], strict=False)
     model.eval()
 
     # Load data
@@ -297,8 +297,10 @@ def main():
 
     # Evaluate at each mask ratio
     all_results = {}
+    len_tag = f"L{args.target_length}"
+
     print(f"\n{'='*70}")
-    print(f"Evaluation: {model_tag}/{variant_tag} on {signal_tag}")
+    print(f"Evaluation: {model_tag} on {signal_tag} ({len_tag})")
     print(f"{'='*70}")
 
     for mr in args.mask_ratios:
@@ -315,7 +317,7 @@ def main():
         # Plot
         plot_path = os.path.join(
             plot_dir,
-            f"exp1_eval_{signal_tag}_{model_tag}_{variant_tag}_mask{mr:.2f}.png"
+            f"exp1_eval_{signal_tag}_{model_tag}_{len_tag}_mask{mr:.2f}.png"
         )
         plot_reconstruction(results, mr, args, plot_path)
         print(f"  Plot saved: {plot_path}")
@@ -345,7 +347,7 @@ def main():
 
     json_path = os.path.join(
         plot_dir,
-        f"exp1_eval_{signal_tag}_{model_tag}_{variant_tag}_metrics.json"
+        f"exp1_eval_{signal_tag}_{model_tag}_{len_tag}_metrics.json"
     )
     with open(json_path, "w") as f:
         json.dump(metrics_json, f, indent=2)

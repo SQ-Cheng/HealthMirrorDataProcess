@@ -55,12 +55,9 @@ def parse_args():
     )
 
     # Model
-    parser.add_argument("--model", type=str, default="baseline",
-                        choices=["baseline", "tcn", "mamba", "transformer", "gan", "joint"],
+    parser.add_argument("--model", type=str, default="cnn",
+                        choices=["cnn", "tcn"],
                         help="Model architecture.")
-    parser.add_argument("--variant", type=str, default=None,
-                        help="Model variant (e.g., light, full, tcn256, tcn512). "
-                             "Defaults to sensible value per model.")
 
     # Data
     parser.add_argument("--signal-type", type=str, default="ecg",
@@ -314,14 +311,14 @@ def main():
 
     # Build checkpoint prefix
     model_tag = args.model
-    variant_tag = args.variant if args.variant else "default"
     signal_tag = args.signal_type
     tag = args.checkpoint_tag.strip()
     curriculum_suffix = "_curriculum" if args.curriculum else ""
-    ckpt_prefix = f"exp1_{signal_tag}_{model_tag}_{variant_tag}{tag}{curriculum_suffix}"
+    len_tag = f"L{args.target_length}"
+    ckpt_prefix = f"exp1_{signal_tag}_{model_tag}_{len_tag}{tag}{curriculum_suffix}"
 
     print(f"╔══════════════════════════════════════════════════════════════╗")
-    print(f"║  Exp1-SQAPreTrain: {model_tag}/{variant_tag} on {signal_tag}  "
+    print(f"║  Exp1-SQAPreTrain: {model_tag} on {signal_tag}  "
          f"{'(curriculum)' if args.curriculum else ''}")
     print(f"╠══════════════════════════════════════════════════════════════╣")
     print(f"║  Data:     {data_dir} (source={args.data_source})")
@@ -353,7 +350,7 @@ def main():
     )
 
     # Build model
-    model = build_model(args.model, args.variant).to(DEVICE)
+    model = build_model(args.model, target_length=args.target_length).to(DEVICE)
     param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {param_count:,}")
 
@@ -426,7 +423,6 @@ def main():
         if should_save:
             torch.save({
                 "model": args.model,
-                "variant": args.variant,
                 "signal_type": args.signal_type,
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -462,7 +458,6 @@ def main():
     # Save final checkpoint
     torch.save({
         "model": args.model,
-        "variant": args.variant,
         "signal_type": args.signal_type,
         "epoch": args.epochs,
         "model_state_dict": model.state_dict(),
@@ -477,7 +472,7 @@ def main():
     # Save history
     history_csv = os.path.join(plot_dir, f"{ckpt_prefix}_history.csv")
     history_png = os.path.join(plot_dir, f"{ckpt_prefix}_history.png")
-    title = f"Exp1 {signal_tag}/{model_tag}/{variant_tag}{' curriculum' if args.curriculum else ''}"
+    title = f"Exp1 {signal_tag}/{model_tag}/{len_tag}{' curriculum' if args.curriculum else ''}"
     save_history(history_rows, history_csv, history_png, title=title)
 
     print(f"\n✓ Training complete. Best val loss: {best_val:.4f}")
