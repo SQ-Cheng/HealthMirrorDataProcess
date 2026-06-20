@@ -29,6 +29,7 @@ model/models/onnx/step.onnx
 
 # Generated reports
 sample_length_report_output.txt
+/study/exp1_sqa_pretrain/sqa_outputs/logs
 
 # IDE
 .vscode/
