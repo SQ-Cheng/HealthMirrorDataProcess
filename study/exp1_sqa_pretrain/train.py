@@ -56,14 +56,14 @@ def parse_args():
 
     # Model
     parser.add_argument("--model", type=str, default="cnn",
-                        choices=["cnn", "tcn"],
+                        choices=["cnn", "resnet", "tcn"],
                         help="Model architecture.")
 
     # Data
     parser.add_argument("--signal-type", type=str, default="ecg",
                         choices=["ecg", "rppg", "joint"],
                         help="Signal type for reconstruction.")
-    parser.add_argument("--data-dir", type=str, default=None,
+    parser.add_argument("--data-dir", type=str, default="/root/shared/HealthMirrorDataset",
                         help="Data root directory. Defaults to project root.")
     parser.add_argument("--data-source", type=str, default="sqi",
                         choices=["sqi", "cleaned"],
@@ -71,21 +71,21 @@ def parse_args():
 
     # Training
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-3,
+    parser.add_argument("--lr", type=float, default=2e-4,
                         help="Learning rate.")
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
 
     # Data windowing
-    parser.add_argument("--window-sec", type=float, default=3.0)
+    parser.add_argument("--window-sec", type=float, default=10.0)
     parser.add_argument("--step-sec", type=float, default=1.0)
-    parser.add_argument("--target-length", type=int, default=256)
+    parser.add_argument("--target-length", type=int, default=1024)
 
     # Masking
     parser.add_argument("--mask-ratio", type=float, default=0.30,
                         help="Fraction of points to mask.")
-    parser.add_argument("--context-weight", type=float, default=0.20,
+    parser.add_argument("--context-weight", type=float, default=0.10,
                         help="Weight for context (visible region) loss.")
 
     # Curriculum learning
@@ -99,10 +99,10 @@ def parse_args():
                         help="Tolerance for checkpoint saving in curriculum mode.")
 
     # Checkpointing
-    parser.add_argument("--checkpoint-dir", type=str, default=None,
-                        help="Directory for checkpoints. Defaults to package checkpoints/.")
-    parser.add_argument("--plot-dir", type=str, default=None,
-                        help="Directory for plots. Defaults to package plots/.")
+    parser.add_argument("--checkpoint-dir", type=str, default=DEFAULT_CHECKPOINT_DIR,
+                        help="Directory for checkpoints (default: %(default)s).")
+    parser.add_argument("--plot-dir", type=str, default=DEFAULT_PLOT_DIR,
+                        help="Directory for plots (default: %(default)s).")
     parser.add_argument("--checkpoint-tag", type=str, default="",
                         help="Optional tag for checkpoint filenames.")
     parser.add_argument("--resume-checkpoint", type=str, default=None,
@@ -299,9 +299,9 @@ def main():
     args = parse_args()
 
     # Resolve directories
-    data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
-    checkpoint_dir = os.path.abspath(args.checkpoint_dir) if args.checkpoint_dir else DEFAULT_CHECKPOINT_DIR
-    plot_dir = os.path.abspath(args.plot_dir) if args.plot_dir else DEFAULT_PLOT_DIR
+    data_dir = os.path.abspath(args.data_dir)
+    checkpoint_dir = os.path.abspath(args.checkpoint_dir)
+    plot_dir = os.path.abspath(args.plot_dir)
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(plot_dir, exist_ok=True)
 

@@ -37,12 +37,12 @@ def parse_args():
     )
 
     parser.add_argument("--model", type=str, default="cnn",
-                        choices=["cnn", "tcn"])
+                        choices=["cnn", "resnet", "tcn"])
     parser.add_argument("--signal-type", type=str, default="ecg",
                         choices=["ecg", "rppg"])
 
     parser.add_argument("--checkpoint", type=str, default=None)
-    parser.add_argument("--checkpoint-dir", type=str, default=None)
+    parser.add_argument("--checkpoint-dir", type=str, default=DEFAULT_CHECKPOINT_DIR)
 
     parser.add_argument("--data-dir", type=str, default=None)
     parser.add_argument("--data-source", type=str, default="sqi",
@@ -69,8 +69,7 @@ def find_checkpoint(args):
     if args.checkpoint:
         return args.checkpoint
 
-    checkpoint_dir = (os.path.abspath(args.checkpoint_dir)
-                      if args.checkpoint_dir else DEFAULT_CHECKPOINT_DIR)
+    checkpoint_dir = os.path.abspath(args.checkpoint_dir)
 
     signal_tag = args.signal_type
     model_tag = args.model
@@ -107,7 +106,7 @@ def main():
     # Load model
     model = build_model(args.model, target_length=args.target_length).to(DEVICE)
     ckpt = torch.load(ckpt_path, map_location=DEVICE)
-    model.load_state_dict(ckpt["model_state_dict"], strict=False)
+    model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
     # Load validation data

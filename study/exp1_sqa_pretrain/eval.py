@@ -47,15 +47,15 @@ def parse_args():
     )
 
     parser.add_argument("--model", type=str, default="cnn",
-                        choices=["cnn", "tcn"])
+                        choices=["cnn", "resnet", "tcn"])
     parser.add_argument("--signal-type", type=str, default="ecg",
                         choices=["ecg", "rppg"])
 
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="Path to checkpoint. Auto-detected if not provided.")
-    parser.add_argument("--checkpoint-dir", type=str, default=None,
+    parser.add_argument("--checkpoint-dir", type=str, default=DEFAULT_CHECKPOINT_DIR,
                         help="Directory to search for checkpoints.")
-    parser.add_argument("--plot-dir", type=str, default=None,
+    parser.add_argument("--plot-dir", type=str, default=DEFAULT_PLOT_DIR,
                         help="Directory for output plots.")
 
     parser.add_argument("--data-dir", type=str, default=None)
@@ -87,8 +87,7 @@ def find_checkpoint(args):
     if args.checkpoint:
         return args.checkpoint
 
-    checkpoint_dir = (os.path.abspath(args.checkpoint_dir)
-                      if args.checkpoint_dir else DEFAULT_CHECKPOINT_DIR)
+    checkpoint_dir = os.path.abspath(args.checkpoint_dir)
 
     signal_tag = args.signal_type
     model_tag = args.model
@@ -263,12 +262,12 @@ def main():
     args = parse_args()
 
     data_dir = os.path.abspath(args.data_dir) if args.data_dir else ROOT_DIR
-    plot_dir = os.path.abspath(args.plot_dir) if args.plot_dir else DEFAULT_PLOT_DIR
+    plot_dir = os.path.abspath(args.plot_dir)
     os.makedirs(plot_dir, exist_ok=True)
 
-    variant_tag = args.variant if args.variant else "default"
     signal_tag = args.signal_type
     model_tag = args.model
+    len_tag = f"L{args.target_length}"
 
     ckpt_path = find_checkpoint(args)
     print(f"Using checkpoint: {ckpt_path}")
@@ -276,8 +275,7 @@ def main():
     # Load model
     model = build_model(args.model, target_length=args.target_length).to(DEVICE)
     ckpt = torch.load(ckpt_path, map_location=DEVICE)
-    # Handle legacy checkpoints that may have mismatched target_length
-    model.load_state_dict(ckpt["model_state_dict"], strict=False)
+    model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
     # Load data

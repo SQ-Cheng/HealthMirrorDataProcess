@@ -23,8 +23,9 @@ rppg2ecg.onnx
 __pycache__/
 
 # Model weight files (large binaries)
-model/models/onnx/physnet.onnx
-model/models/onnx/state.json
+model/models/onnx/state.pkl
+model/models/onnx/step.onnx
+*.pt
 
 # Generated reports
 sample_length_report_output.txt
