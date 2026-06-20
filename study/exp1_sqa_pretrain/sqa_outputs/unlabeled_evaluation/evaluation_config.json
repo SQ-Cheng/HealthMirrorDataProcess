@@ -1,0 +1,16 @@
+{
+  "checkpoints": [
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_ecg_tcn_window_L1024_run01_best.pt",
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_ecg_tcn_reference_L1024_run02_best.pt",
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_ecg_resnet_window_L1024_run03_best.pt",
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_ecg_resnet_reference_L1024_run04_best.pt"
+  ],
+  "data_root": "/root/shared/HealthMirrorDataset",
+  "output_dir": "/root/autodl-tmp/HealthMirrorDataProcess/study/exp1_sqa_pretrain/sqa_outputs/unlabeled_evaluation",
+  "windows_per_file": 3,
+  "max_files": null,
+  "stress_samples": 256,
+  "batch_size": 128,
+  "seed": 42,
+  "device": "auto"
+}
