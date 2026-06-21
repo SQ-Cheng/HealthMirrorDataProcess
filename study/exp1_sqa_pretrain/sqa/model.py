@@ -63,6 +63,30 @@ def load_pretrained_encoder(architecture, checkpoint_path, target_length, map_lo
     raise KeyError("Checkpoint must contain 'model_state_dict' or 'encoder_state_dict'.")
 
 
+def load_sqa_checkpoint(checkpoint_path, map_location="cpu", freeze_encoder=True):
+    """Build an SQA model directly from a fine-tuned SQA checkpoint."""
+    checkpoint = torch.load(
+        checkpoint_path, map_location=map_location, weights_only=False
+    )
+    architecture = checkpoint.get("encoder_architecture")
+    if architecture not in {"tcn", "resnet"}:
+        raise ValueError(f"Unsupported SQA encoder architecture: {architecture}")
+
+    target_length = int(checkpoint["target_length"])
+    builder = build_tcn_encoder if architecture == "tcn" else build_resnet_encoder
+    encoder = builder(target_length=target_length)
+
+    state_dict = checkpoint["model_state_dict"]
+    hidden_dim = int(state_dict["head.0.weight"].shape[0])
+    model = ECGSQAModel(
+        encoder,
+        hidden_dim=hidden_dim,
+        freeze_encoder=freeze_encoder,
+    )
+    model.load_state_dict(state_dict, strict=True)
+    return model, checkpoint
+
+
 class ECGSQAModel(nn.Module):
     """Frozen ECG encoder plus global pooling and a two-task sigmoid-logit head."""
 

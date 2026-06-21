@@ -1,0 +1,4 @@
+{
+  "tcn": "study/exp1_sqa_pretrain/sqa_outputs/human_finetune/exp1_sqa_human_tcn_window_L1024_round01_human_v1",
+  "resnet": "study/exp1_sqa_pretrain/sqa_outputs/human_finetune/exp1_sqa_human_resnet_window_L1024_round01_human_v1"
+}

@@ -6,7 +6,6 @@ agreement, raw-artifact associations, and controlled-corruption sensitivity.
 """
 
 import argparse
-import glob
 import json
 import os
 import sys
@@ -22,8 +21,8 @@ _STUDY_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 if _STUDY_DIR not in sys.path:
     sys.path.insert(0, _STUDY_DIR)
 
-from exp1_sqa_pretrain.models import build_resnet_encoder, build_tcn_encoder
-from exp1_sqa_pretrain.sqa.model import ECGSQAModel
+from exp1_sqa_pretrain.sqa.model import load_sqa_checkpoint
+from exp1_sqa_pretrain.sqa.raw_windows import load_raw_windows
 
 
 _PKG_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,227 +33,20 @@ SEVERITY_NAMES = ("mild", "moderate", "severe")
 CORRUPTIONS = ("gaussian", "baseline", "impulse", "clipping", "dropout")
 
 
-def _read_ecg_file(path):
-    """Read headerless timestamp,ECG logs with a tolerant fallback."""
-    try:
-        values = pd.read_csv(
-            path,
-            header=None,
-            usecols=[0, 1],
-            names=["timestamp", "ecg"],
-            dtype=np.float64,
-            on_bad_lines="skip",
-        )
-    except (TypeError, ValueError):
-        values = pd.read_csv(
-            path,
-            header=None,
-            usecols=[0, 1],
-            names=["timestamp", "ecg"],
-            on_bad_lines="skip",
-        )
-        values["timestamp"] = pd.to_numeric(values["timestamp"], errors="coerce")
-        values["ecg"] = pd.to_numeric(values["ecg"], errors="coerce")
-
-    timestamps = values["timestamp"].to_numpy(dtype=np.float64)
-    ecg = values["ecg"].to_numpy(dtype=np.float64)
-    valid_time = np.isfinite(timestamps)
-    timestamps, ecg = timestamps[valid_time], ecg[valid_time]
-    if len(timestamps) < 2:
-        return None, None
-
-    order = np.argsort(timestamps, kind="stable")
-    return timestamps[order], ecg[order]
-
-
-def _raw_diagnostics(ecg):
-    finite = ecg[np.isfinite(ecg)]
-    missing_fraction = 1.0 - float(np.isfinite(ecg).mean())
-    if len(finite) < 2:
-        return {
-            "missing_fraction": missing_fraction,
-            "raw_std": 0.0,
-            "robust_amplitude": 0.0,
-            "flat_fraction": 1.0,
-            "clipping_fraction": 1.0,
-            "impulse_ratio": float("inf"),
-            "artifact_burden": 1.0,
-        }
-
-    raw_std = float(np.std(finite))
-    low, high = np.percentile(finite, [5.0, 95.0])
-    robust_amplitude = float(high - low)
-    scale = max(robust_amplitude, 1e-8)
-    differences = np.abs(np.diff(finite))
-
-    flat_tolerance = max(1e-10, 1e-6 * scale)
-    flat_fraction = float(np.mean(differences <= flat_tolerance))
-    minimum, maximum = float(np.min(finite)), float(np.max(finite))
-    edge_tolerance = max(1e-10, 1e-5 * scale)
-    clipping_fraction = max(
-        float(np.mean(np.abs(finite - minimum) <= edge_tolerance)),
-        float(np.mean(np.abs(finite - maximum) <= edge_tolerance)),
-    )
-
-    diff_median = float(np.median(differences))
-    diff_mad = float(np.median(np.abs(differences - diff_median)))
-    diff_scale = max(1.4826 * diff_mad, 1e-8)
-    impulse_ratio = float(np.max(differences) / diff_scale)
-
-    burden_components = (
-        np.clip(missing_fraction / 0.05, 0.0, 1.0),
-        np.clip((flat_fraction - 0.05) / 0.45, 0.0, 1.0),
-        np.clip((clipping_fraction - 0.10) / 0.40, 0.0, 1.0),
-        np.clip((impulse_ratio - 25.0) / 75.0, 0.0, 1.0),
-    )
-    return {
-        "missing_fraction": missing_fraction,
-        "raw_std": raw_std,
-        "robust_amplitude": robust_amplitude,
-        "flat_fraction": flat_fraction,
-        "clipping_fraction": clipping_fraction,
-        "impulse_ratio": impulse_ratio,
-        "artifact_burden": float(max(burden_components)),
-    }
-
-
-def _prepare_model_input(timestamps, ecg, window_sec, target_length):
-    target_times = timestamps[0] + np.arange(target_length) * (window_sec / target_length)
-    finite = np.isfinite(ecg)
-    if finite.sum() < 2:
-        resampled = np.zeros(target_length, dtype=np.float64)
-    else:
-        resampled = np.interp(target_times, timestamps[finite], ecg[finite])
-
-    mean = float(np.mean(resampled))
-    std = float(np.std(resampled))
-    if std <= 1e-8:
-        normalized = resampled - mean
-    else:
-        normalized = (resampled - mean) / std
-    return normalized.astype(np.float32)
-
-
-def load_raw_windows(
-    data_root,
-    window_sec,
-    target_length,
-    windows_per_file,
-    max_files=None,
-):
-    paths = sorted(
-        glob.glob(os.path.join(data_root, "mirror*_data", "patient_*", "ecg_log.csv"))
-    )
-    if max_files is not None:
-        paths = paths[:max_files]
-    if not paths:
-        raise FileNotFoundError(f"No mirror*_data/patient_*/ecg_log.csv under {data_root}")
-
-    model_inputs = []
-    records = []
-    files_with_windows = 0
-
-    print(f"[Raw ECG] Reading {len(paths)} files...")
-    for file_index, path in enumerate(paths):
-        timestamps, ecg = _read_ecg_file(path)
-        if timestamps is None:
-            continue
-
-        duration = float(timestamps[-1] - timestamps[0])
-        if duration < window_sec:
-            continue
-
-        start_times = np.linspace(
-            timestamps[0],
-            timestamps[-1] - window_sec,
-            num=windows_per_file,
-        )
-        start_times = np.unique(start_times)
-
-        mirror = os.path.basename(os.path.dirname(os.path.dirname(path)))
-        patient = os.path.basename(os.path.dirname(path))
-        windows_before_file = len(records)
-        for window_index, start_time in enumerate(start_times):
-            start = int(np.searchsorted(timestamps, start_time, side="left"))
-            end_time = start_time + window_sec
-            end = int(np.searchsorted(timestamps, end_time, side="right"))
-            if end - start < 16:
-                continue
-
-            segment_time = timestamps[start:end]
-            segment_ecg = ecg[start:end]
-            if segment_time[-1] - segment_time[0] < 0.90 * window_sec:
-                continue
-            positive_diffs = np.diff(segment_time)
-            positive_diffs = positive_diffs[positive_diffs > 0]
-            if not len(positive_diffs) or np.max(positive_diffs) > 0.50:
-                continue
-
-            diagnostics = _raw_diagnostics(segment_ecg)
-            model_input = _prepare_model_input(
-                segment_time, segment_ecg, window_sec, target_length
-            )
-            effective_fs = (len(segment_time) - 1) / max(
-                segment_time[-1] - segment_time[0], 1e-8
-            )
-
-            record = {
-                "window_id": len(records),
-                "mirror": mirror,
-                "patient_id": patient,
-                "file_path": path,
-                "window_index": int(window_index),
-                "start_time": float(segment_time[0]),
-                "source_sampling_rate_hz": float(effective_fs),
-            }
-            record.update(diagnostics)
-            records.append(record)
-            model_inputs.append(model_input)
-
-        if len(records) > windows_before_file:
-            files_with_windows += 1
-
-        if (file_index + 1) % 250 == 0:
-            print(
-                f"[Raw ECG] files={file_index + 1}/{len(paths)}, "
-                f"windows={len(records)}"
-            )
-
-    if not model_inputs:
-        raise RuntimeError("No valid raw ECG windows were found.")
-
-    print(
-        f"[Raw ECG] Loaded {len(model_inputs)} windows from "
-        f"{files_with_windows} files; skipped files={len(paths) - files_with_windows}"
-    )
-    inputs = np.stack(model_inputs)[:, None, :]
-    return inputs, pd.DataFrame(records)
-
-
 def _model_identity(checkpoint):
     architecture = checkpoint["encoder_architecture"]
     training_config = checkpoint.get("training_config", {})
-    template_source = training_config.get("template_source", "unknown")
+    template_source = training_config.get(
+        "template_source", checkpoint.get("template_source", "unknown")
+    )
     return f"{architecture}_{template_source}"
 
 
 def load_sqa_model(checkpoint_path, device):
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    architecture = checkpoint["encoder_architecture"]
-    target_length = int(checkpoint["target_length"])
-    builder = build_tcn_encoder if architecture == "tcn" else build_resnet_encoder
-    encoder = builder(target_length=target_length)
-
-    head_weight = checkpoint["model_state_dict"]["head.0.weight"]
-    hidden_dim = int(head_weight.shape[0])
-    model = ECGSQAModel(
-        encoder,
-        hidden_dim=hidden_dim,
-        freeze_encoder=True,
+    model, checkpoint = load_sqa_checkpoint(
+        checkpoint_path, map_location="cpu", freeze_encoder=True
     )
-    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
-    model.to(device).eval()
-    return model, checkpoint
+    return model.to(device).eval(), checkpoint
 
 
 @torch.no_grad()
@@ -311,16 +103,20 @@ def apply_corruption(inputs, corruption, severity_index, seed):
 
 def training_result_row(checkpoint, model_name, checkpoint_path):
     metrics = checkpoint.get("metrics", {})
+    human_metrics = checkpoint.get("validation_metrics", {})
+    qrs = human_metrics.get("qrs", {})
+    morph = human_metrics.get("morph", {})
     return {
         "model": model_name,
+        "training_stage": checkpoint.get("task", "ecg_sqa"),
         "best_epoch": checkpoint.get("epoch"),
-        "val_loss": metrics.get("loss"),
+        "val_loss": metrics.get("loss", human_metrics.get("loss")),
         "val_bce_qrs": metrics.get("bce_qrs"),
         "val_bce_morph": metrics.get("bce_morph"),
-        "val_auroc_qrs": metrics.get("auroc_qrs"),
-        "val_auroc_morph": metrics.get("auroc_morph"),
-        "val_auprc_qrs": metrics.get("auprc_qrs"),
-        "val_auprc_morph": metrics.get("auprc_morph"),
+        "val_auroc_qrs": metrics.get("auroc_qrs", qrs.get("auroc")),
+        "val_auroc_morph": metrics.get("auroc_morph", morph.get("auroc")),
+        "val_auprc_qrs": metrics.get("auprc_qrs", qrs.get("auprc")),
+        "val_auprc_morph": metrics.get("auprc_morph", morph.get("auprc")),
         "checkpoint": os.path.abspath(checkpoint_path),
     }
 
@@ -501,6 +297,8 @@ def plot_artifact_strata(records, predictions, output_path):
         labels=False,
         duplicates="drop",
     )
+    if quantiles.notna().sum() == 0:
+        quantiles = pd.Series(np.zeros(len(records), dtype=int))
     fig, axes = plt.subplots(1, 2, figsize=(13, 4.5), sharey=True)
     for task_index, task in enumerate(TASKS):
         axis = axes[task_index]
@@ -657,6 +455,11 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow writing into a non-empty output directory.",
+    )
     return parser.parse_args()
 
 
@@ -671,6 +474,10 @@ def main():
         else args.device
     )
     output_dir = os.path.abspath(args.output_dir)
+    if os.path.isdir(output_dir) and os.listdir(output_dir) and not args.overwrite:
+        raise FileExistsError(
+            f"Refusing to overwrite non-empty evaluation directory: {output_dir}"
+        )
     os.makedirs(output_dir, exist_ok=True)
 
     models = {}

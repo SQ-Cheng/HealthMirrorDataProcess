@@ -1,0 +1,15 @@
+{
+  "checkpoints": [
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_human_tcn_window_L1024_round01_human_v1_best.pt",
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_human_resnet_window_L1024_round01_human_v1_best.pt"
+  ],
+  "data_root": "/root/shared/HealthMirrorDataset",
+  "output_dir": "study/exp1_sqa_pretrain/sqa_outputs/evaluations/human_round01_v1/raw_unlabeled",
+  "windows_per_file": 3,
+  "max_files": null,
+  "stress_samples": 256,
+  "batch_size": 128,
+  "seed": 42,
+  "device": "auto",
+  "overwrite": false
+}
