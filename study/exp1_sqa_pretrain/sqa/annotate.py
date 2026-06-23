@@ -14,11 +14,10 @@ _STUDY_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 if _STUDY_DIR not in sys.path:
     sys.path.insert(0, _STUDY_DIR)
 
-from exp1_sqa_pretrain.sqa.raw_windows import extract_window
+from exp1_sqa_pretrain.sqa.raw_windows import extract_window, polarity_for_source
 
 _PKG_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_QUEUE = os.path.join(_PKG_DIR, "sqa_annotations", "round01", "queue.csv")
-DEFAULT_LABELS = os.path.join(_PKG_DIR, "sqa_annotations", "round01", "labels.csv")
+DEFAULT_ANNOTATION_ROOT = os.path.join(_PKG_DIR, "sqa_annotations")
 LABEL_VALUES = ("bad", "uncertain", "good")
 OVERRIDE_OPTIONS = ("inherit", "bad", "uncertain", "good")
 LABEL_COLUMNS = (
@@ -164,14 +163,33 @@ class AnnotationStore:
 
 
 @st.cache_data(show_spinner=False, max_entries=12)
-def _load_window(file_path, start_time, window_sec, target_length, data_source):
+def _load_window(
+    file_path,
+    start_time,
+    window_sec,
+    target_length,
+    data_source,
+    polarity,
+    corruption_type,
+    corruption_severity,
+    corruption_seed,
+):
     return extract_window(
         file_path,
         start_time,
         window_sec=window_sec,
         target_length=target_length,
         data_source=data_source,
+        polarity=polarity,
+        corruption_type=corruption_type,
+        corruption_severity=corruption_severity,
+        corruption_seed=corruption_seed,
     )
+
+
+def _row_value(row, column, default):
+    value = row.get(column, default)
+    return default if pd.isna(value) or value == "" else value
 
 
 def _reset_form_state(queue_id):
@@ -201,13 +219,17 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Headless Streamlit ECG SQA annotation app"
     )
-    parser.add_argument("--queue", default=DEFAULT_QUEUE)
-    parser.add_argument("--labels", default=DEFAULT_LABELS)
+    parser.add_argument("--round-id", default="round01")
+    parser.add_argument("--queue", default=None)
+    parser.add_argument("--labels", default=None)
     parser.add_argument("--annotator", default=os.environ.get("USER", "annotator"))
     parser.add_argument("--window-sec", type=float, default=10.0)
     parser.add_argument("--target-length", type=int, default=1024)
     parser.add_argument("--show-predictions", action="store_true")
     args, _ = parser.parse_known_args()
+    round_dir = os.path.join(DEFAULT_ANNOTATION_ROOT, args.round_id)
+    args.queue = args.queue or os.path.join(round_dir, "queue.csv")
+    args.labels = args.labels or os.path.join(round_dir, "labels.csv")
     return args
 
 
@@ -236,6 +258,7 @@ def run_app(args):
 
     with st.sidebar:
         st.subheader("Session")
+        st.write(f"Round: `{args.round_id}`")
         st.write(f"Annotator: `{args.annotator}`")
         st.write(f"Completed: **{completed}/{len(store.queue)}**")
         st.write(f"Skipped: **{skipped}**")
@@ -255,10 +278,16 @@ def run_app(args):
         st.markdown(f"Status: **{status}**")
 
     try:
+        data_source = _row_value(row, "data_source", "raw")
+        default_polarity = polarity_for_source(data_source)
         window = _load_window(
             row["file_path"], float(row["start_time"]),
             float(args.window_sec), int(args.target_length),
-            row.get("data_source", "raw"),
+            data_source,
+            float(_row_value(row, "polarity", default_polarity)),
+            str(_row_value(row, "corruption_type", "none")),
+            int(float(_row_value(row, "corruption_severity", 0))),
+            int(float(_row_value(row, "corruption_seed", 0))),
         )
     except (OSError, ValueError) as error:
         st.error(f"Could not load this ECG window: {error}")

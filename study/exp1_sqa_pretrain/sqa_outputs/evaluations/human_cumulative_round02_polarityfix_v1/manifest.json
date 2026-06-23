@@ -1,0 +1,48 @@
+{
+  "evaluation_id": "human_cumulative_round02_polarityfix_v1",
+  "created_at": "2026-06-23T06:20:16.389762+00:00",
+  "status": "complete",
+  "checkpoints": {
+    "tcn_weak": {
+      "path": "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_ecg_tcn_window_L1024_run01_best.pt",
+      "sha256": "32204bdf3ebc50ea73c704c30952119c5d6f3b86fb5e3c645586fe540371972a"
+    },
+    "resnet_weak": {
+      "path": "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_ecg_resnet_window_L1024_run03_best.pt",
+      "sha256": "98d8c365eb9446cb00a7ee957cdc7bb201d42cd08960cb51ea1870a63d652089"
+    },
+    "tcn_human_r02": {
+      "path": "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_human_tcn_window_L1024_cumulative_round02_polarityfix_v1_best.pt",
+      "sha256": "fd6906a7eb64646e52131a26b7184e07839f9a8bed07bcf6a24ce33b2ef07442"
+    },
+    "resnet_human_r02": {
+      "path": "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_human_resnet_window_L1024_cumulative_round02_polarityfix_v1_best.pt",
+      "sha256": "0a1b554f753b0f7fd728a0371bf73fe5f4c5952cd6ac21553b54e165ef7b06e9"
+    }
+  },
+  "annotation_sources": [
+    "study/exp1_sqa_pretrain/sqa_annotations/round01",
+    "study/exp1_sqa_pretrain/sqa_annotations/round02"
+  ],
+  "human_labels": {
+    "completed_tasks": 380,
+    "cross_round_unique_samples": 358,
+    "usable_definite_samples": 336,
+    "usable_split_counts": {
+      "train": 210,
+      "val": 55,
+      "test_random": 42,
+      "test_challenge": 29
+    }
+  },
+  "raw_protocol": {
+    "pattern": "/root/shared/HealthMirrorDataset/mirror*_data",
+    "polarity": -1.0,
+    "windows": 7587,
+    "patient_files": 2592,
+    "windows_per_file": 3,
+    "stress_samples": 256,
+    "seed": 42
+  },
+  "notes": "Raw ECG has no quality labels; raw evaluation measures behavior and perturbation sensitivity, not accuracy."
+}

@@ -7,8 +7,21 @@ import numpy as np
 import pandas as pd
 
 
+RAW_ECG_POLARITY = -1.0
+CLEAN_ECG_POLARITY = 1.0
+
+
+def polarity_for_source(data_source):
+    """Return the required ECG polarity for a public data-source name."""
+    if data_source == "raw":
+        return RAW_ECG_POLARITY
+    if data_source == "clean":
+        return CLEAN_ECG_POLARITY
+    raise ValueError("data_source must be 'raw' or 'clean'")
+
+
 def read_ecg_file(path):
-    """Read headerless timestamp,ECG logs with a tolerant fallback."""
+    """Read on-disk raw ECG values without applying the analysis polarity."""
     try:
         values = pd.read_csv(
             path,
@@ -41,7 +54,7 @@ def read_ecg_file(path):
 
 
 def read_clean_ecg_file(path):
-    """Read Timestamp/ECG files from mirror*_auto_cleaned_sqi."""
+    """Read on-disk cleaned ECG values without changing their polarity."""
     values = pd.read_csv(path, usecols=["Timestamp", "ECG"])
     timestamps = pd.to_numeric(values["Timestamp"], errors="coerce").to_numpy()
     ecg = pd.to_numeric(values["ECG"], errors="coerce").to_numpy()
@@ -55,8 +68,10 @@ def read_clean_ecg_file(path):
 
 def raw_diagnostics(ecg):
     """Return simple pre-normalization artifact indicators."""
-    finite = ecg[np.isfinite(ecg)]
-    missing_fraction = 1.0 - float(np.isfinite(ecg).mean())
+    ecg = np.asarray(ecg)
+    finite_mask = np.isfinite(ecg)
+    finite = ecg[finite_mask]
+    missing_fraction = 1.0 if not ecg.size else 1.0 - float(finite_mask.mean())
     if len(finite) < 2:
         return {
             "missing_fraction": missing_fraction,
@@ -122,6 +137,66 @@ def prepare_model_input(timestamps, ecg, window_sec, target_length):
     return normalized.astype(np.float32)
 
 
+def _corrupt_signal(timestamps, ecg, corruption_type, severity, seed):
+    """Apply a deterministic corruption in the signal's native amplitude scale."""
+    corruption_type = str(corruption_type or "none").strip().lower()
+    if corruption_type in {"", "none", "nan"}:
+        return np.asarray(ecg, dtype=np.float64).copy()
+    if corruption_type not in {
+        "gaussian", "high_frequency", "clipping", "baseline",
+        "impulse", "dropout",
+    }:
+        raise ValueError(f"Unsupported corruption_type: {corruption_type}")
+    severity = int(severity)
+    if severity not in {0, 1, 2}:
+        raise ValueError("corruption_severity must be 0, 1, or 2")
+
+    output = np.asarray(ecg, dtype=np.float64).copy()
+    finite = np.isfinite(output)
+    if finite.sum() < 2:
+        return output
+    rng = np.random.default_rng(int(seed))
+    center = float(np.median(output[finite]))
+    low, high = np.percentile(output[finite], [5.0, 95.0])
+    scale = max(float(high - low) / 3.29, float(np.std(output[finite])) * 0.25, 1e-8)
+    relative_time = np.asarray(timestamps, dtype=np.float64) - float(timestamps[0])
+
+    if corruption_type == "gaussian":
+        sigma = (0.20, 0.45, 0.90)[severity] * scale
+        output[finite] += rng.normal(0.0, sigma, size=int(finite.sum()))
+    elif corruption_type == "high_frequency":
+        amplitude = (0.20, 0.45, 0.90)[severity] * scale
+        frequency = rng.uniform(30.0, 45.0)
+        phase = rng.uniform(0.0, 2.0 * np.pi)
+        output[finite] += amplitude * np.sin(
+            2.0 * np.pi * frequency * relative_time[finite] + phase
+        )
+    elif corruption_type == "clipping":
+        threshold = (1.50, 0.85, 0.45)[severity] * scale
+        output[finite] = np.clip(
+            output[finite], center - threshold, center + threshold
+        )
+    elif corruption_type == "baseline":
+        amplitude = (0.50, 1.00, 1.80)[severity] * scale
+        frequency = rng.uniform(0.10, 0.50)
+        phase = rng.uniform(0.0, 2.0 * np.pi)
+        output[finite] += amplitude * np.sin(
+            2.0 * np.pi * frequency * relative_time[finite] + phase
+        )
+    elif corruption_type == "impulse":
+        count = (1, 3, 6)[severity]
+        locations = rng.choice(np.flatnonzero(finite), size=count, replace=False)
+        amplitudes = (4.0, 7.0, 11.0)[severity] * scale
+        output[locations] += rng.choice((-1.0, 1.0), size=count) * amplitudes
+    elif corruption_type == "dropout":
+        duration = (0.50, 1.50, 3.00)[severity]
+        total_duration = max(float(relative_time[-1]), duration)
+        start_time = rng.uniform(0.0, max(0.0, total_duration - duration))
+        dropout = (relative_time >= start_time) & (relative_time <= start_time + duration)
+        output[dropout & finite] = center
+    return output
+
+
 def extract_window_from_arrays(
     timestamps,
     ecg,
@@ -129,8 +204,14 @@ def extract_window_from_arrays(
     window_sec=10.0,
     target_length=1024,
     source_name="ECG arrays",
+    polarity=None,
+    corruption_type="none",
+    corruption_severity=0,
+    corruption_seed=0,
 ):
-    """Extract a validated model window from ECG arrays already in memory."""
+    """Extract a window; callers must explicitly declare array polarity."""
+    if polarity is None:
+        raise ValueError("extract_window_from_arrays requires explicit polarity")
     start = int(np.searchsorted(timestamps, float(start_time), side="left"))
     end = int(
         np.searchsorted(timestamps, float(start_time) + window_sec, side="right")
@@ -139,7 +220,14 @@ def extract_window_from_arrays(
         raise ValueError(f"Insufficient samples at {start_time} in {source_name}")
 
     segment_time = timestamps[start:end]
-    segment_ecg = ecg[start:end]
+    segment_ecg = np.asarray(ecg[start:end], dtype=np.float64) * float(polarity)
+    segment_ecg = _corrupt_signal(
+        segment_time,
+        segment_ecg,
+        corruption_type,
+        corruption_severity,
+        corruption_seed,
+    )
     if segment_time[-1] - segment_time[0] < 0.90 * window_sec:
         raise ValueError(
             f"Incomplete {window_sec}s window at {start_time}: {source_name}"
@@ -171,11 +259,16 @@ def extract_window(
     window_sec=10.0,
     target_length=1024,
     data_source="raw",
+    polarity=None,
+    corruption_type="none",
+    corruption_severity=0,
+    corruption_seed=0,
 ):
     """Load one exact raw or cleaned window for annotation/training."""
-    if data_source not in {"raw", "clean"}:
-        raise ValueError("data_source must be 'raw' or 'clean'")
+    required_polarity = polarity_for_source(data_source)
     reader = read_clean_ecg_file if data_source == "clean" else read_ecg_file
+    if polarity is None:
+        polarity = required_polarity
     timestamps, ecg = reader(file_path)
     if timestamps is None:
         raise ValueError(f"Could not read ECG data: {file_path}")
@@ -186,6 +279,10 @@ def extract_window(
         window_sec=window_sec,
         target_length=target_length,
         source_name=file_path,
+        polarity=polarity,
+        corruption_type=corruption_type,
+        corruption_severity=corruption_severity,
+        corruption_seed=corruption_seed,
     )
 
 
@@ -196,7 +293,7 @@ def load_raw_windows(
     windows_per_file,
     max_files=None,
 ):
-    """Uniformly sample raw windows across mirror*_data patient files."""
+    """Uniformly sample mirror*_data windows with ECG polarity=-1."""
     paths = sorted(
         glob.glob(os.path.join(data_root, "mirror*_data", "patient_*", "ecg_log.csv"))
     )
@@ -239,6 +336,7 @@ def load_raw_windows(
                     window_sec=window_sec,
                     target_length=target_length,
                     source_name=path,
+                    polarity=RAW_ECG_POLARITY,
                 )
             except ValueError:
                 continue
@@ -251,6 +349,8 @@ def load_raw_windows(
                 "window_index": int(window_index),
                 "start_time": float(window["timestamps"][0]),
                 "source_sampling_rate_hz": window["source_sampling_rate_hz"],
+                "data_source": "raw",
+                "polarity": RAW_ECG_POLARITY,
             }
             record.update(window["diagnostics"])
             records.append(record)

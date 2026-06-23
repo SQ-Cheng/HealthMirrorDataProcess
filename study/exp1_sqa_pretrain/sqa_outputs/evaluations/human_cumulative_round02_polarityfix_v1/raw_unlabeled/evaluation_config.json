@@ -1,0 +1,23 @@
+{
+  "checkpoints": [
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_ecg_tcn_window_L1024_run01_best.pt",
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_ecg_resnet_window_L1024_run03_best.pt",
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_human_tcn_window_L1024_cumulative_round02_polarityfix_v1_best.pt",
+    "study/exp1_sqa_pretrain/checkpoints/exp1_sqa_human_resnet_window_L1024_cumulative_round02_polarityfix_v1_best.pt"
+  ],
+  "model_labels": [
+    "tcn_weak",
+    "resnet_weak",
+    "tcn_human_r02",
+    "resnet_human_r02"
+  ],
+  "data_root": "/root/shared/HealthMirrorDataset",
+  "output_dir": "study/exp1_sqa_pretrain/sqa_outputs/evaluations/human_cumulative_round02_polarityfix_v1/raw_unlabeled",
+  "windows_per_file": 3,
+  "max_files": null,
+  "stress_samples": 256,
+  "batch_size": 128,
+  "seed": 42,
+  "device": "auto",
+  "overwrite": false
+}

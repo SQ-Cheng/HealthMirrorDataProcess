@@ -16,6 +16,9 @@ if _STUDY_DIR not in sys.path:
     sys.path.insert(0, _STUDY_DIR)
 
 from exp1_sqa_pretrain.sqa.raw_windows import (
+    CLEAN_ECG_POLARITY,
+    RAW_ECG_POLARITY,
+    extract_window_from_arrays,
     prepare_model_input,
     raw_diagnostics,
     read_clean_ecg_file,
@@ -122,12 +125,20 @@ def _enrich_raw_features(frame, window_sec, target_length):
         if timestamps is None:
             continue
         for index, row in group.iterrows():
-            start = int(np.searchsorted(timestamps, float(row["start_time"]), side="left"))
-            end = int(np.searchsorted(timestamps, float(row["start_time"]) + window_sec, side="right"))
-            segment_time, segment_ecg = timestamps[start:end], ecg[start:end]
-            if len(segment_time) < 16:
+            try:
+                window = extract_window_from_arrays(
+                    timestamps,
+                    ecg,
+                    row["start_time"],
+                    window_sec=window_sec,
+                    target_length=target_length,
+                    source_name=path,
+                    polarity=RAW_ECG_POLARITY,
+                )
+            except ValueError:
                 continue
-            model_input = prepare_model_input(segment_time, segment_ecg, window_sec, target_length)
+            model_input = window["model_input"]
+            segment_ecg = window["raw_ecg"]
             weak = generator(model_input, target_fs)
             baseline, high_frequency = _spectral_features(model_input, target_fs)
             features = weak["features"]
@@ -281,6 +292,10 @@ def _clean_anchor_pool(data_root, split_assignment, start_window_id, window_sec,
             "start_time": start_time,
             "source_sampling_rate_hz": float((len(segment_time) - 1) / (segment_time[-1] - segment_time[0])),
             "data_source": "clean",
+            "polarity": CLEAN_ECG_POLARITY,
+            "corruption_type": "none",
+            "corruption_severity": 0,
+            "corruption_seed": 0,
             "baseline_power_ratio": baseline,
             "high_frequency_power_ratio": high_frequency,
             "longest_flat_fraction": _longest_flat_fraction(segment_ecg),
@@ -409,6 +424,10 @@ def build_queue(
     frame["patient_id"] = frame["patient_id"].map(_canonical_patient)
     frame["patient_key"] = frame["canonical_mirror"] + "/" + frame["patient_id"]
     frame["data_source"] = "raw"
+    frame["polarity"] = RAW_ECG_POLARITY
+    frame["corruption_type"] = "none"
+    frame["corruption_severity"] = 0
+    frame["corruption_seed"] = 0
     split_assignment = _patient_splits(frame, seed)
     frame["patient_split"] = frame["patient_key"].map(split_assignment)
     frame = _add_model_scores(frame)

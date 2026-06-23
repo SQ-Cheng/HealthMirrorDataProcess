@@ -447,6 +447,11 @@ def parse_args():
         description="Evaluate SQA checkpoints on unlabeled mirror*_data ECG"
     )
     parser.add_argument("--checkpoints", nargs="+", required=True)
+    parser.add_argument(
+        "--model-labels",
+        nargs="+",
+        help="Optional unique display labels in the same order as --checkpoints.",
+    )
     parser.add_argument("--data-root", default=DEFAULT_DATA_ROOT)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--windows-per-file", type=int, default=3)
@@ -467,6 +472,8 @@ def main():
     args = parse_args()
     if args.windows_per_file < 1:
         raise ValueError("--windows-per-file must be positive")
+    if args.model_labels and len(args.model_labels) != len(args.checkpoints):
+        raise ValueError("--model-labels must match the number of --checkpoints")
 
     device = torch.device(
         "cuda" if args.device == "auto" and torch.cuda.is_available()
@@ -486,9 +493,13 @@ def main():
     target_length = None
     window_sec = None
 
-    for checkpoint_path in args.checkpoints:
+    for index, checkpoint_path in enumerate(args.checkpoints):
         model, checkpoint = load_sqa_model(checkpoint_path, device)
-        model_name = _model_identity(checkpoint)
+        model_name = (
+            args.model_labels[index]
+            if args.model_labels
+            else _model_identity(checkpoint)
+        )
         if model_name in models:
             raise ValueError(f"Duplicate model identity: {model_name}")
         models[model_name] = model

@@ -144,6 +144,8 @@ class MaskedReconDataset(Dataset):
         max_patients=None,
     ):
         self.signal_type = signal_type.lower().strip()
+        self.data_source = data_source
+        self.ecg_polarity = 1.0  # cleaned/sqi ECG is never polarity-inverted
         if self.signal_type not in {"ecg", "rppg", "joint"}:
             raise ValueError("signal_type must be 'ecg', 'rppg', or 'joint'")
 
@@ -264,6 +266,8 @@ class MaskedReconDataset(Dataset):
                     self.hospital_pids.append(hospital_pid)
                     self.source_records.append({
                         "dataset_index": len(self.samples) - 1,
+                        "data_source": data_source,
+                        "ecg_polarity": self.ecg_polarity,
                         "mirror": mirror_name,
                         "file_path": fpath,
                         "file_name": fname,
@@ -344,7 +348,7 @@ def build_dataloaders(
         window_sec: Window duration in seconds.
         step_sec: Step between windows in seconds.
         target_length: Resampled window length.
-        data_source: 'sqi' or 'cleaned'.
+        data_source: 'sqi' or 'cleaned'; ECG polarity remains +1.
         max_windows_per_patient: Cap windows per patient (None = unlimited).
         max_patients: Cap number of patients (None = unlimited).
 

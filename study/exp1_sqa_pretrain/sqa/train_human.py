@@ -23,7 +23,7 @@ if _STUDY_DIR not in sys.path:
     sys.path.insert(0, _STUDY_DIR)
 
 from exp1_sqa_pretrain.sqa.model import load_sqa_checkpoint
-from exp1_sqa_pretrain.sqa.raw_windows import extract_window
+from exp1_sqa_pretrain.sqa.raw_windows import extract_window, polarity_for_source
 
 
 _PKG_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,7 +68,9 @@ def _resolve_task_label(values):
     return np.nan, False
 
 
-def load_consolidated_labels(queue_path, labels_path, min_completed=80):
+def load_consolidated_labels(
+    queue_path, labels_path, min_completed=80, annotation_round=None
+):
     queue = pd.read_csv(queue_path, dtype={"queue_id": str})
     labels = pd.read_csv(
         labels_path, dtype=str, keep_default_na=False
@@ -99,14 +101,25 @@ def load_consolidated_labels(queue_path, labels_path, min_completed=80):
         qrs, qrs_conflict = _resolve_task_label(qrs_values)
         morph, morph_conflict = _resolve_task_label(morph_values)
         source = group.iloc[0]
+        data_source = source.get("data_source", "raw")
+        polarity = source.get("polarity", np.nan)
+        if pd.isna(polarity):
+            polarity = polarity_for_source(data_source)
         row = {
+            "annotation_round": annotation_round or os.path.basename(
+                os.path.dirname(os.path.abspath(queue_path))
+            ),
             "window_id": int(window_id),
             "mirror": source["mirror"],
             "patient_id": source["patient_id"],
             "patient_key": source["patient_key"],
             "file_path": source["file_path"],
             "start_time": float(source["start_time"]),
-            "data_source": source.get("data_source", "raw"),
+            "data_source": data_source,
+            "polarity": float(polarity),
+            "corruption_type": source.get("corruption_type", "none"),
+            "corruption_severity": int(float(source.get("corruption_severity", 0))),
+            "corruption_seed": int(float(source.get("corruption_seed", 0))),
             "split": source["split"],
             "acquisition_type": source["acquisition_type"],
             "artifact_subtype": source.get("artifact_subtype", ""),
@@ -127,17 +140,77 @@ def load_consolidated_labels(queue_path, labels_path, min_completed=80):
     return frame, pd.DataFrame(conflicts, columns=frame.columns)
 
 
+def _broad_split(split):
+    return "test" if str(split).startswith("test") else str(split)
+
+
+SAMPLE_ID_COLUMNS = [
+    "file_path",
+    "start_time",
+    "corruption_type",
+    "corruption_severity",
+    "corruption_seed",
+]
+
+
+def _merge_cross_round_duplicates(frame):
+    """Merge identical, consistently labeled samples selected in multiple rounds."""
+    rows = []
+    for _, group in frame.groupby(SAMPLE_ID_COLUMNS, sort=False, dropna=False):
+        if len(group) == 1:
+            rows.append(group.iloc[0].copy())
+            continue
+        comparable = ["patient_key", "split", "y_qrs", "y_morph"]
+        if any(group[column].nunique(dropna=False) != 1 for column in comparable):
+            raise RuntimeError(
+                "Cross-round duplicate has conflicting labels or split:\n"
+                + group[["annotation_round", "window_id", *comparable]].to_string(
+                    index=False
+                )
+            )
+        row = group.iloc[0].copy()
+        row["annotation_round"] = "+".join(group["annotation_round"].astype(str))
+        row["annotation_count"] = int(group["annotation_count"].sum())
+        rows.append(row)
+    return pd.DataFrame(rows).reset_index(drop=True)
+
+
+def _validate_cumulative_labels(frame):
+    """Reject patient leakage before cumulative training."""
+    if frame.duplicated(SAMPLE_ID_COLUMNS, keep=False).any():
+        raise RuntimeError("Cross-round sample consolidation failed.")
+
+    assignments = frame[["patient_key", "split"]].copy()
+    assignments["broad_split"] = assignments["split"].map(_broad_split)
+    split_counts = assignments.groupby("patient_key")["broad_split"].nunique()
+    leaking = split_counts[split_counts > 1].index
+    if len(leaking):
+        examples = assignments[assignments["patient_key"].isin(leaking)].head(20)
+        raise RuntimeError(
+            "Patients cross train/validation/test boundaries across annotation rounds:\n"
+            + examples.to_string(index=False)
+        )
+
+
 class HumanSQADataset(Dataset):
     def __init__(self, frame, window_sec, target_length):
         self.frame = frame.reset_index(drop=True).copy()
         inputs = []
         for _, row in self.frame.iterrows():
+            data_source = row.get("data_source", "raw")
+            polarity = row.get("polarity", np.nan)
+            if pd.isna(polarity):
+                polarity = polarity_for_source(data_source)
             window = extract_window(
                 row["file_path"],
                 row["start_time"],
                 window_sec=window_sec,
                 target_length=target_length,
-                data_source=row.get("data_source", "raw"),
+                data_source=data_source,
+                polarity=polarity,
+                corruption_type=row.get("corruption_type", "none"),
+                corruption_severity=row.get("corruption_severity", 0),
+                corruption_seed=row.get("corruption_seed", 0),
             )
             inputs.append(window["model_input"])
         self.inputs = np.stack(inputs)[:, None, :].astype(np.float32)
@@ -407,6 +480,15 @@ def _save_checkpoint(
     val_metrics,
     thresholds=None,
 ):
+    annotation_sources = [
+        {
+            "queue_path": os.path.abspath(queue_path),
+            "queue_sha256": _sha256(queue_path),
+            "labels_path": os.path.abspath(labels_path),
+            "labels_sha256": _sha256(labels_path),
+        }
+        for queue_path, labels_path in args.annotation_source
+    ]
     torch.save({
         "task": "ecg_sqa_human",
         "encoder_architecture": args.encoder,
@@ -418,10 +500,12 @@ def _save_checkpoint(
         "head_state_dict": model.head.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "source_sqa_checkpoint": os.path.abspath(source_checkpoint),
-        "queue_path": os.path.abspath(args.queue),
-        "queue_sha256": _sha256(args.queue),
-        "labels_path": os.path.abspath(args.labels),
-        "labels_sha256": _sha256(args.labels),
+        "annotation_sources": annotation_sources,
+        # Retain the single-source fields for older checkpoint readers.
+        "queue_path": annotation_sources[-1]["queue_path"],
+        "queue_sha256": annotation_sources[-1]["queue_sha256"],
+        "labels_path": annotation_sources[-1]["labels_path"],
+        "labels_sha256": annotation_sources[-1]["labels_sha256"],
         "validation_metrics": val_metrics,
         "thresholds": thresholds,
         "training_config": vars(args),
@@ -436,6 +520,16 @@ def parse_args():
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--queue", default=DEFAULT_QUEUE)
     parser.add_argument("--labels", default=DEFAULT_LABELS)
+    parser.add_argument(
+        "--annotation-source",
+        action="append",
+        nargs=2,
+        metavar=("QUEUE", "LABELS"),
+        help=(
+            "Queue/labels pair. Repeat to train cumulatively across rounds; "
+            "when supplied, --queue and --labels are ignored."
+        ),
+    )
     parser.add_argument("--checkpoint-dir", default=DEFAULT_CHECKPOINT_DIR)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--checkpoint-tag", default="round01")
@@ -447,7 +541,15 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--morph-loss-weight", type=float, default=1.0)
-    parser.add_argument("--min-completed", type=int, default=100)
+    parser.add_argument(
+        "--min-completed",
+        type=int,
+        default=None,
+        help=(
+            "Completed tasks required for a single source; defaults to every "
+            "task. Leave unset when using multiple --annotation-source values."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
     return parser.parse_args()
@@ -480,9 +582,36 @@ def main():
     if int(source_metadata["target_length"]) != args.target_length:
         raise ValueError("Checkpoint target length does not match --target-length.")
 
-    labels, conflicts = load_consolidated_labels(
-        args.queue, args.labels, args.min_completed
-    )
+    if args.annotation_source:
+        if args.min_completed is not None and len(args.annotation_source) > 1:
+            raise ValueError(
+                "Leave --min-completed unset with multiple annotation sources."
+            )
+    else:
+        args.annotation_source = [[args.queue, args.labels]]
+
+    label_frames, conflict_frames = [], []
+    completed_requirements = []
+    for queue_path, labels_path in args.annotation_source:
+        required = args.min_completed
+        if required is None:
+            required = len(pd.read_csv(queue_path, usecols=["queue_id"]))
+        completed_requirements.append(required)
+        annotation_round = os.path.basename(os.path.dirname(os.path.abspath(queue_path)))
+        source_labels, source_conflicts = load_consolidated_labels(
+            queue_path,
+            labels_path,
+            min_completed=required,
+            annotation_round=annotation_round,
+        )
+        label_frames.append(source_labels)
+        conflict_frames.append(source_conflicts)
+
+    labels = pd.concat(label_frames, ignore_index=True)
+    conflicts = pd.concat(conflict_frames, ignore_index=True)
+    labels = _merge_cross_round_duplicates(labels)
+    _validate_cumulative_labels(labels)
+    args.min_completed = int(sum(completed_requirements))
     usable = np.isfinite(labels[["y_qrs", "y_morph"]]).any(axis=1)
     labels = labels[usable].reset_index(drop=True)
     split_frames = {
