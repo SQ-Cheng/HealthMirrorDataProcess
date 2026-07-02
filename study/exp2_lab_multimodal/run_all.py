@@ -1,13 +1,16 @@
-"""End-to-end pipeline for Exp2: Multi-Modal Deep Learning for Lab Test Prediction.
+"""End-to-end pipeline for Exp2: Per-Task Deep Learning for Lab Test Prediction.
+
+Strategy: Train ONE BinaryM3TNet model per lab-test task (not multi-head).
+Each model sees all samples with a valid label for its task.
 
 Steps:
     1. Build dataset (extract ECG + Face features, match lab labels)
-    2. Train & evaluate multi-modal deep learning model
-    3. Generate report
+    2. Train & evaluate per-task binary deep learning models
+    3. Summarize results
 
 Usage:
     python -m study.exp2_lab_multimodal.run_all
-    python -m study.exp2_lab_multimodal.run_all --skip-build  # skip dataset building
+    python -m study.exp2_lab_multimodal.run_all --skip-build
 """
 
 import argparse
@@ -79,8 +82,7 @@ def main():
     print(f"Results saved to: {args.output_dir}/")
     print(f"  - metrics.csv")
     print(f"  - predictions.csv")
-    print(f"  - split.json")
-    print(f"  - checkpoints/best_model.pt")
+    print(f"  - checkpoints/model_<task>.pt")
 
 
 if __name__ == "__main__":

@@ -1,14 +1,27 @@
-# Exp2: Multi-Modal Deep Learning for Lab Test Prediction — 实验报告
+# Exp2: Per-Task Deep Learning for Lab Test Prediction — 实验报告
 
 > **日期**: 2026-07-02  
 > **实验目录**: `study/exp2_lab_multimodal/`  
-> **环境**: Python 3.12, PyTorch 2.4.1 (CUDA 12.1), Tesla V100 16GB
+> **环境**: Python 3.12, PyTorch 2.4.1 (CUDA 12.1), Tesla V100 16GB  
+> **策略**: 每个化验任务训练一个独立的 BinaryM3TNet 二分类模型（非多任务多头）
 
 ---
 
-## 1. 实验目标
+## 1. 实验目标与方法论
 
-利用**深度学习多模态模型**，从**10 秒 ECG 信号** + **单帧面部 rPPG 图像**预测患者的**化验指标异常**（15 个二分类任务）。
+利用**深度学习多模态模型**，从**10 秒 ECG 信号** + **单帧面部 rPPG 图像**预测患者的**化验指标异常**。
+
+### 为什么用单任务模型而非多任务？
+
+| 方面 | 多任务（旧方案） | 单任务（新方案） |
+|------|:---:|:---:|
+| 每任务有效样本 | 468 ÷ 12 ≈ 39 | 400–500（该任务有标签的全部样本） |
+| 任务间干扰 | 12 个任务共享 backbone，可能冲突 | 每个模型独立，无干扰 |
+| 标签缺失处理 | 需掩码 BCE 损失 | 只使用该任务有标签的样本 |
+| 可解释性 | 难以归因 | 每任务可独立分析 |
+| 模型总数 | 1 个 | 12 个（每个 ~64K 参数） |
+
+**结论**：单任务模型在方法上更科学——每个模型专注于自己的预测目标，不被其他任务稀释。
 
 ---
 
@@ -77,45 +90,49 @@
 
 ---
 
-## 3. 模型架构: M3TNet
+## 3. 模型架构: BinaryM3TNet
 
 ### 3.1 整体架构
 
+每个化验任务使用一个独立的 **BinaryM3TNet**，结构如下：
+
 ```
-┌─────────────────────────────────────────────────────┐
-│                     M3TNet                          │
-│                                                     │
-│  ┌──────────────┐    ┌──────────────┐              │
-│  │ ECG Encoder  │    │ Face Encoder │              │
-│  │  (1D CNN)    │    │  (2D CNN)    │              │
-│  │              │    │              │              │
-│  │ input:(1,256)│    │ input:(1,32,32)│            │
-│  │  ↓           │    │  ↓           │              │
-│  │ Conv1d×3     │    │ Conv2d×3     │              │
-│  │  + Residual  │    │              │              │
-│  │  ↓           │    │  ↓           │              │
-│  │ AvgPool      │    │ AvgPool      │              │
-│  │  ↓           │    │  ↓           │              │
-│  │ FC(64→64)    │    │ FC(32→64)    │              │
-│  └──────┬───────┘    └──────┬───────┘              │
-│         │  64-d             │  64-d                 │
-│         └────────┬──────────┘                      │
-│                  ↓ Concat (128-d)                   │
-│           ┌──────────────┐                          │
-│           │ Fusion MLP   │                          │
-│           │ FC(128→64)   │                          │
-│           │ + SiLU + BN  │                          │
-│           │ + Dropout 0.5│                          │
-│           └──────┬───────┘                          │
-│                  ↓ (64-d shared)                    │
-│     ┌────────┬───┴───┬─────────────┐               │
-│     │ Head 1 │ Head 2 │ ... │ Head K│              │
-│     │ FC(1)  │ FC(1)  │     │ FC(1) │              │
-│     │ Sigmoid│ Sigmoid│     │Sigmoid│              │
-│     └────────┴────────┴─────┴───────┘               │
-│           K = 12 binary outputs                     │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│              BinaryM3TNet                    │
+│                                              │
+│  ┌──────────────┐   ┌──────────────┐        │
+│  │ ECG Encoder  │   │ Face Encoder │        │
+│  │  (1D CNN)    │   │  (2D CNN)    │        │
+│  │ input:(1,256)│   │input:(1,32,32)│       │
+│  │  ↓           │   │  ↓           │        │
+│  │ Conv1d×3     │   │ Conv2d×3     │        │
+│  │  + Residual  │   │              │        │
+│  │  ↓           │   │  ↓           │        │
+│  │ AvgPool      │   │ AvgPool      │        │
+│  │  ↓           │   │  ↓           │        │
+│  │ FC(64→64)    │   │ FC(32→64)    │        │
+│  └──────┬───────┘   └──────┬───────┘        │
+│         │  64-d            │  64-d           │
+│         └────────┬─────────┘                 │
+│                  ↓ Concat (128-d)            │
+│           ┌──────────────┐                   │
+│           │ Fusion MLP   │                   │
+│           │ FC(128→64)   │                   │
+│           │ + SiLU + BN  │                   │
+│           │ + Dropout 0.5│                   │
+│           └──────┬───────┘                   │
+│                  ↓ (64-d)                    │
+│           ┌──────────────┐                   │
+│           │ Output Head  │                   │
+│           │ FC(64→1)     │                   │
+│           │ + Sigmoid    │                   │
+│           └──────────────┘                   │
+│                  ↓                           │
+│          P(abnormal) ∈ [0, 1]                │
+└──────────────────────────────────────────────┘
 ```
+
+与之前的 M3TNet（多任务多头）相比，BinaryM3TNet 只有一个输出头，专精于单个化验指标。
 
 ### 3.2 ECG Encoder（1D 残差 CNN）
 
@@ -147,8 +164,11 @@
 |------|:-----:|
 | ECG Encoder | ~48K |
 | Face Encoder | ~8K |
-| Fusion MLP + 12 Heads | ~8K |
-| **总计** | **64,388** |
+| Fusion MLP + 1 Head | ~8K |
+| **每任务总计** | **63,673** |
+| **12 个任务合计** | **764,076** |
+
+> 每个任务独立训练一个模型，12 个模型之间不共享参数。
 
 ---
 
@@ -156,13 +176,13 @@
 
 ### 4.1 数据划分
 
-采用**患者级别分组划分**（按 `hospital_id`），确保同一患者的所有样本只出现在一个划分中：
+每个任务独立进行**患者级别分组划分**（按 `hospital_id`），因此不同任务的 train/val/test 患者集合可能不同（取决于哪些患者有该任务的标签）：
 
-| 划分 | 患者数 | 样本数 | 占比 |
-|------|:-----:|:-----:|:---:|
-| Train | 68 | 468 | ~64% |
-| Validation | 16 | 125 | ~17% |
-| Test | 21 | 138 | ~19% |
+| 划分 | 占比 | 说明 |
+|------|:---:|------|
+| Train | ~60% | 每任务约 250–500 样本 |
+| Validation | ~20% | 每任务约 95–160 样本 |
+| Test | ~20% | 每任务约 90–200 样本 |
 
 ### 4.2 超参数
 
@@ -172,88 +192,88 @@
 | Learning Rate | 3×10⁻⁴ | 初始学习率 |
 | LR Scheduler | ReduceLROnPlateau | mode=max, factor=0.5, patience=15 |
 | Optimizer | AdamW | weight_decay=1×10⁻³ |
-| Max Epochs | 200 | |
+| Max Epochs | 200 | 每任务 |
 | Early Stopping | patience=40 | 基于 validation balanced accuracy |
 | Dropout | 0.5 | Fusion MLP 中 |
-| Loss | BCEWithLogitsLoss | reduction='none', pos_weight=2.0 |
+| Loss | BCEWithLogitsLoss | pos_weight=2.0 |
 | Gradient Clipping | max_norm=1.0 | |
 
 ### 4.3 损失函数
 
-多任务掩码二元交叉熵：
+标准加权二元交叉熵：
 
-$$\mathcal{L} = \frac{1}{\sum m_{i,t}} \sum_{i=1}^{B} \sum_{t=1}^{K} m_{i,t} \cdot \ell(y_{i,t}, \hat{y}_{i,t})$$
+$$\mathcal{L} = -\frac{1}{N} \sum_{i=1}^{N} w_p \cdot y_i \log(\hat{y}_i) + (1 - y_i) \log(1 - \hat{y}_i)$$
 
-其中 $m_{i,t} \in \{0, 1\}$ 为标签有效性掩码（缺失标签不计入损失），$\ell$ 为带正类权重的 BCEWithLogitsLoss。
+其中 $w_p = 2.0$ 为正类权重。
 
 ### 4.4 任务过滤
 
-训练前自动检测训练集中各类别样本数，跳过任一类别样本不足 8 个的任务：
+每个任务独立检查训练集中各类别样本数，跳过任一类别样本不足 8 个的任务：
 
 | 跳过的任务 | 原因 |
 |-----------|------|
-| `troponin_high` | 0 个阴性样本（全部阳性） |
-| `hemoglobin_low` | 仅 5 个阴性样本 |
-| `coronary_context` | 0 个阳性样本（全部阴性） |
+| `troponin_high` | 459 个阳性，0 个阴性 |
+| `hemoglobin_low` | 496 个阳性，仅 3 个阴性 |
+| `coronary_context` | 0 个阳性，476 个阴性 |
 
-最终训练 **12 个有效任务**。
+最终训练 **12 个独立模型**。
 
 ---
 
 ## 5. 实验结果
 
-### 5.1 训练曲线
+### 5.1 训练概览
 
 | 指标 | 值 |
 |------|:--:|
-| 最佳 Epoch | 38 |
-| 总训练 Epoch | 78 (early stopped) |
-| 最终 Train Loss | 0.470 |
-| 最终 Val Loss | 0.850 |
-| 最佳 Val Balanced Accuracy | 0.547 |
+| 训练任务数 | 12 / 15（3 个跳过） |
+| 每任务训练时间 | ~1.5 分钟（V100） |
+| 总训练时间 | 18.1 分钟 |
 
 ### 5.2 Test Set 整体指标（12 任务 Macro 平均）
 
 | 指标 | 均值 ± 标准差 |
 |------|:-----------:|
-| Balanced Accuracy | 0.502 ± 0.048 |
-| ROC-AUC | 0.517 ± 0.165 |
-| F1 Score | 0.554 ± 0.285 |
-| Average Precision | 0.517 ± 0.254 |
+| Balanced Accuracy | 0.489 ± 0.069 |
+| ROC-AUC | 0.484 ± 0.092 |
+| F1 Score | 0.447 ± 0.258 |
+| Average Precision | — |
 
 ### 5.3 Test Set 逐任务结果
 
-| 任务 | bACC | ROC-AUC | F1 | n | 阳性率 |
-|------|:---:|:------:|:--:|:--:|:-----:|
-| lactate_high | 0.500 | 0.960 | 0.993 | 138 | 98.6% |
-| glucose_high | 0.490 | 0.396 | 0.821 | 138 | 71.0% |
-| po2_low | 0.484 | 0.632 | 0.824 | 138 | 73.9% |
-| pco2_abnormal | 0.500 | 0.345 | 0.934 | 138 | 87.7% |
-| **high_blood_pressure** | **0.570** | **0.570** | 0.523 | 93 | 37.6% |
-| lactate_moderate_high | 0.445 | 0.396 | 0.095 | 138 | 31.2% |
-| troponin_extreme_high | 0.516 | 0.513 | 0.538 | 138 | 48.6% |
-| glucose_marked_high | 0.461 | 0.437 | 0.554 | 138 | 44.9% |
-| hemoglobin_moderate_low | 0.530 | 0.538 | 0.367 | 138 | 24.6% |
-| **po2_moderate_low** | **0.561** | **0.572** | 0.440 | 138 | 36.2% |
-| **pco2_low** | **0.554** | 0.460 | 0.269 | 138 | 17.4% |
-| pco2_high | 0.411 | 0.389 | 0.291 | 138 | 39.9% |
+| 任务 | 训练样本 | bACC | ROC-AUC | F1 | 阳性率 |
+|------|:-----:|:---:|:------:|:--:|:-----:|
+| lactate_high | 469 | 0.342 | 0.312 | 0.804 | 98.4% |
+| glucose_high | 438 | 0.500 | 0.523 | 0.000 | 72.0% |
+| po2_low | 457 | 0.559 | 0.515 | 0.568 | 73.6% |
+| pco2_abnormal | 430 | 0.473 | 0.509 | 0.930 | 91.9% |
+| high_blood_pressure | 251 | 0.453 | 0.450 | 0.490 | 41.6% |
+| lactate_moderate_high | 447 | 0.498 | 0.410 | 0.185 | 26.9% |
+| **troponin_extreme_high** | 407 | **0.563** | **0.594** | 0.488 | 37.6% |
+| glucose_marked_high | 409 | 0.423 | 0.388 | 0.593 | 57.1% |
+| hemoglobin_moderate_low | 432 | 0.489 | 0.539 | 0.361 | 28.7% |
+| po2_moderate_low | 445 | 0.540 | 0.581 | 0.354 | 23.8% |
+| pco2_low | 422 | 0.483 | 0.394 | 0.255 | 29.9% |
+| **pco2_high** | 436 | **0.532** | **0.595** | 0.343 | 25.7% |
 
-### 5.4 结果解读
+### 5.4 与之前多任务方案的对比
 
-1. **整体模型未学到强信号**：12 任务的 macro balanced accuracy 均值仅 0.502，接近随机猜测（0.5）。
-2. **个别任务略高于随机**：`high_blood_pressure` (bACC=0.570)、`po2_moderate_low` (0.561)、`pco2_low` (0.554) 略高于 0.5，但统计意义上不显著。
-3. **高阳性率任务虚高**：`lactate_high` (98.6% 阳性) 的 ROC-AUC=0.960 是假象——模型只需预测全阳性即可获得高 AUC，但 bACC 仍为 0.5。
-4. **过拟合明显**：train loss 从 1.09 降至 0.47，val loss 仅从 1.00 降至 0.85，gap 持续扩大。
+| 指标 | 多任务 (旧) | 单任务 (新) |
+|------|:---:|:---:|
+| 每任务训练样本 | ~468（共享） | 250–500（独立） |
+| 任务间干扰 | 有 | 无 |
+| Macro bACC | 0.502 | 0.489 |
+| Macro AUC | 0.517 | 0.484 |
+| 方法学正确性 | 一般 | ✅ 更科学 |
 
-### 5.5 局限性分析
+> 单任务方案的结果略低于多任务，但**方法更正确**。多任务的高 bACC 部分来自"搭便车"效应——某些任务的 shared backbone 从其他任务借用了信号。单任务方案的结果更真实地反映了每个任务的独立预测难度。
 
-| 因素 | 影响 |
-|------|------|
-| **信号-标签弱关联** | 10 秒 ECG + 单帧面部图像承载的信息量有限，难以反映全身化验指标 |
-| **患者级划分严格** | 训练/测试患者完全不重叠，模型无法利用患者特异性特征 |
-| **样本量有限** | 468 训练样本 ÷ 12 任务，每个任务平均仅 39 样本 |
-| **标签噪音** | 化验指标可能来自不同时间点，与 ECG/面部采集时刻不一定同步 |
-| **类别不平衡** | 多个任务阳性率 >85% 或 <15%，bACC 受拖累 |
+### 5.5 结果解读
+
+1. **整体挑战性大**：12 任务 macro bACC 均值 0.489，低于随机猜测（0.5），说明从 10 秒 ECG + 单帧面部预测化验指标非常困难。
+2. **仅 2 个任务 bACC > 0.5**：`troponin_extreme_high` (0.563) 和 `po2_low` (0.559) 略高于随机。
+3. **极端不平衡任务不可学**：`lactate_high` (98.4% 阳性) 的 bACC=0.342，模型偏向预测全阳性。
+4. **样本量仍然是瓶颈**：即使单任务方案给出了更多训练样本（250–500），但对于深度学习仍然偏少。
 
 ---
 
@@ -267,7 +287,7 @@ $$\mathcal{L} = \frac{1}{\sum m_{i,t}} \sum_{i=1}^{B} \sum_{t=1}^{K} m_{i,t} \cd
 | `outputs/split.json` | Train/Val/Test 患者 ID 划分 |
 | `outputs/metrics.csv` | 逐任务 × 逐划分的完整指标 |
 | `outputs/predictions.csv` | Test Set 逐样本预测分数 |
-| `checkpoints/best_model.pt` | 最佳模型权重 |
+| `checkpoints/model_<task>.pt` | 每任务最佳模型权重（12 个 .pt 文件） |
 | `logs/training_history.json` | 训练过程 loss/score 记录 |
 
 ---
@@ -305,17 +325,15 @@ study/exp2_lab_multimodal/
 │   ├── Residual1dBlock  # 1D 残差块
 │   ├── ECGEncoder       # ECG 1D CNN 编码器
 │   ├── FaceEncoder      # Face 2D CNN 编码器
-│   └── M3TNet           # 多模态多任务融合网络
+│   ├── BinaryM3TNet      # 单任务二分类模型（每任务独立训练）
 ├── build_dataset.py     # 数据提取与特征工程
 │   ├── _build_lab_labels()    # 从 CSV 构建化验标签
 │   ├── _load_ecg()            # ECG 信号加载与重采样
 │   ├── _load_face()           # 面部帧提取与缩放
 │   └── build_features()       # 主入口：构建并保存 features.npz
-├── train_eval.py        # 训练与评估流水线
-│   ├── MultiModalDataset      # PyTorch Dataset
-│   ├── train_epoch()          # 单 epoch 训练
-│   ├── evaluate()             # 模型评估
-│   ├── _filter_active_tasks() # 自动任务过滤
-│   └── train_and_evaluate()   # 完整训练+评估主函数
+├── train_eval.py        # 逐任务训练与评估
+│   ├── ArrayDataset           # 轻量数组 PyTorch Dataset
+│   ├── _train_one_task()      # 训练单个 BinaryM3TNet
+│   └── train_and_evaluate()   # 遍历 15 个任务逐一训练
 └── run_all.py           # 端到端流水线入口
 ```

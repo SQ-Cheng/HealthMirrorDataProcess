@@ -245,6 +245,56 @@ class M3TNet(nn.Module):
         return torch.sigmoid(logits)
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# BinaryM3TNet: Single-Task Binary Classifier
+# ═══════════════════════════════════════════════════════════════════════
+
+class BinaryM3TNet(nn.Module):
+    """Multi-Modal Network for a SINGLE binary lab test prediction task.
+
+    Same ECG + Face encoders as M3TNet, but with a single output head.
+    One model is trained per task — avoids multi-task interference and
+    allows each model to use all samples that have that task's label.
+
+    Input:  ecg (B,1,256), face (B,1,32,32)
+    Output: logit (B, 1)
+    """
+
+    def __init__(self, ecg_embed_dim=ECG_EMBED_DIM,
+                 face_embed_dim=FACE_EMBED_DIM, fusion_hidden=FUSION_HIDDEN,
+                 dropout=DROPOUT):
+        super().__init__()
+        self.ecg_encoder = ECGEncoder(embed_dim=ecg_embed_dim)
+        self.face_encoder = FaceEncoder(embed_dim=face_embed_dim)
+
+        total_embed = ecg_embed_dim + face_embed_dim
+        # Build fusion MLP
+        fusion_layers = []
+        in_dim = total_embed
+        for h_dim in fusion_hidden[1:]:
+            fusion_layers.extend([
+                nn.Linear(in_dim, h_dim),
+                nn.BatchNorm1d(h_dim),
+                nn.SiLU(inplace=True),
+                nn.Dropout(dropout),
+            ])
+            in_dim = h_dim
+        self.fusion = nn.Sequential(*fusion_layers)
+
+        # Single output head
+        self.head = nn.Linear(fusion_hidden[-1], 1)
+
+    def forward(self, ecg, face):
+        ecg_emb = self.ecg_encoder(ecg)       # (B, ecg_embed_dim)
+        face_emb = self.face_encoder(face)     # (B, face_embed_dim)
+        fused = torch.cat([ecg_emb, face_emb], dim=-1)
+        shared = self.fusion(fused)
+        return self.head(shared)               # (B, 1)
+
+    def predict_proba(self, ecg, face):
+        return torch.sigmoid(self.forward(ecg, face))
+
+
 def count_parameters(model):
     """Return total and trainable parameter counts."""
     total = sum(p.numel() for p in model.parameters())
