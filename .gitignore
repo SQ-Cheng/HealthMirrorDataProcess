@@ -39,3 +39,14 @@ sample_length_report_output.txt
 # IDE
 .vscode/
 .idea/
+
+# ── Exp2: track source code, exclude large generated files ──────────
+/study/exp2_lab_multimodal/outputs/features.npz
+/study/exp2_lab_multimodal/outputs/frames/
+/study/exp2_lab_multimodal/checkpoints/
+/study/exp2_lab_multimodal/logs/run.log
+/study/exp2_lab_multimodal/__pycache__/
+!study/exp2_lab_multimodal/outputs/*.csv
+!study/exp2_lab_multimodal/outputs/*.json
+!study/exp2_lab_multimodal/outputs/*.md
+!study/exp2_lab_multimodal/logs/*.json
