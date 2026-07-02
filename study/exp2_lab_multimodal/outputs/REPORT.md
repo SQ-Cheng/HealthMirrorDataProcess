@@ -88,6 +88,28 @@
 
 > **注**: `troponin_high`、`hemoglobin_low`、`coronary_context` 因某类别样本不足被自动跳过（见第 5 节）。
 
+### 2.5 二分类阈值与医学参考值
+
+| 任务 | 指标 | 单位 | 代码阈值 | 方向 | 医学参考范围 |
+|------|------|:--:|:--------:|:---:|------------|
+| lactate_high | 乳酸 (Lactate) | mmol/L | $>2.0$ | ↑ | $\le 2.0$ 正常 |
+| lactate_moderate_high | 乳酸 (Lactate) | mmol/L | $>4.0$ | ↑ | $>4.0$ 中度升高 |
+| troponin_high | 高敏肌钙蛋白 I (hsTnI) | pg/mL | $>34$ | ↑ | $\le 34$ 正常 |
+| troponin_extreme_high | 高敏肌钙蛋白 I (hsTnI) | pg/mL | $>1000$ | ↑ | $>1000$ 极度升高 |
+| glucose_high | 血糖 (Glucose) | mmol/L | $>7.8$ | ↑ | $3.9$–$6.1$ 空腹正常 |
+| glucose_marked_high | 血糖 (Glucose) | mmol/L | $>10.0$ | ↑ | $>10.0$ 显著升高 |
+| hemoglobin_low | 血红蛋白 (Hb) | g/L | $<130$ (男) / $<120$ (女) | ↓ | $130$–$175$ (男), $120$–$160$ (女) |
+| hemoglobin_moderate_low | 血红蛋白 (Hb) | g/L | $<90$ | ↓ | $<90$ 中度贫血 |
+| po2_low | 氧分压 (PaO₂) | mmHg | $<80$ | ↓ | $80$–$100$ 正常 |
+| po2_moderate_low | 氧分压 (PaO₂) | mmHg | $<70$ | ↓ | $<70$ 中度低氧 |
+| pco2_low | 二氧化碳分压 (PaCO₂) | mmHg | $<34$ | ↓ | $35$–$45$ 正常 |
+| pco2_high | 二氧化碳分压 (PaCO₂) | mmHg | $>50$ | ↑ | $35$–$45$ 正常 |
+| pco2_abnormal | 二氧化碳分压 (PaCO₂) | mmHg | $<35$ 或 $>45$ | ↕ | $35$–$45$ 正常 |
+| high_blood_pressure | 血压 (BP) | mmHg | 收缩压 $\ge 140$ 或舒张压 $\ge 90$ | ↑ | $<140/90$ 正常 |
+| coronary_context | 冠心病诊断 | — | 手术名称含"冠心病" | — | 文本匹配 |
+
+> **说明**: 以上阈值用于生成二分类标签（0=正常，1=异常）。乳酸、肌钙蛋白、血糖、pCO₂ 取患者住院期间**最大值**判断；血红蛋白、pO₂ 取**最小值**判断。血压数据来源于采集会话时的实测值。
+
 ---
 
 ## 3. 模型架构: BinaryM3TNet
