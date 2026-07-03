@@ -1,0 +1,6 @@
+label,definition,rationale,feasibility
+lactate_clearance_failure,Post-op lactate slope > 0 AND last value > 2.0,Failure to clear lactate indicates ongoing hypoperfusion,~6 patients eligible
+hb_drop_severe,Hb drop > 30 g/L from pre-op baseline,Absolute drop matters more than crossing a threshold,~22 patients
+troponin_excessive,TnI > 90th percentile for days-from-surgery bin,Accounts for expected post-CABG elevation,Per-bin p90 available from population
+multi_deterioration,≥2 analytes worsening simultaneously,Systemic deterioration vs isolated abnormality,~90 events detected
+delayed_recovery,Any analyte not normalized by post-op day 3,Clinically meaningful composite endpoint,Computable from trajectory data
