@@ -10,10 +10,10 @@
 
 ## Executive Summary (Updated)
 
-### Phase 1 Findings (Confirmed)
+### Phase 1 Findings (with Phase 2 Corrections)
 1. Classical ECG feature engineering (macro bACC=0.528) outperforms Exp2 deep learning (0.448)
 2. Surgery timing is the dominant predictor of lab values
-3. Cross-analyte correlations are physiologically meaningful
+3. ~~Cross-analyte correlations are significant~~ **CORRECTED: All hemoglobin correlations were artifacts of the unit bug + surgery timing confound. The only genuine correlations are glucose-pO2 (r=+0.220) and lactate-pO2 (r=-0.207), both weak.**
 4. 10-second ECG windows are **not patient-stable** (intra/inter ratio = 0.95×)
 
 ### Phase 2 Findings (New)
@@ -157,7 +157,69 @@ Similarly, glucose raw values are in both mmol/L (values 1-30) and mg/dL (70-600
 
 ---
 
-### Direction I: Clinically Meaningful Label Redefinitions
+### Direction B (CORRECTED): Cross-Analyte Correlation Re-Analysis
+
+> ⚠️ **This section CORRECTS and REPLACES the Phase 1 Direction B results, which were contaminated by the hemoglobin and glucose unit bugs.**
+
+#### Corrected Pearson Correlation Matrix
+
+```
+            lactate  troponin  glucose  hemoglobin  po2    pco2
+lactate       —       +0.035    +0.120    +0.130    -0.207  +0.159
+troponin      —        —       +0.081    -0.021    +0.159  +0.146
+glucose       —        —        —        -0.146    +0.220  -0.151
+hemoglobin    —        —        —         —        -0.133  +0.102
+po2           —        —        —         —         —      -0.385
+pco2          —        —        —         —         —        —
+```
+
+#### Phase 1 (Buggy) vs Phase 2 (Corrected) Comparison
+
+| Pair | Phase 1 r | Phase 2 r | Δ | Impact |
+|------|:---------:|:---------:|:---:|--------|
+| **hemoglobin — pO2** | **-0.553** | **-0.133** | +0.420 | **MAJOR — old result INVALID** |
+| **glucose — pO2** | **-0.125** | **+0.220** | +0.345 | **MAJOR — sign FLIPPED** |
+| hemoglobin — glucose | -0.301 | -0.146 | +0.155 | SIGNIFICANT change |
+| hemoglobin — lactate | +0.225 | +0.130 | -0.095 | Moderate change |
+| lactate — pO2 | -0.207 | -0.207 | 0.000 | Similar (units were clean) |
+
+#### Key Corrected Findings
+
+| Pair | Pearson r | Spearman ρ | Partial r (surgery) | Conclusion |
+|------|:---------:|:----------:|:-------------------:|-----------|
+| Hb — pO2 | -0.133* | -0.304* | **+0.016 (p=0.68)** | Fully explained by surgery timing — NO independent relationship |
+| Hb — glucose | -0.146* | -0.162* | -0.048 (p=0.20) | Explained by surgery timing |
+| Hb — lactate | +0.130* | +0.234* | +0.052 (p=0.17) | Explained by surgery timing |
+| Glucose — pO2 | **+0.220*** | +0.293* | **+0.217*** | Genuine positive coupling (stress response) |
+| Glucose — lactate | +0.120* | +0.063 | +0.148* | Weak genuine coupling |
+| Lactate — pO2 | **-0.207*** | -0.267* | **-0.150*** | Genuine negative coupling (hypoperfusion) |
+
+*\* p<0.001 (statistically significant but effect is small-to-moderate)*
+
+#### Stratified by Surgery Phase: Hemoglobin — pO2
+
+| Phase | n | Pearson r | p | Interpretation |
+|-------|:--:|:---------:|:---:|---------------|
+| Pre-op (< -7d) | 315 | -0.105 | 0.062 | Not significant |
+| Pre-op (-7 to -1d) | 75 | -0.018 | 0.877 | No correlation |
+| Peri-op (-1 to +1d) | 42 | -0.302 | 0.052 | Marginal (small n) |
+| Early post-op (1-3d) | 50 | **-0.381** | **0.006** | Significant: Hb↓ while pO2↑ |
+| Mid post-op (3-7d) | 102 | +0.018 | 0.855 | No correlation |
+| Late post-op (>7d) | 133 | +0.012 | 0.891 | No correlation |
+
+**The hemoglobin-pO2 correlation is ENTIRELY a surgery-timing artifact.** Both variables change post-operatively in opposite directions (Hb drops from hemodilution, pO2 rises from reperfusion), creating a spurious negative correlation. After controlling for days-from-surgery, partial r=+0.016 — there is NO independent physiological coupling.
+
+#### Corrected Physiological Interpretation
+
+1. **Hemoglobin is NOT independently correlated with any lab analyte.** All observed correlations (Hb-pO2, Hb-glucose, Hb-lactate) are artifacts of their shared dependence on surgery timing.
+
+2. **Glucose-pO2: POSITIVE correlation (r=+0.220).** The Phase 1 sign was WRONG (was -0.125). Both glucose and pO2 rise in the systemic stress/inflammatory response, creating a genuine positive coupling that survives partial correlation (r=+0.217, p<0.001).
+
+3. **Lactate-pO2: NEGATIVE correlation (r=-0.207).** Genuine signal — tissue hypoperfusion simultaneously raises lactate and lowers pO2. Survives partial correlation (r=-0.150, p<0.001).
+
+4. **All correlations are WEAK (|r| < 0.25).** Even the "genuine" correlations explain <5% of variance. The lab analytes are largely independent in this patient population.
+
+---
 
 **Motivation**: Current binary thresholds (e.g., lactate > 2.0) are too coarse for post-CABG. We propose 5 clinically motivated labels:
 
