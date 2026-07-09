@@ -1,14 +1,9 @@
 """Dataset builder for Exp2: time-matched ECG/face features and lab-test labels.
 
-Key improvement over v1:
-    Labels are now TIME-MATCHED — for each ECG capture session, we find the
-    temporally closest lab measurement for each analyte, rather than taking
-    the patient-level max/min across the entire hospital stay.
-
-Produces:
-    outputs/manifest.csv   — sample-level metadata + binary labels
-    outputs/features.npz   — {'sample_id', 'hospital_id', 'ecg', 'face', 'targets'}
-    outputs/label_summary.csv — per-target statistics
+This version uses the regenerated merged_patient_info_*.csv files as the
+patient-info source, performs unit-aware lab conversion, and keeps samples when
+some labels are missing. Lab-derived labels are only assigned when the nearest
+lab measurement is within LAB_MATCH_MAX_DELTA_HOURS of the ECG capture time.
 """
 
 import argparse
@@ -28,16 +23,18 @@ from .config import (
     FACE_FRAME_INDEX,
     FACE_SIZE,
     LAB_CSV,
+    LAB_MATCH_MAX_DELTA_HOURS,
     OUTPUT_DIR,
+    PATIENT_INFO_GLOB,
     PLACEHOLDER_HOSPITAL_IDS,
     SEED,
     TARGETS,
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # Utility functions
-# ═══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 def _ensure_dirs(output_dir):
     os.makedirs(output_dir, exist_ok=True)
@@ -61,73 +58,90 @@ def _extract_numeric(series):
 
 
 def _parse_datetime_to_unix(series):
-    """Convert datetime strings like '2026-01-23 14:56:40' to Unix epoch seconds."""
-    return pd.to_datetime(series, errors="coerce").astype("int64") // 10**9
+    """Convert datetime strings like '2026-01-23 14:56:40' to Unix seconds."""
+    dt = pd.to_datetime(series, errors="coerce")
+    unix = dt.astype("int64") // 10**9
+    return pd.Series(unix, index=series.index).where(dt.notna(), np.nan)
 
 
-# Unit converters
-def _glucose_to_mmol(values):
-    return values / 18.0
+def _first_nonempty(series):
+    vals = series.astype(str).str.strip()
+    vals = vals[(vals != "") & (vals != "nan") & (vals != "None")]
+    return vals.iloc[0] if len(vals) else ""
 
 
-def _hemoglobin_to_gl(values):
-    return values * 10.0
+def _is_valid_blood_pressure(low_bp, high_bp):
+    """Return True for plausible diastolic/systolic BP values."""
+    if pd.isna(low_bp) or pd.isna(high_bp):
+        return False
+    low_bp = float(low_bp)
+    high_bp = float(high_bp)
+    if low_bp <= 0 or high_bp <= 0:
+        return False
+    if not (30.0 <= low_bp <= 160.0 and 60.0 <= high_bp <= 260.0):
+        return False
+    if high_bp < low_bp:
+        return False
+    return True
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Analyte definitions: (target_name, item_names, unit_converter, direction)
-#   direction: 'max' = abnormality is high value; 'min' = low value
-# ═══════════════════════════════════════════════════════════════════════
+def _mirror_from_patient_info_path(path):
+    match = re.search(r"merged_patient_info_(\d+)\.csv$", os.path.basename(path))
+    if not match:
+        return None
+    return f"mirror{int(match.group(1))}"
+
+
+# ---------------------------------------------------------------------------
+# Analyte definitions and thresholds
+# ---------------------------------------------------------------------------
 
 _ANALYTE_MAP = {
     "lactate": {
         "item_names": ["乳酸浓度"],
-        "converter": None,
         "direction": "max",
     },
     "troponin": {
         "item_names": ["*肌钙蛋白Ⅰ(hsTnI)测定", "肌钙蛋白Ⅰ(hsTnI)测定"],
-        "converter": None,
         "direction": "max",
     },
     "glucose": {
         "item_names": ["*葡萄糖(Glu)测定", "葡萄糖浓度"],
-        "converter": _glucose_to_mmol,
         "direction": "max",
     },
     "hemoglobin": {
         "item_names": ["*血红蛋白", "血红蛋白", "总血红蛋白"],
-        "converter": _hemoglobin_to_gl,
         "direction": "min",
     },
     "po2": {
         "item_names": ["氧分压", "患者体温下氧分压"],
-        "converter": None,
         "direction": "min",
     },
     "pco2": {
         "item_names": ["二氧化碳分压", "患者体温下二氧化碳分压"],
-        "converter": None,
-        "direction": "max",  # both min and max used for different targets
+        "direction": "max",
     },
 }
 
-# Threshold rules: (target_name, analyte_key, threshold, op, sex_dependent)
 _THRESHOLD_RULES = [
-    # Standard thresholds
-    ("lactate_high",           "lactate",     2.0,    "gt",   False),
-    ("troponin_high",          "troponin",    34.0,   "gt",   False),
-    ("glucose_high",           "glucose",     7.8,    "gt",   False),
-    ("po2_low",                "po2",         80.0,   "lt",   False),
-    ("pco2_low",               "pco2",        34.0,   "lt",   False),
-    ("pco2_high",              "pco2",        50.0,   "gt",   False),
-    # Severity thresholds
-    ("lactate_moderate_high",  "lactate",     4.0,    "gt",   False),
-    ("troponin_extreme_high",  "troponin",    1000.0, "gt",   False),
-    ("glucose_marked_high",    "glucose",     10.0,   "gt",   False),
-    ("hemoglobin_moderate_low","hemoglobin",  90.0,   "lt",   False),
-    ("po2_moderate_low",       "po2",         70.0,   "lt",   False),
+    ("lactate_high", "lactate", 2.0, "gt"),
+    ("troponin_high", "troponin", 34.0, "gt"),
+    ("glucose_high", "glucose", 7.8, "gt"),
+    ("po2_low", "po2", 80.0, "lt"),
+    ("pco2_low", "pco2", 34.0, "lt"),
+    ("pco2_high", "pco2", 50.0, "gt"),
+    ("lactate_moderate_high", "lactate", 4.0, "gt"),
+    ("troponin_extreme_high", "troponin", 1000.0, "gt"),
+    ("glucose_marked_high", "glucose", 10.0, "gt"),
+    ("hemoglobin_moderate_low", "hemoglobin", 90.0, "lt"),
+    ("po2_moderate_low", "po2", 70.0, "lt"),
 ]
+
+_LAB_TARGET_TO_ANALYTE = {target: analyte for target, analyte, _, _ in _THRESHOLD_RULES}
+_LAB_TARGET_TO_ANALYTE.update({
+    "hemoglobin_low": "hemoglobin",
+    "pco2_abnormal": "pco2",
+})
 
 
 def _apply_threshold(value, threshold, op):
@@ -136,37 +150,53 @@ def _apply_threshold(value, threshold, op):
         return np.nan
     if op == "gt":
         return int(value > threshold)
-    elif op == "lt":
+    if op == "lt":
         return int(value < threshold)
     return np.nan
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Lab timeseries builder
-# ═══════════════════════════════════════════════════════════════════════
+def _standardize_lab_values(analyte_key, values, units):
+    """Convert lab values to the threshold units used by this experiment."""
+    values = pd.to_numeric(values, errors="coerce")
+    unit = units.astype(str).str.lower().str.strip()
 
-def _build_lab_timeseries(lab_csv):
-    """Build a flat timeseries of individual lab measurements.
+    if analyte_key == "glucose":
+        # Thresholds are mmol/L. Convert mg/dL, keep mmol/L. Blank high values
+        # are treated as likely mg/dL because physiologic mmol/L values are small.
+        is_mgdl = unit.str.contains("mg/dl", regex=False) | ((unit == "") & (values > 40))
+        return values.where(~is_mgdl, values / 18.0)
 
-    Returns DataFrame with columns:
-        hospital_id, analyte, value, timestamp_unix
-    """
+    if analyte_key == "hemoglobin":
+        # Thresholds are g/L. Convert g/dL, keep g/L. Blank low values are
+        # treated as likely g/dL because g/L values rarely fall below 25.
+        is_gdl = unit.str.contains("g/dl", regex=False) | ((unit == "") & (values < 25))
+        return values.where(~is_gdl, values * 10.0)
+
+    return values
+
+
+# ---------------------------------------------------------------------------
+# Lab timeseries and metadata builders
+# ---------------------------------------------------------------------------
+
+def _read_lab_csv(lab_csv):
     df = pd.read_csv(lab_csv, dtype=str, keep_default_na=False)
     df["hospital_id"] = df["首页病案号"].apply(_normalize_hospital_id)
     df = df[df["hospital_id"] != ""].copy()
-
-    # Parse timestamps
     df["timestamp_unix"] = _parse_datetime_to_unix(df["报告时间"])
     df = df.dropna(subset=["timestamp_unix"]).copy()
+    return df
 
+
+def _build_lab_timeseries_from_df(df):
+    """Build a flat timeseries of individual lab measurements."""
     rows = []
     for analyte_key, info in _ANALYTE_MAP.items():
         subset = df[df["检验项名称"].isin(info["item_names"])].copy()
         if subset.empty:
             continue
-        subset["value"] = _extract_numeric(subset["检验值(文本)"])
-        if info["converter"] is not None:
-            subset["value"] = info["converter"](subset["value"])
+        raw_value = _extract_numeric(subset["检验值(文本)"])
+        subset["value"] = _standardize_lab_values(analyte_key, raw_value, subset["单位"])
         subset = subset.dropna(subset=["value"]).copy()
         for _, row in subset.iterrows():
             rows.append({
@@ -174,13 +204,83 @@ def _build_lab_timeseries(lab_csv):
                 "analyte": analyte_key,
                 "value": float(row["value"]),
                 "timestamp_unix": int(row["timestamp_unix"]),
+                "unit": row.get("单位", ""),
+                "item_name": row.get("检验项名称", ""),
             })
     return pd.DataFrame(rows)
 
 
-# ═══════════════════════════════════════════════════════════════════════
+def _build_lab_metadata_from_df(df):
+    """Build patient-level metadata needed for labels/debug columns."""
+    rows = []
+    for hid, group in df.groupby("hospital_id"):
+        rows.append({
+            "hospital_id": hid,
+            "sex": _first_nonempty(group["首页性别"]),
+            "surgery_text": " ".join(group["首页手术操作名称"].dropna().astype(str).unique()),
+            "admission_time": _first_nonempty(group["首页入院时间"]),
+            "discharge_time": _first_nonempty(group["首页出院时间"]),
+        })
+    return pd.DataFrame(rows).set_index("hospital_id").to_dict(orient="index")
+
+
+def _build_lab_timeseries(lab_csv):
+    df = _read_lab_csv(lab_csv)
+    return _build_lab_timeseries_from_df(df)
+
+
+# ---------------------------------------------------------------------------
+# Patient info readers
+# ---------------------------------------------------------------------------
+
+def _read_merged_patient_info(patient_info_glob=PATIENT_INFO_GLOB):
+    """Build lookup: (mirror, lab_patient_id) -> patient info dict.
+
+    Source files are the regenerated merged_patient_info_N.csv files. They have
+    one row per raw mirror patient and include vitals/BP extracted from both
+    patient_info.txt and the batch vitals extraction.
+    """
+    lookup = {}
+    info_paths = sorted(glob.glob(patient_info_glob))
+    if not info_paths:
+        raise FileNotFoundError(f"No patient-info files matched {patient_info_glob}")
+
+    for info_path in info_paths:
+        mirror = _mirror_from_patient_info_path(info_path)
+        if mirror is None:
+            continue
+        info = pd.read_csv(info_path, dtype=str, keep_default_na=False)
+        required = {"lab_patient_id", "hospital_patient_id"}
+        missing = required - set(info.columns)
+        if missing:
+            raise ValueError(f"{info_path} missing required columns: {sorted(missing)}")
+        for _, row in info.iterrows():
+            lab_patient_id = pd.to_numeric(row["lab_patient_id"], errors="coerce")
+            if pd.isna(lab_patient_id):
+                continue
+            key = (mirror, int(lab_patient_id))
+            lookup[key] = {
+                "Lab_Patient_ID": str(int(lab_patient_id)),
+                "Hospital_Patient_ID": row.get("hospital_patient_id", ""),
+                "Low_Blood_Pressure": row.get("low_blood_pressure", -1),
+                "High_Blood_Pressure": row.get("high_blood_pressure", -1),
+                "blood_oxygen": row.get("blood_oxygen", -1),
+                "heart_rate": row.get("heart_rate", -1),
+                "respiratory_rate": row.get("respiratory_rate", -1),
+                "temperature": row.get("temperature", -1),
+                "patient_info_source": os.path.basename(info_path),
+            }
+    return lookup
+
+
+# Backward-compatible alias for existing imports/tests.
+def _read_cleaned_info(data_root):
+    return _read_merged_patient_info()
+
+
+# ---------------------------------------------------------------------------
 # Signal / frame readers
-# ═══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 def _parse_signal_file(path):
     """Parse patient ID and session ID from signal filename."""
@@ -191,23 +291,8 @@ def _parse_signal_file(path):
     return int(match.group(1)), int(match.group(2))
 
 
-def _read_cleaned_info(data_root):
-    """Build lookup: (mirror, lab_patient_id) → patient info dict."""
-    lookup = {}
-    for info_path in sorted(
-        glob.glob(os.path.join(data_root, "mirror*_auto_cleaned_sqi",
-                               "cleaned_patient_info.csv"))
-    ):
-        mirror = os.path.basename(os.path.dirname(info_path)).split("_")[0]
-        info = pd.read_csv(info_path, dtype=str, keep_default_na=False)
-        for _, row in info.iterrows():
-            key = (mirror, int(row["Lab_Patient_ID"]))
-            lookup[key] = row.to_dict()
-    return lookup
-
-
 def _get_session_timestamp(signal_path):
-    """Get the capture timestamp (median) of an ECG session, as Unix epoch seconds."""
+    """Get the capture timestamp (median) of an ECG session, as Unix seconds."""
     df = pd.read_csv(signal_path, usecols=["Timestamp"])
     ts = pd.to_numeric(df["Timestamp"], errors="coerce").dropna().to_numpy(np.float64)
     if len(ts) == 0:
@@ -251,7 +336,7 @@ def _extract_mjpeg_frame(video_path, frame_index=FACE_FRAME_INDEX):
 
 
 def _load_face(video_path, sample_id, output_dir, face_size):
-    """Load/cache face frame, return normalized grayscale (32×32)."""
+    """Load/cache face frame, return normalized grayscale (32x32)."""
     frame_dir = os.path.join(output_dir, "frames")
     os.makedirs(frame_dir, exist_ok=True)
     cache_path = os.path.join(frame_dir, f"{sample_id}.jpg")
@@ -284,117 +369,103 @@ def _load_ecg(signal_path, length, window_sec):
     target_times = start_time + np.linspace(0.0, actual_window, length, endpoint=False)
     vector = np.interp(target_times, timestamps, ecg)
 
-    # Z-score normalize
     std = float(np.std(vector))
     if std <= 1e-8:
         vector = vector - float(np.mean(vector))
     else:
         vector = (vector - float(np.mean(vector))) / std
-
     return vector.astype(np.float32)
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # Time-matched label computation
-# ═══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
-def _find_closest_measurement(lab_ts, session_time, analyte_key):
-    """Find the lab measurement closest in time to the session.
-
-    Args:
-        lab_ts: DataFrame with columns [analyte, value, timestamp_unix]
-        session_time: Unix epoch seconds of ECG capture
+def _find_closest_measurement(lab_ts, session_time, analyte_key,
+                              max_delta_hours=LAB_MATCH_MAX_DELTA_HOURS):
+    """Find closest lab measurement within a maximum absolute time delta.
 
     Returns:
-        (value, time_delta_hours) or (nan, nan) if no measurement found
+        (value, abs_delta_hours, signed_delta_hours, lab_timestamp_unix)
+        or (nan, nan, nan, nan) if no in-window measurement exists.
     """
     subset = lab_ts[lab_ts["analyte"] == analyte_key]
     if subset.empty:
-        return np.nan, np.nan
+        return np.nan, np.nan, np.nan, np.nan
 
-    time_deltas = np.abs(subset["timestamp_unix"].to_numpy(np.float64) - session_time)
-    best_idx = int(np.argmin(time_deltas))
+    lab_times = subset["timestamp_unix"].to_numpy(np.float64)
+    signed_sec = lab_times - session_time
+    abs_sec = np.abs(signed_sec)
+    best_idx = int(np.argmin(abs_sec))
+    abs_delta_h = float(abs_sec[best_idx]) / 3600.0
+    signed_delta_h = float(signed_sec[best_idx]) / 3600.0
+    if max_delta_hours is not None and abs_delta_h > max_delta_hours:
+        return np.nan, abs_delta_h, signed_delta_h, float(lab_times[best_idx])
     value = float(subset.iloc[best_idx]["value"])
-    delta_sec = float(time_deltas[best_idx])
-    return value, delta_sec / 3600.0
+    return value, abs_delta_h, signed_delta_h, float(lab_times[best_idx])
 
 
-def _compute_labels_for_session(lab_ts, session_time, sex_value, surgery_text):
-    """Compute all binary labels for one ECG capture session using time-matched values.
-
-    Returns:
-        dict: {target_name: label (0/1/nan), ...}
-        dict: {target_name: raw_value, ...}  (for debugging)
-        dict: {target_name: time_delta_hours, ...}
-    """
-    labels = {}
+def _compute_labels_for_session(lab_ts, session_time, sex_value,
+                                max_delta_hours=LAB_MATCH_MAX_DELTA_HOURS):
+    """Compute all binary lab labels for one ECG capture session."""
+    labels = {target: np.nan for target in TARGETS}
     raw_values = {}
     time_deltas = {}
+    signed_time_deltas = {}
+    lab_timestamps = {}
 
-    # Collect time-matched values for each analyte
     analyte_values = {}
     for analyte_key in _ANALYTE_MAP:
-        val, delta_h = _find_closest_measurement(lab_ts, session_time, analyte_key)
+        val, delta_h, signed_delta_h, lab_time = _find_closest_measurement(
+            lab_ts, session_time, analyte_key, max_delta_hours=max_delta_hours)
         analyte_values[analyte_key] = val
         raw_values[analyte_key] = val
         time_deltas[analyte_key] = delta_h
+        signed_time_deltas[analyte_key] = signed_delta_h
+        lab_timestamps[analyte_key] = lab_time
 
-    # Apply threshold rules
-    for target_name, analyte_key, threshold, op, sex_dep in _THRESHOLD_RULES:
-        val = analyte_values.get(analyte_key, np.nan)
-        labels[target_name] = _apply_threshold(val, threshold, op)
+    for target_name, analyte_key, threshold, op in _THRESHOLD_RULES:
+        labels[target_name] = _apply_threshold(analyte_values.get(analyte_key, np.nan), threshold, op)
 
-    # Hemoglobin_low: sex-dependent threshold
     hb_val = analyte_values.get("hemoglobin", np.nan)
-    if sex_value == "男":
-        hb_threshold = 130.0
-    else:
-        hb_threshold = 120.0
+    hb_threshold = 130.0 if sex_value == "男" else 120.0
     labels["hemoglobin_low"] = _apply_threshold(hb_val, hb_threshold, "lt")
 
-    # pco2_abnormal: both low AND high
     pco2_val = analyte_values.get("pco2", np.nan)
-    if np.isnan(pco2_val):
-        labels["pco2_abnormal"] = np.nan
-    else:
+    if not np.isnan(pco2_val):
         labels["pco2_abnormal"] = int((pco2_val < 35.0) or (pco2_val > 45.0))
 
-    # coronary_context: from surgery text
-    labels["coronary_context"] = int("冠心病" in str(surgery_text))
+    # Current available inputs do not provide a meaningful non-degenerate
+    # coronary-context target. Leave it missing so training skips it.
+    labels["coronary_context"] = np.nan
 
-    # high_blood_pressure: computed per-sample from BP readings (handled separately)
-    labels["high_blood_pressure"] = np.nan
-
-    return labels, raw_values, time_deltas
+    return labels, raw_values, time_deltas, signed_time_deltas, lab_timestamps
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # Main dataset builder
-# ═══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
-def _build_samples(data_root, lab_timeseries, output_dir, max_samples=None):
-    """Iterate over signal files, extract ECG + face, compute time-matched labels.
+def _build_samples(data_root, lab_timeseries, lab_metadata, output_dir, max_samples=None):
+    """Iterate over signal files, extract ECG + face, compute labels."""
+    info_lookup = _read_merged_patient_info()
 
-    Returns:
-        manifest: DataFrame with metadata and labels.
-        ecg_array:  (N, ECG_LENGTH) float32
-        face_array: (N, FACE_SIZE, FACE_SIZE) float32
-    """
-    info_lookup = _read_cleaned_info(data_root)
-
-    # Pre-group lab timeseries by hospital_id for fast lookup
-    lab_by_hospital = {}
-    for hid, group in lab_timeseries.groupby("hospital_id"):
-        lab_by_hospital[hid] = group
+    lab_by_hospital = {hid: group for hid, group in lab_timeseries.groupby("hospital_id")}
 
     manifest_rows = []
     ecg_list = []
     face_list = []
     failures = []
+    skip_counts = {
+        "parse_fail": 0,
+        "missing_patient_info": 0,
+        "placeholder_hospital_id": 0,
+        "missing_timestamp": 0,
+        "feature_load_failed": 0,
+    }
 
     signal_paths = sorted(
-        glob.glob(os.path.join(data_root, "mirror*_auto_cleaned_sqi",
-                               "patient_*.csv"))
+        glob.glob(os.path.join(data_root, "mirror*_auto_cleaned_sqi", "patient_*.csv"))
     )
     rng = np.random.default_rng(SEED)
     if max_samples is not None and len(signal_paths) > max_samples:
@@ -404,26 +475,24 @@ def _build_samples(data_root, lab_timeseries, output_dir, max_samples=None):
     for signal_path in signal_paths:
         parsed = _parse_signal_file(signal_path)
         if parsed is None:
+            skip_counts["parse_fail"] += 1
             continue
         lab_patient_id, session_id = parsed
         mirror = os.path.basename(os.path.dirname(signal_path)).split("_")[0]
 
         info = info_lookup.get((mirror, lab_patient_id))
         if info is None:
+            skip_counts["missing_patient_info"] += 1
             continue
 
         hospital_id = _normalize_hospital_id(info.get("Hospital_Patient_ID", ""))
         if hospital_id == "":
+            skip_counts["placeholder_hospital_id"] += 1
             continue
 
-        # Get lab timeseries for this hospital
-        patient_lab = lab_by_hospital.get(hospital_id)
-        if patient_lab is None or patient_lab.empty:
-            continue
-
-        # Get session capture timestamp
         session_time = _get_session_timestamp(signal_path)
         if session_time is None:
+            skip_counts["missing_timestamp"] += 1
             continue
 
         sample_id = f"{mirror}_patient_{lab_patient_id:06d}_{session_id}"
@@ -435,28 +504,20 @@ def _build_samples(data_root, lab_timeseries, output_dir, max_samples=None):
             ecg_vec = _load_ecg(signal_path, ECG_LENGTH, ECG_WINDOW_SEC)
             face_mat = _load_face(video_path, sample_id, output_dir, FACE_SIZE)
         except Exception as exc:
+            skip_counts["feature_load_failed"] += 1
             failures.append({"sample_id": sample_id, "error": str(exc)})
             continue
 
-        # Get sex and surgery text from lab data for this hospital
-        sex_value = info.get("sex", "")
-        # Get surgery text from the lab CSV for this hospital
-        surgery_text = ""
-        lab_df = pd.read_csv(LAB_CSV, dtype=str, keep_default_na=False)
-        lab_df["_hid"] = lab_df["首页病案号"].apply(_normalize_hospital_id)
-        hosp_rows = lab_df[lab_df["_hid"] == hospital_id]
-        if not hosp_rows.empty:
-            surgery_text = " ".join(hosp_rows["首页手术操作名称"].dropna().astype(str))
+        metadata = lab_metadata.get(hospital_id, {})
+        sex_value = metadata.get("sex", "")
+        patient_lab = lab_by_hospital.get(hospital_id, pd.DataFrame(columns=lab_timeseries.columns))
+        labels, raw_vals, time_deltas, signed_deltas, lab_times = _compute_labels_for_session(
+            patient_lab, session_time, sex_value)
 
-        # Compute time-matched labels
-        labels, raw_vals, time_deltas = _compute_labels_for_session(
-            patient_lab, session_time, sex_value, surgery_text
-        )
-
-        # Compute high_blood_pressure from patient info (session-level BP)
         low_bp = pd.to_numeric(info.get("Low_Blood_Pressure", -1), errors="coerce")
         high_bp = pd.to_numeric(info.get("High_Blood_Pressure", -1), errors="coerce")
-        if pd.notna(high_bp) and pd.notna(low_bp) and high_bp > 0 and low_bp > 0:
+        bp_is_valid = _is_valid_blood_pressure(low_bp, high_bp)
+        if bp_is_valid:
             labels["high_blood_pressure"] = int(high_bp >= 140.0 or low_bp >= 90.0)
 
         row_data = {
@@ -466,12 +527,27 @@ def _build_samples(data_root, lab_timeseries, output_dir, max_samples=None):
             "lab_patient_id": lab_patient_id,
             "session_id": session_id,
             "capture_time_unix": session_time,
+            "sex": sex_value,
+            "low_blood_pressure": float(low_bp) if pd.notna(low_bp) else np.nan,
+            "high_blood_pressure": float(high_bp) if pd.notna(high_bp) else np.nan,
+            "blood_pressure_valid": int(bp_is_valid),
+            "patient_info_source": info.get("patient_info_source", ""),
+            "admission_time": metadata.get("admission_time", ""),
+            "discharge_time": metadata.get("discharge_time", ""),
         }
         row_data.update(labels)
+        for analyte_key in _ANALYTE_MAP:
+            row_data[f"{analyte_key}_value"] = raw_vals.get(analyte_key, np.nan)
+            row_data[f"{analyte_key}_delta_h"] = time_deltas.get(analyte_key, np.nan)
+            row_data[f"{analyte_key}_signed_delta_h"] = signed_deltas.get(analyte_key, np.nan)
+            row_data[f"{analyte_key}_lab_time_unix"] = lab_times.get(analyte_key, np.nan)
         manifest_rows.append(row_data)
         ecg_list.append(ecg_vec)
         face_list.append(face_mat)
 
+    print("  Skip counts:")
+    for key, value in skip_counts.items():
+        print(f"    {key}: {value}")
     if failures:
         print(f"  [WARN] {len(failures)} samples failed to load:")
         for f in failures[:5]:
@@ -485,42 +561,32 @@ def _build_samples(data_root, lab_timeseries, output_dir, max_samples=None):
     return manifest, ecg_array, face_array
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # Public API
-# ═══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 def build_features(output_dir=OUTPUT_DIR, max_samples=None):
-    """Main entry point: build and save all features with time-matched labels.
-
-    Args:
-        output_dir: Directory for outputs.
-        max_samples: If set, randomly subsample to at most this many samples.
-
-    Returns:
-        manifest: DataFrame of sample metadata + labels.
-        ecg: (N, ECG_LENGTH) float32 array.
-        face: (N, FACE_SIZE, FACE_SIZE) float32 array.
-    """
+    """Main entry point: build and save all features with time-matched labels."""
     _ensure_dirs(output_dir)
     print("=" * 60)
-    print("Exp2 Dataset Builder (v2: time-matched labels)")
+    print("Exp2 Dataset Builder (merged patient info + bounded time-matched labels)")
     print("=" * 60)
 
-    # Step 1: Build lab timeseries
     print("\n[1/3] Building lab measurement timeseries ...")
-    lab_ts = _build_lab_timeseries(LAB_CSV)
-    print(f"  → {len(lab_ts)} individual measurements")
-    print(f"  → {lab_ts['hospital_id'].nunique()} unique hospital IDs")
-    print(f"  → Analytes: {sorted(lab_ts['analyte'].unique())}")
+    lab_df = _read_lab_csv(LAB_CSV)
+    lab_ts = _build_lab_timeseries_from_df(lab_df)
+    lab_metadata = _build_lab_metadata_from_df(lab_df)
+    print(f"  -> {len(lab_ts)} individual measurements")
+    print(f"  -> {lab_ts['hospital_id'].nunique()} unique hospital IDs")
+    print(f"  -> Analytes: {sorted(lab_ts['analyte'].unique())}")
+    print(f"  -> Lab label max delta: {LAB_MATCH_MAX_DELTA_HOURS:g} hours")
     lab_ts.to_csv(os.path.join(output_dir, "lab_timeseries.csv"), index=False)
 
-    # Step 2: Extract ECG + Face features with time-matched labels
-    print("\n[2/3] Extracting ECG and face features with time-matched labels ...")
-    manifest, ecg, face = _build_samples(DATA_ROOT, lab_ts, output_dir, max_samples)
-    print(f"  → {len(manifest)} valid samples")
-    print(f"  → {manifest['hospital_id'].nunique()} unique hospital IDs")
+    print("\n[2/3] Extracting ECG and face features with bounded time-matched labels ...")
+    manifest, ecg, face = _build_samples(DATA_ROOT, lab_ts, lab_metadata, output_dir, max_samples)
+    print(f"  -> {len(manifest)} valid samples")
+    print(f"  -> {manifest['hospital_id'].nunique()} unique hospital IDs")
 
-    # Step 3: Save
     print("\n[3/3] Saving features ...")
     targets_array = np.array(TARGETS, dtype=str)
     np.savez_compressed(
@@ -533,7 +599,6 @@ def build_features(output_dir=OUTPUT_DIR, max_samples=None):
     )
     manifest.to_csv(os.path.join(output_dir, "manifest.csv"), index=False)
 
-    # Label summary
     summary_rows = []
     for t in TARGETS:
         vals = pd.to_numeric(manifest[t], errors="coerce").dropna()
@@ -552,7 +617,7 @@ def build_features(output_dir=OUTPUT_DIR, max_samples=None):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Exp2 feature builder (v2: time-matched)")
+    parser = argparse.ArgumentParser(description="Exp2 feature builder")
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
     parser.add_argument("--max-samples", type=int, default=None)
     args = parser.parse_args()

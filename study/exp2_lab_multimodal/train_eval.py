@@ -29,6 +29,10 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 from .config import (
     BATCH_SIZE,
     CHECKPOINT_DIR,
@@ -137,16 +141,22 @@ def _patient_level_split_for_task(manifest, target_name, seed):
 
 
 def _filter_indices_by_split(manifest, ecg_np, face_np, target_name, split):
-    """Return dict: {'train': {ecg, face, labels}, 'val': ..., 'test': ...}."""
+    """Return (data_dict, indices_dict).
+
+    data_dict:  {'train': {ecg, face, labels}, 'val': ..., 'test': ...}
+    indices_dict: {'train': row-indices, 'val': row-indices, 'test': row-indices}
+    """
     col = pd.to_numeric(manifest[target_name], errors="coerce")
     valid_all = col.notna().to_numpy()
     hospital_ids = manifest["hospital_id"].astype(str).to_numpy()
 
     result = {}
+    split_indices = {}
     for sname in ["train", "val", "test"]:
         mask = np.array([hid in split[sname] for hid in hospital_ids])
         mask = mask & valid_all
         indices = np.flatnonzero(mask)
+        split_indices[sname] = indices
         if len(indices) == 0:
             result[sname] = None
         else:
@@ -155,7 +165,7 @@ def _filter_indices_by_split(manifest, ecg_np, face_np, target_name, split):
                 "face": face_np[indices],
                 "labels": col.iloc[indices].to_numpy(dtype=np.float32),
             }
-    return result
+    return result, split_indices
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -251,10 +261,19 @@ def _evaluate_binary(model, loader, criterion, device):
 _MIN_SAMPLES_PER_CLASS = 8
 
 
-def _train_one_task(labels_dict, target_name, device):
+def _train_one_task(labels_dict, target_name, device, test_sample_ids=None,
+                    test_hospital_ids=None):
     """Train a single BinaryM3TNet for one task.
 
-    Returns: (model, metrics_list, predictions_list) or (None, skip_dict, [])
+    Args:
+        labels_dict: per-split {ecg, face, labels}
+        target_name: task name
+        device: torch device
+        test_sample_ids: optional list of sample_id for test set (for predictions.csv)
+        test_hospital_ids: optional list of hospital_id for test set
+
+    Returns: (model, metrics_list, predictions_list, loss_log)
+             or (None, skip_dict, [], [])
     """
     train_y = labels_dict["train"]["labels"]
     n_pos = int((train_y > 0.5).sum())
@@ -263,7 +282,7 @@ def _train_one_task(labels_dict, target_name, device):
         return None, {
             "target": target_name, "split": "test", "status": "skipped",
             "reason": f"insufficient class: pos={n_pos}, neg={n_neg}",
-        }, []
+        }, [], []
 
     # Build loaders
     loaders = {}
@@ -286,6 +305,7 @@ def _train_one_task(labels_dict, target_name, device):
     best_val_bacc = -1.0
     patience_counter = 0
     best_state = None
+    loss_log = []  # per-epoch loss records
 
     for epoch in range(1, MAX_EPOCHS + 1):
         train_loss = _train_epoch_binary(model, loaders["train"], optimizer,
@@ -294,8 +314,16 @@ def _train_one_task(labels_dict, target_name, device):
             model, loaders["val"], criterion, device)
         val_m = _binary_metrics(val_labels, val_probs)
         val_bacc = val_m["balanced_accuracy"]
+        val_auc = val_m["roc_auc"]
         if np.isnan(val_bacc):
             val_bacc = -val_loss
+
+        loss_log.append({
+            "epoch": epoch, "target": target_name,
+            "train_loss": float(train_loss), "val_loss": float(val_loss),
+            "val_bacc": float(val_bacc) if not np.isnan(val_bacc) else float('nan'),
+            "val_roc_auc": float(val_auc) if not np.isnan(val_auc) else float('nan'),
+        })
 
         scheduler.step(val_bacc)
 
@@ -311,6 +339,11 @@ def _train_one_task(labels_dict, target_name, device):
     if best_state is not None:
         model.load_state_dict(best_state)
 
+    # Save per-task loss log
+    loss_df = pd.DataFrame(loss_log)
+    loss_csv = os.path.join(LOG_DIR, f"loss_{target_name}.csv")
+    loss_df.to_csv(loss_csv, index=False)
+
     # Evaluate all splits
     metrics = []
     predictions = []
@@ -323,12 +356,79 @@ def _train_one_task(labels_dict, target_name, device):
                         **{f"metric_{k}": v for k, v in m.items()}})
         if sname == "test":
             for i in range(len(probs)):
-                predictions.append({
-                    "target": target_name, "y_true": int(labels[i]),
+                pred = {
+                    "target": target_name,
+                    "y_true": int(labels[i]),
                     "score": float(probs[i]),
-                })
+                }
+                if test_sample_ids is not None and i < len(test_sample_ids):
+                    pred["sample_id"] = test_sample_ids[i]
+                if test_hospital_ids is not None and i < len(test_hospital_ids):
+                    pred["hospital_id"] = test_hospital_ids[i]
+                predictions.append(pred)
 
-    return model, metrics, predictions
+    return model, metrics, predictions, loss_log
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Loss curve plotting
+# ═══════════════════════════════════════════════════════════════════════
+
+def _plot_loss_curves(loss_df, output_dir):
+    """Generate per-task loss + metric curves and save as PNG."""
+    tasks = loss_df["target"].unique()
+    n_tasks = len(tasks)
+    if n_tasks == 0:
+        return
+
+    n_cols = min(3, n_tasks)
+    n_rows = int(np.ceil(n_tasks / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4.5 * n_rows),
+                             squeeze=False)
+    axes = axes.flatten()
+
+    for i, task in enumerate(tasks):
+        ax = axes[i]
+        task_df = loss_df[loss_df["target"] == task]
+        epochs = task_df["epoch"].to_numpy()
+        train_loss = task_df["train_loss"].to_numpy()
+        val_loss = task_df["val_loss"].to_numpy()
+        val_bacc = task_df["val_bacc"].to_numpy()
+        val_auc = task_df["val_roc_auc"].to_numpy()
+
+        # Left axis: loss
+        ax.plot(epochs, train_loss, "b-", label="Train Loss", linewidth=1.5, alpha=0.7)
+        ax.plot(epochs, val_loss, "r-", label="Val Loss", linewidth=1.5, alpha=0.7)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss", color="tab:red")
+        ax.tick_params(axis="y", labelcolor="tab:red")
+        ax.grid(True, alpha=0.3)
+
+        # Right axis: metrics
+        ax2 = ax.twinx()
+        ax2.plot(epochs, val_bacc, "g-", label="Val bACC", linewidth=1.5)
+        ax2.plot(epochs, val_auc, "m-", label="Val ROC-AUC", linewidth=1.5)
+        ax2.set_ylabel("Score", color="tab:green")
+        ax2.tick_params(axis="y", labelcolor="tab:green")
+        ax2.set_ylim(-0.05, 1.05)
+
+        # Combined legend
+        lines1, labels1 = ax.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax.legend(lines1 + lines2, labels1 + labels2, fontsize=7, loc="best")
+
+        ax.set_title(task, fontsize=9)
+
+    # Hide unused axes
+    for j in range(i + 1, len(axes)):
+        axes[j].set_visible(False)
+
+    fig.suptitle("Exp2: Per-Task Loss & Validation Metrics", fontsize=14, y=1.01)
+    fig.tight_layout()
+    plot_path = os.path.join(output_dir, "loss_curves.png")
+    fig.savefig(plot_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Loss & metric curves saved to {plot_path}")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -350,6 +450,10 @@ def train_and_evaluate(manifest, ecg, face, output_dir=OUTPUT_DIR):
 
     all_metrics = []
     all_predictions = []
+    all_loss_logs = []  # collect per-task loss logs for combined curve
+
+    sample_ids = manifest["sample_id"].astype(str).to_numpy()
+    hospital_ids = manifest["hospital_id"].astype(str).to_numpy()
 
     for t_idx, target_name in enumerate(TARGETS):
         print(f"\n{'='*60}")
@@ -363,7 +467,8 @@ def train_and_evaluate(manifest, ecg, face, output_dir=OUTPUT_DIR):
                                 "status": "skipped", "reason": "insufficient patients"})
             continue
 
-        labels_dict = _filter_indices_by_split(manifest, ecg, face, target_name, split)
+        labels_dict, split_indices = _filter_indices_by_split(
+            manifest, ecg, face, target_name, split)
         if labels_dict["train"] is None:
             print(f"  SKIP: no training samples")
             continue
@@ -374,7 +479,14 @@ def train_and_evaluate(manifest, ecg, face, output_dir=OUTPUT_DIR):
         pos_rate = float(np.mean(labels_dict["train"]["labels"]))
         print(f"  Samples: train={n_train} val={n_val} test={n_test}  pos_rate={pos_rate:.2%}")
 
-        model, metrics, predictions = _train_one_task(labels_dict, target_name, device)
+        # Prepare test sample metadata for predictions.csv
+        test_idx = split_indices.get("test", np.array([], dtype=int))
+        test_sids = list(sample_ids[test_idx]) if len(test_idx) > 0 else None
+        test_hids = list(hospital_ids[test_idx]) if len(test_idx) > 0 else None
+
+        model, metrics, predictions, loss_log = _train_one_task(
+            labels_dict, target_name, device,
+            test_sample_ids=test_sids, test_hospital_ids=test_hids)
 
         if isinstance(metrics, dict) and metrics.get("status") == "skipped":
             all_metrics.append(metrics)
@@ -384,6 +496,7 @@ def train_and_evaluate(manifest, ecg, face, output_dir=OUTPUT_DIR):
         for m in metrics:
             all_metrics.append(m)
         all_predictions.extend(predictions)
+        all_loss_logs.extend(loss_log)
 
         test_m = [m for m in metrics if m["split"] == "test"]
         if test_m:
@@ -402,6 +515,12 @@ def train_and_evaluate(manifest, ecg, face, output_dir=OUTPUT_DIR):
     predictions_df = pd.DataFrame(all_predictions)
     metrics_df.to_csv(os.path.join(output_dir, "metrics.csv"), index=False)
     predictions_df.to_csv(os.path.join(output_dir, "predictions.csv"), index=False)
+
+    # ── Loss logs ────────────────────────────────────────────────────
+    if all_loss_logs:
+        loss_df = pd.DataFrame(all_loss_logs)
+        loss_df.to_csv(os.path.join(LOG_DIR, "loss_all.csv"), index=False)
+        _plot_loss_curves(loss_df, output_dir)
 
     # ── Summary ──────────────────────────────────────────────────────
     print("\n" + "=" * 60)

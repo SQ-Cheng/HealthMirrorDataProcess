@@ -1,0 +1,162 @@
+
+============================================================
+STEP 1: Building Dataset
+============================================================
+============================================================
+Exp2 Dataset Builder (merged patient info + bounded time-matched labels)
+============================================================
+
+[1/3] Building lab measurement timeseries ...
+  -> 46551 individual measurements
+  -> 347 unique hospital IDs
+  -> Analytes: ['glucose', 'hemoglobin', 'lactate', 'pco2', 'po2', 'troponin']
+  -> Lab label max delta: 48 hours
+
+[2/3] Extracting ECG and face features with bounded time-matched labels ...
+  Skip counts:
+    parse_fail: 0
+    missing_patient_info: 0
+    placeholder_hospital_id: 275
+    missing_timestamp: 0
+    feature_load_failed: 0
+  -> 2505 valid samples
+  -> 559 unique hospital IDs
+
+[3/3] Saving features ...
+
+Done. Outputs saved to /root/autodl-tmp/HealthMirrorDataProcess/study/exp2_lab_multimodal/outputs/
+
+Dataset: 2505 samples, 559 patients
+
+============================================================
+STEP 2: Training & Evaluation
+============================================================
+Device: cuda
+Model: BinaryM3TNet (63,673 params per task)
+Strategy: train ONE model per task (15 tasks)
+
+============================================================
+Task [1/15]: lactate_high
+============================================================
+  Samples: train=600 val=184 test=155  pos_rate=22.17%
+  Test: bACC=0.562  ROC-AUC=0.566
+
+============================================================
+Task [2/15]: troponin_high
+============================================================
+  Samples: train=629 val=216 test=192  pos_rate=67.57%
+  Test: bACC=0.501  ROC-AUC=0.500
+
+============================================================
+Task [3/15]: glucose_high
+============================================================
+  Samples: train=572 val=255 test=234  pos_rate=51.05%
+  Test: bACC=0.494  ROC-AUC=0.501
+
+============================================================
+Task [4/15]: hemoglobin_low
+============================================================
+  Samples: train=639 val=198 test=267  pos_rate=75.12%
+  Test: bACC=0.576  ROC-AUC=0.610
+
+============================================================
+Task [5/15]: po2_low
+============================================================
+  Samples: train=589 val=209 test=186  pos_rate=11.38%
+  Test: bACC=0.426  ROC-AUC=0.330
+
+============================================================
+Task [6/15]: pco2_abnormal
+============================================================
+  Samples: train=579 val=178 test=182  pos_rate=22.97%
+  Test: bACC=0.558  ROC-AUC=0.567
+
+============================================================
+Task [7/15]: high_blood_pressure
+============================================================
+  Samples: train=712 val=307 test=249  pos_rate=40.87%
+  Test: bACC=0.550  ROC-AUC=0.550
+
+============================================================
+Task [8/15]: coronary_context
+============================================================
+  SKIP: insufficient patients
+
+============================================================
+Task [9/15]: lactate_moderate_high
+============================================================
+  Samples: train=587 val=152 test=200  pos_rate=0.51%
+  SKIP: insufficient class: pos=3, neg=584
+
+============================================================
+Task [10/15]: troponin_extreme_high
+============================================================
+  Samples: train=645 val=216 test=176  pos_rate=9.30%
+  Test: bACC=0.467  ROC-AUC=0.499
+
+============================================================
+Task [11/15]: glucose_marked_high
+============================================================
+  Samples: train=629 val=203 test=229  pos_rate=23.53%
+  Test: bACC=0.505  ROC-AUC=0.479
+
+============================================================
+Task [12/15]: hemoglobin_moderate_low
+============================================================
+  Samples: train=644 val=234 test=226  pos_rate=13.20%
+  Test: bACC=0.503  ROC-AUC=0.545
+
+============================================================
+Task [13/15]: po2_moderate_low
+============================================================
+  Samples: train=629 val=158 test=197  pos_rate=2.38%
+  Test: bACC=0.572  ROC-AUC=0.540
+
+============================================================
+Task [14/15]: pco2_low
+============================================================
+  Samples: train=563 val=178 test=198  pos_rate=3.37%
+  Test: bACC=0.500  ROC-AUC=0.526
+
+============================================================
+Task [15/15]: pco2_high
+============================================================
+  Samples: train=582 val=171 test=186  pos_rate=3.09%
+  Test: bACC=0.497  ROC-AUC=0.691
+  Loss & metric curves saved to /root/autodl-tmp/HealthMirrorDataProcess/study/exp2_lab_multimodal/outputs/loss_curves.png
+
+============================================================
+OVERALL SUMMARY
+============================================================
+  Tasks evaluated: 13
+  Macro bACC:  0.5163 ± 0.0447
+  Macro AUC:   0.5310 ± 0.0822
+  Macro F1:    0.2968 ± 0.2869
+
+Per-Task Test Results:
+  lactate_high                   bACC=0.562  ROC-AUC=0.566  F1=0.346  n=155  pos=20.65%
+  troponin_high                  bACC=0.501  ROC-AUC=0.500  F1=0.865  n=192  pos=81.77%
+  glucose_high                   bACC=0.494  ROC-AUC=0.501  F1=0.358  n=234  pos=53.42%
+  hemoglobin_low                 bACC=0.576  ROC-AUC=0.610  F1=0.817  n=267  pos=81.27%
+  po2_low                        bACC=0.426  ROC-AUC=0.330  F1=0.000  n=186  pos=9.14%
+  pco2_abnormal                  bACC=0.558  ROC-AUC=0.567  F1=0.374  n=182  pos=24.18%
+  high_blood_pressure            bACC=0.550  ROC-AUC=0.550  F1=0.473  n=249  pos=40.96%
+  troponin_extreme_high          bACC=0.467  ROC-AUC=0.499  F1=0.141  n=176  pos=10.80%
+  glucose_marked_high            bACC=0.505  ROC-AUC=0.479  F1=0.202  n=229  pos=20.09%
+  hemoglobin_moderate_low        bACC=0.503  ROC-AUC=0.545  F1=0.190  n=226  pos=10.62%
+  po2_moderate_low               bACC=0.572  ROC-AUC=0.540  F1=0.092  n=197  pos=4.06%
+  pco2_low                       bACC=0.500  ROC-AUC=0.526  F1=0.000  n=198  pos=5.05%
+  pco2_high                      bACC=0.497  ROC-AUC=0.691  F1=0.000  n=186  pos=4.30%
+
+Skipped Tasks:
+  - coronary_context: insufficient patients
+  - lactate_moderate_high: insufficient class: pos=3, neg=584
+
+============================================================
+STEP 3: Summary
+============================================================
+Total elapsed time: 50.6 minutes
+Results saved to: /root/autodl-tmp/HealthMirrorDataProcess/study/exp2_lab_multimodal/outputs/
+  - metrics.csv
+  - predictions.csv
+  - checkpoints/model_<task>.pt

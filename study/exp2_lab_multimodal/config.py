@@ -6,6 +6,7 @@ import os
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_ROOT = "/root/shared/HealthMirrorDataset"
 LAB_CSV = os.path.join(ROOT_DIR, "merged_lab_tests.csv")
+PATIENT_INFO_GLOB = os.path.join(ROOT_DIR, "merged_patient_info_*.csv")
 EXP_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(EXP_DIR, "outputs")
 CHECKPOINT_DIR = os.path.join(EXP_DIR, "checkpoints")
@@ -23,7 +24,10 @@ FACE_SIZE = 32            # face image resize (FACE_SIZE × FACE_SIZE)
 FACE_FRAME_INDEX = 30     # which JPEG frame to extract from video
 
 # ── Data filtering ────────────────────────────────────────────────────
-PLACEHOLDER_HOSPITAL_IDS = {"", "-1", "1111111111", "1234567891", "nan", "None"}
+PLACEHOLDER_HOSPITAL_IDS = {
+    "", "-1", "1", "2", "11", "123456", "1111111111", "1234567891", "nan", "None"
+}
+LAB_MATCH_MAX_DELTA_HOURS = 48.0  # lab labels outside this ECG-lab window are treated as missing
 
 # ── Lab test targets (15 binary classification tasks) ─────────────────
 # Each is derived from lab test values using clinical thresholds.

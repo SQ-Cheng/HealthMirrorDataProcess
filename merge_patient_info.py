@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 
@@ -28,9 +29,9 @@ def merge_patient_info(extracted_file, marked_file, output_file):
             df_marked[col] = df_marked[col].replace(-1, np.nan)
     
     df_merged = df_extracted.merge(
-        df_marked, 
-        on=id_col, 
-        how='inner', 
+        df_marked,
+        on=id_col,
+        how='left',
         suffixes=('_extracted', '_marked')
     )
     
@@ -74,7 +75,8 @@ def main(argv=None):
         output_file = args.output or 'lab_merged_patient_info.csv'
     else:
         extracted_file = args.extracted or f'overall_patient_info_{args.mirror_id}.csv'
-        marked_file = args.marked or f'extracted_vitals_{args.mirror_id}.csv'
+        default_batch = f'{args.mirror_id:02d}extracted_vitals_batch.csv'
+        marked_file = args.marked or (default_batch if os.path.exists(default_batch) else f'extracted_vitals_{args.mirror_id}.csv')
         output_file = args.output or f'merged_patient_info_{args.mirror_id}.csv'
 
     merge_patient_info(extracted_file, marked_file, output_file)

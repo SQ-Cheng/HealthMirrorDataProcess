@@ -1,6 +1,7 @@
 import os
 import json
 import csv
+import re
 
 class PatientInfo:
     def __init__(self, data_dir, save_dir="patient_info.csv", mode="file"):
@@ -8,6 +9,16 @@ class PatientInfo:
         self.save_dir = save_dir
         self.patient_info_list = None
         self.mode = mode  # "file" or "dir"
+
+    @staticmethod
+    def _parse_number(value, default=-1, as_float=False):
+        if value in (None, 'n/a', 'N/A', ''):
+            return default
+        match = re.search(r'-?\d+(?:\.\d+)?', str(value))
+        if not match:
+            return default
+        number = float(match.group(0))
+        return number if as_float else int(number)
 
     def extract(self, data_dir=None, data_file=None):
         if self.mode == "file":
@@ -49,13 +60,13 @@ class PatientInfo:
                                         'temperature': vital_str.get('temperature', 'n/a'),
                                         'blood_pressure': vital_str.get('blood_pressure', 'n/a'),
                                     }
-                                    spo2 = int(vital_dict['blood_oxygen'].strip('%') if vital_dict['blood_oxygen'] != 'n/a' else -1)
-                                    hr = int(vital_dict['heart_rate'].strip('bpm') if vital_dict['heart_rate'] != 'n/a' else -1)
-                                    rr = int(vital_dict['respiratory_rate'].strip('bpm') if vital_dict['respiratory_rate'] != 'n/a' else -1)
-                                    temp = float(vital_dict['temperature'][:-2] if vital_dict['temperature'] != 'n/a' else -1)
+                                    spo2 = self._parse_number(vital_dict['blood_oxygen'])
+                                    hr = self._parse_number(vital_dict['heart_rate'])
+                                    rr = self._parse_number(vital_dict['respiratory_rate'])
+                                    temp = self._parse_number(vital_dict['temperature'], as_float=True)
                                     bp = (vital_dict['blood_pressure']).split('/') if vital_dict['blood_pressure'] != 'n/a' else 'n/a'
-                                    hbp = int(bp[0]) if bp != 'n/a' and len(bp) > 1 else -1
-                                    lbp = int(bp[1]) if bp != 'n/a' and len(bp) > 1 else -1
+                                    hbp = self._parse_number(bp[0]) if bp != 'n/a' and len(bp) > 1 else -1
+                                    lbp = self._parse_number(bp[1]) if bp != 'n/a' and len(bp) > 1 else -1
                                     patient_info_list.append({
                                         'lab_patient_id': lab_patient_id,
                                         'hospital_patient_id': hospital_patient_id,
