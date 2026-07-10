@@ -50,3 +50,14 @@ sample_length_report_output.txt
 !study/exp2_lab_multimodal/outputs/*.json
 !study/exp2_lab_multimodal/outputs/*.md
 !study/exp2_lab_multimodal/logs/*.json
+
+# Exp2 face-only: track source code and lightweight summaries, exclude generated artifacts
+/study/exp2_face_only/outputs/features.npz
+/study/exp2_face_only/outputs/frames/
+/study/exp2_face_only/checkpoints/
+/study/exp2_face_only/logs/run.log
+/study/exp2_face_only/__pycache__/
+!study/exp2_face_only/outputs/*.csv
+!study/exp2_face_only/outputs/*.json
+!study/exp2_face_only/outputs/*.md
+!study/exp2_face_only/logs/*.json
