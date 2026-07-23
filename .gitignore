@@ -61,3 +61,33 @@ sample_length_report_output.txt
 !study/exp2_face_only/outputs/*.json
 !study/exp2_face_only/outputs/*.md
 !study/exp2_face_only/logs/*.json
+
+# Exp2 face-only generated caches and the isolated Aug20 experiment
+/study/exp2_face_only/outputs/rgb_frames/
+/study/exp2_face_only/outputs/rgb_frames_single/
+/study/exp2_face_only/outputs/patient_splits.csv
+/study/exp2_face_only/outputs/video_summary.csv
+/study/exp2_face_only/outputs_aug20/
+/study/exp2_face_only/logs_aug20/
+/study/exp2_face_only/checkpoints_aug20/
+/study/exp2_face_only/outputs_aug20_views5_seed5/
+/study/exp2_face_only/outputs_aug20_24h/
+/study/exp2_face_only/logs_aug20_24h/
+/study/exp2_face_only/checkpoints_aug20_24h/
+/study/exp2_face_only/outputs_aug20_24h_views5_seed5/
+
+# Exp2 pretrained ImageNet backbone experiment
+/study/exp2_face_pretrained/pretrained_weights/*.pth
+/study/exp2_face_pretrained/outputs/
+/study/exp2_face_pretrained/logs/
+/study/exp2_face_pretrained/__pycache__/
+
+# Exp2 pretrained backbones with a 32-wide task head
+/study/exp2_face_pretrained_head32/outputs/
+/study/exp2_face_pretrained_head32/logs/
+/study/exp2_face_pretrained_head32/__pycache__/
+
+# Exp2 streaming all-frame pretrained backbones with a 32-wide head
+/study/exp2_face_pretrained_allframes_head32/outputs/
+/study/exp2_face_pretrained_allframes_head32/logs/
+/study/exp2_face_pretrained_allframes_head32/__pycache__/

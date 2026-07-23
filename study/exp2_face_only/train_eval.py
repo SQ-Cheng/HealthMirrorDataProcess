@@ -1,17 +1,18 @@
-"""Train/evaluate per-task face-only binary classifiers for Exp2."""
+"""Train one single-frame RGB model per task using 20 non-adjacent frame samples."""
 
 import argparse
+import glob
 import os
 import sys
-
-import numpy as np
-import pandas as pd
-import torch
-import torch.nn as nn
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.nn.functional as functional
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -19,13 +20,17 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     roc_auc_score,
+    roc_curve,
 )
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, Dataset
 
 from .config import (
+    AUGMENT_BRIGHTNESS,
+    AUGMENT_CONTRAST,
+    AUGMENT_CROP_MIN_SCALE,
     AUGMENT_HORIZONTAL_FLIP,
     BATCH_SIZE,
     CHECKPOINT_DIR,
@@ -33,17 +38,18 @@ from .config import (
     GRAD_CLIP_NORM,
     LEARNING_RATE,
     LOG_DIR,
-    LR_SCHEDULER_FACTOR,
-    LR_SCHEDULER_PATIENCE,
     MAX_EPOCHS,
+    MIN_LEARNING_RATE,
+    MIN_TRAIN_PATIENTS_PER_CLASS,
     MIN_TRAIN_SAMPLES_PER_CLASS,
+    NUM_WORKERS,
     OUTPUT_DIR,
     POS_WEIGHT_MAX,
     SEED,
     TARGETS,
     WEIGHT_DECAY,
 )
-from .models import FaceOnlyCNN, count_parameters
+from .models import SingleFrameRGBNet, count_parameters
 
 
 def _set_seed(seed):
@@ -55,367 +61,622 @@ def _set_seed(seed):
         torch.backends.cudnn.benchmark = False
 
 
-class FaceDataset(Dataset):
-    def __init__(self, face, labels, sample_id=None, hospital_id=None, augment=False):
+def _channel_statistics(face):
+    total = np.zeros(3, dtype=np.float64)
+    total_sq = np.zeros(3, dtype=np.float64)
+    count = 0
+    for start in range(0, len(face), 32):
+        batch = face[start:start + 32].astype(np.float64) / 255.0
+        total += batch.sum(axis=(0, 1, 3, 4))
+        total_sq += np.square(batch).sum(axis=(0, 1, 3, 4))
+        count += batch.shape[0] * batch.shape[1] * batch.shape[3] * batch.shape[4]
+    mean = total / max(count, 1)
+    variance = np.maximum(total_sq / max(count, 1) - np.square(mean), 1e-6)
+    return mean.astype(np.float32), np.sqrt(variance).astype(np.float32)
+
+
+class SingleFrameTaskDataset(Dataset):
+    def __init__(self, face, video_indices, frame_indices, labels, row_indices, mean, std, augment=False):
         self.face = face
-        self.labels = labels
-        self.sample_id = sample_id
-        self.hospital_id = hospital_id
+        self.video_indices = video_indices
+        self.frame_indices = frame_indices.astype(np.int64)
+        self.labels = labels.astype(np.float32)
+        self.row_indices = row_indices.astype(np.int64)
+        self.mean = torch.tensor(mean, dtype=torch.float32).view(3, 1, 1)
+        self.std = torch.tensor(std, dtype=torch.float32).view(3, 1, 1)
         self.augment = augment
 
     def __len__(self):
         return len(self.labels)
 
-    def __getitem__(self, idx):
-        face = self.face[idx]
-        if self.augment and AUGMENT_HORIZONTAL_FLIP and np.random.rand() < 0.5:
-            face = np.flip(face, axis=1).copy()
-        return torch.from_numpy(face).unsqueeze(0), torch.tensor(float(self.labels[idx]))
+    def __getitem__(self, index):
+        face = torch.from_numpy(
+            self.face[self.video_indices[index], self.frame_indices[index]]
+        ).float().div_(255.0)
+        if self.augment:
+            if AUGMENT_HORIZONTAL_FLIP and np.random.rand() < 0.5:
+                face = torch.flip(face, dims=(-1,))
+            if AUGMENT_CROP_MIN_SCALE < 1.0:
+                scale = np.random.uniform(AUGMENT_CROP_MIN_SCALE, 1.0)
+                height, width = face.shape[-2:]
+                crop_h = max(8, int(round(height * scale)))
+                crop_w = max(8, int(round(width * scale)))
+                top = np.random.randint(0, height - crop_h + 1)
+                left = np.random.randint(0, width - crop_w + 1)
+                face = functional.interpolate(
+                    face[:, top:top + crop_h, left:left + crop_w].unsqueeze(0),
+                    size=(height, width),
+                    mode="bilinear",
+                    align_corners=False,
+                ).squeeze(0)
+            if AUGMENT_CONTRAST > 0:
+                factor = 1.0 + np.random.uniform(-AUGMENT_CONTRAST, AUGMENT_CONTRAST)
+                spatial_mean = face.mean(dim=(-2, -1), keepdim=True)
+                face = (face - spatial_mean) * factor + spatial_mean
+            if AUGMENT_BRIGHTNESS > 0:
+                face = face * (
+                    1.0 + np.random.uniform(-AUGMENT_BRIGHTNESS, AUGMENT_BRIGHTNESS)
+                )
+            face = face.clamp_(0.0, 1.0)
+        face = (face - self.mean) / self.std
+        return (
+            face,
+            torch.tensor(self.labels[index], dtype=torch.float32),
+            torch.tensor(self.row_indices[index], dtype=torch.long),
+        )
 
+def _patient_level_split_for_task(manifest, target, seed):
+    target_values = pd.to_numeric(manifest[target], errors="coerce")
+    valid = manifest.loc[target_values.notna(), ["hospital_id", target]].copy()
+    valid[target] = pd.to_numeric(valid[target], errors="coerce")
+    patient_labels = valid.groupby("hospital_id")[target].max().reset_index()
+    patient_labels["hospital_id"] = patient_labels["hospital_id"].astype(str)
 
-def _patient_level_split_for_task(manifest, target_name, seed):
-    col = pd.to_numeric(manifest[target_name], errors="coerce")
-    valid = manifest.loc[col.notna()].copy()
-
-    patient_rows = []
-    for hospital_id, group in valid.groupby("hospital_id"):
-        vals = pd.to_numeric(group[target_name], errors="coerce").dropna()
-        if vals.empty:
-            continue
-        patient_rows.append({"hospital_id": str(hospital_id), "y": int(vals.max())})
-    patients = pd.DataFrame(patient_rows)
-
-    if len(patients) < 5:
+    if len(patient_labels) < 5:
         return None
-
-    if patients["y"].nunique() < 2 or patients["y"].value_counts().min() < 3:
-        rng = np.random.default_rng(seed)
-        ids = patients["hospital_id"].to_numpy()
-        rng.shuffle(ids)
-        n = len(ids)
-        n_test = max(1, int(n * 0.20))
-        n_val = max(1, int((n - n_test) * 0.20))
-        if n - n_test - n_val < 2:
-            return None
-        return {
-            "train": set(ids[:n - n_test - n_val]),
-            "val": set(ids[n - n_test - n_val:n - n_test]),
-            "test": set(ids[n - n_test:]),
-        }
-
+    class_counts = patient_labels[target].value_counts()
+    if patient_labels[target].nunique() < 2 or class_counts.min() < 3:
+        return None
     try:
-        sss1 = StratifiedShuffleSplit(n_splits=1, test_size=0.40, random_state=seed)
-        train_idx, temp_idx = next(sss1.split(patients["hospital_id"], patients["y"]))
-        temp = patients.iloc[temp_idx].reset_index(drop=True)
-        sss2 = StratifiedShuffleSplit(n_splits=1, test_size=0.50, random_state=seed + 1)
-        val_rel, test_rel = next(sss2.split(temp["hospital_id"], temp["y"]))
+        first_split = StratifiedShuffleSplit(
+            n_splits=1, test_size=0.40, random_state=seed
+        )
+        train_index, temporary_index = next(
+            first_split.split(patient_labels["hospital_id"], patient_labels[target])
+        )
+        temporary = patient_labels.iloc[temporary_index].reset_index(drop=True)
+        second_split = StratifiedShuffleSplit(
+            n_splits=1, test_size=0.50, random_state=seed + 1
+        )
+        validation_index, test_index = next(
+            second_split.split(temporary["hospital_id"], temporary[target])
+        )
     except ValueError:
         return None
-
     return {
-        "train": set(patients.iloc[train_idx]["hospital_id"].astype(str)),
-        "val": set(temp.iloc[val_rel]["hospital_id"].astype(str)),
-        "test": set(temp.iloc[test_rel]["hospital_id"].astype(str)),
+        "train": set(patient_labels.iloc[train_index]["hospital_id"]),
+        "val": set(temporary.iloc[validation_index]["hospital_id"]),
+        "test": set(temporary.iloc[test_index]["hospital_id"]),
     }
 
 
-def _filter_indices_by_split(manifest, face_np, target_name, split):
-    col = pd.to_numeric(manifest[target_name], errors="coerce")
-    valid_all = col.notna().to_numpy()
+def _task_split_data(manifest, target, split):
+    labels = pd.to_numeric(manifest[target], errors="coerce")
     hospital_ids = manifest["hospital_id"].astype(str).to_numpy()
-
+    video_indices = pd.to_numeric(manifest["video_index"], errors="raise").to_numpy(
+        dtype=np.int64
+    )
+    frame_indices = pd.to_numeric(manifest["frame_index"], errors="raise").to_numpy(
+        dtype=np.int64
+    )
     result = {}
-    for sname in ["train", "val", "test"]:
-        mask = np.array([hid in split[sname] for hid in hospital_ids]) & valid_all
-        indices = np.flatnonzero(mask)
-        if len(indices) == 0:
-            result[sname] = None
-        else:
-            result[sname] = {
-                "face": face_np[indices],
-                "labels": col.iloc[indices].to_numpy(dtype=np.float32),
-                "sample_id": manifest["sample_id"].iloc[indices].astype(str).to_numpy(),
-                "hospital_id": manifest["hospital_id"].iloc[indices].astype(str).to_numpy(),
-            }
+    for split_name in ("train", "val", "test"):
+        mask = labels.notna().to_numpy() & np.asarray(
+            [hospital_id in split[split_name] for hospital_id in hospital_ids]
+        )
+        row_indices = np.flatnonzero(mask)
+        result[split_name] = {
+            "row_indices": row_indices,
+            "video_indices": video_indices[row_indices],
+            "frame_indices": frame_indices[row_indices],
+            "labels": labels.iloc[row_indices].to_numpy(dtype=np.float32),
+        }
     return result
+
+
+def _class_patient_counts(manifest, row_indices, labels):
+    task_rows = manifest.iloc[row_indices][["hospital_id"]].copy()
+    task_rows["label"] = labels
+    grouped = task_rows.groupby("hospital_id")["label"]
+    positive_patients = int(grouped.max().gt(0.5).sum())
+    negative_patients = int(grouped.min().lt(0.5).sum())
+    return positive_patients, negative_patients
+
+
+def _make_loader(face, data, mean, std, shuffle, augment):
+    dataset = SingleFrameTaskDataset(
+        face=face,
+        video_indices=data["video_indices"],
+        frame_indices=data["frame_indices"],
+        labels=data["labels"],
+        row_indices=data["row_indices"],
+        mean=mean,
+        std=std,
+        augment=augment,
+    )
+    return DataLoader(
+        dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=shuffle,
+        num_workers=NUM_WORKERS,
+        pin_memory=torch.cuda.is_available(),
+        persistent_workers=NUM_WORKERS > 0,
+    )
+
+
+def _optimal_threshold(y_true, y_score):
+    valid = np.isfinite(y_true) & np.isfinite(y_score)
+    y_true = y_true[valid].astype(int)
+    y_score = y_score[valid]
+    if len(y_true) == 0 or len(np.unique(y_true)) < 2:
+        return 0.5
+    false_positive_rate, true_positive_rate, thresholds = roc_curve(y_true, y_score)
+    finite = np.isfinite(thresholds)
+    if not np.any(finite):
+        return 0.5
+    index = int(np.argmax((true_positive_rate - false_positive_rate)[finite]))
+    return float(thresholds[finite][index])
 
 
 def _binary_metrics(y_true, y_score, threshold=0.5):
     valid = np.isfinite(y_true) & np.isfinite(y_score)
-    y_true = y_true[valid]
+    y_true = y_true[valid].astype(int)
     y_score = y_score[valid]
     if len(y_true) == 0 or len(np.unique(y_true)) < 2:
         return {
-            "accuracy": np.nan, "balanced_accuracy": np.nan,
-            "f1": np.nan, "roc_auc": np.nan, "average_precision": np.nan,
-            "tn": 0, "fp": 0, "fn": 0, "tp": 0, "n": int(len(y_true)),
+            "accuracy": np.nan,
+            "balanced_accuracy": np.nan,
+            "f1": np.nan,
+            "roc_auc": np.nan,
+            "average_precision": np.nan,
+            "tn": 0,
+            "fp": 0,
+            "fn": 0,
+            "tp": 0,
+            "n": int(len(y_true)),
             "positive_rate": float(np.mean(y_true)) if len(y_true) else np.nan,
+            "threshold": float(threshold),
         }
-    y_pred = (y_score >= threshold).astype(int)
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+    prediction = (y_score >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_true, prediction, labels=[0, 1]).ravel()
     return {
-        "accuracy": float(accuracy_score(y_true, y_pred)),
-        "balanced_accuracy": float(balanced_accuracy_score(y_true, y_pred)),
-        "f1": float(f1_score(y_true, y_pred, zero_division=0)),
+        "accuracy": float(accuracy_score(y_true, prediction)),
+        "balanced_accuracy": float(balanced_accuracy_score(y_true, prediction)),
+        "f1": float(f1_score(y_true, prediction, zero_division=0)),
         "roc_auc": float(roc_auc_score(y_true, y_score)),
         "average_precision": float(average_precision_score(y_true, y_score)),
-        "tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp),
+        "tn": int(tn),
+        "fp": int(fp),
+        "fn": int(fn),
+        "tp": int(tp),
         "n": int(len(y_true)),
         "positive_rate": float(np.mean(y_true)),
+        "threshold": float(threshold),
     }
 
 
-def _make_loader(face, labels, batch_size, shuffle, augment=False):
-    ds = FaceDataset(face, labels, augment=augment)
-    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=2, pin_memory=True)
-
-
-def _train_epoch(model, loader, optimizer, criterion, device):
+def _train_epoch(model, loader, optimizer, scaler, criterion, device):
     model.train()
-    total_loss, n_batches = 0.0, 0
-    for face, labels in loader:
-        face = face.to(device, non_blocking=True)
+    total_loss = 0.0
+    batches = 0
+    use_amp = device.type == "cuda"
+    for faces, labels, _ in loader:
+        faces = faces.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True).unsqueeze(1)
-        optimizer.zero_grad()
-        logits = model(face)
-        loss = criterion(logits, labels)
-        if torch.isnan(loss) or torch.isinf(loss):
+        optimizer.zero_grad(set_to_none=True)
+        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
+            logits = model(faces)
+            loss = criterion(logits, labels)
+        if not torch.isfinite(loss):
             continue
-        loss.backward()
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
         nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
-        optimizer.step()
-        total_loss += loss.item()
-        n_batches += 1
-    return total_loss / max(n_batches, 1)
+        scaler.step(optimizer)
+        scaler.update()
+        total_loss += float(loss.detach().cpu())
+        batches += 1
+    return total_loss / max(batches, 1)
 
 
 @torch.no_grad()
 def _evaluate(model, loader, criterion, device):
     model.eval()
-    total_loss, n_batches = 0.0, 0
-    all_logits, all_labels = [], []
-    for face, labels in loader:
-        face = face.to(device, non_blocking=True)
-        labels = labels.to(device, non_blocking=True).unsqueeze(1)
-        logits = model(face)
-        loss = criterion(logits, labels)
-        total_loss += loss.item()
-        n_batches += 1
-        all_logits.append(logits.cpu())
-        all_labels.append(labels.cpu())
-    logits = torch.cat(all_logits, dim=0)
-    labels = torch.cat(all_labels, dim=0)
-    probs = torch.sigmoid(torch.nan_to_num(logits, nan=0.0, posinf=10.0, neginf=-10.0))
-    return total_loss / max(n_batches, 1), probs.numpy().ravel(), labels.numpy().ravel()
+    losses = []
+    probabilities = []
+    labels_out = []
+    row_indices = []
+    use_amp = device.type == "cuda"
+    for faces, labels, rows in loader:
+        faces = faces.to(device, non_blocking=True)
+        labels_device = labels.to(device, non_blocking=True).unsqueeze(1)
+        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
+            logits = model(faces)
+            loss = criterion(logits, labels_device)
+        probabilities.append(torch.sigmoid(logits.float()).cpu().numpy().ravel())
+        labels_out.append(labels.numpy())
+        row_indices.append(rows.numpy())
+        losses.append(float(loss.cpu()))
+    return {
+        "loss": float(np.mean(losses)) if losses else np.nan,
+        "probabilities": np.concatenate(probabilities),
+        "labels": np.concatenate(labels_out),
+        "row_indices": np.concatenate(row_indices),
+    }
 
 
-def _train_one_task(data_dict, target_name, device):
-    train_y = data_dict["train"]["labels"]
-    n_pos = int((train_y > 0.5).sum())
-    n_neg = int((train_y < 0.5).sum())
-    if n_pos < MIN_TRAIN_SAMPLES_PER_CLASS or n_neg < MIN_TRAIN_SAMPLES_PER_CLASS:
-        return None, {"target": target_name, "split": "test", "status": "skipped",
-                      "reason": f"insufficient class: pos={n_pos}, neg={n_neg}"}, [], []
-
-    loaders = {}
-    for sname in ["train", "val", "test"]:
-        if data_dict[sname] is None:
-            loaders[sname] = None
-        else:
-            d = data_dict[sname]
-            loaders[sname] = _make_loader(
-                d["face"], d["labels"], BATCH_SIZE, shuffle=(sname == "train"), augment=(sname == "train"))
-    if loaders["val"] is None or loaders["test"] is None:
-        return None, {"target": target_name, "split": "test", "status": "skipped",
-                      "reason": "empty val/test split"}, [], []
-
-    model = FaceOnlyCNN().to(device)
-    pos_weight_value = min(POS_WEIGHT_MAX, max(1.0, n_neg / max(n_pos, 1)))
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight_value], device=device))
-    optimizer = AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-    scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=LR_SCHEDULER_FACTOR,
-                                  patience=LR_SCHEDULER_PATIENCE, min_lr=1e-6)
-
-    best_val_bacc, patience_counter, best_state = -1.0, 0, None
-    loss_log = []
-    for epoch in range(1, MAX_EPOCHS + 1):
-        train_loss = _train_epoch(model, loaders["train"], optimizer, criterion, device)
-        val_loss, val_probs, val_labels = _evaluate(model, loaders["val"], criterion, device)
-        val_m = _binary_metrics(val_labels, val_probs)
-        val_bacc = val_m["balanced_accuracy"]
-        val_auc = val_m["roc_auc"]
-        if np.isnan(val_bacc):
-            val_bacc = -val_loss
-        loss_log.append({
-            "epoch": epoch,
-            "target": target_name,
-            "train_loss": float(train_loss),
-            "val_loss": float(val_loss),
-            "val_bacc": float(val_bacc) if not np.isnan(val_bacc) else float("nan"),
-            "val_roc_auc": float(val_auc) if not np.isnan(val_auc) else float("nan"),
-        })
-        scheduler.step(val_bacc)
-        if val_bacc > best_val_bacc:
-            best_val_bacc = val_bacc
-            patience_counter = 0
-            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-        else:
-            patience_counter += 1
-            if patience_counter >= EARLY_STOPPING_PATIENCE:
-                break
-    if best_state is not None:
-        model.load_state_dict(best_state)
-
-    loss_df = pd.DataFrame(loss_log)
-    loss_df.to_csv(os.path.join(LOG_DIR, f"loss_{target_name}.csv"), index=False)
-
-    metrics, predictions = [], []
-    for sname in ["train", "val", "test"]:
-        if loaders[sname] is None:
-            continue
-        _, probs, labels = _evaluate(model, loaders[sname], criterion, device)
-        m = _binary_metrics(labels, probs)
-        metrics.append({"split": sname, "target": target_name,
-                        **{f"metric_{k}": v for k, v in m.items()}})
-        if sname == "test":
-            d = data_dict[sname]
-            for i in range(len(probs)):
-                predictions.append({
-                    "target": target_name,
-                    "split": sname,
-                    "sample_id": str(d["sample_id"][i]),
-                    "hospital_id": str(d["hospital_id"][i]),
-                    "y_true": int(labels[i]),
-                    "score": float(probs[i]),
-                })
-    return model, metrics, predictions, loss_log
-
-
-def _plot_loss_curves(loss_df, output_dir):
-    tasks = loss_df["target"].unique()
+def _plot_loss_curves(loss_history, output_dir):
+    tasks = loss_history["target"].unique()
     if len(tasks) == 0:
         return
-    n_cols = min(3, len(tasks))
-    n_rows = int(np.ceil(len(tasks) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4.5 * n_rows), squeeze=False)
+    n_columns = min(3, len(tasks))
+    n_rows = int(np.ceil(len(tasks) / n_columns))
+    figure, axes = plt.subplots(
+        n_rows, n_columns, figsize=(6 * n_columns, 4.5 * n_rows), squeeze=False
+    )
     axes = axes.flatten()
+    for index, target in enumerate(tasks):
+        axis = axes[index]
+        history = loss_history[loss_history["target"] == target]
+        epochs = history["epoch"].to_numpy()
+        axis.plot(epochs, history["train_loss"], "b-", label="Train loss", alpha=0.75)
+        axis.plot(epochs, history["val_loss"], "r-", label="Val loss", alpha=0.75)
+        axis.set_xlabel("Epoch")
+        axis.set_ylabel("Loss")
+        axis.grid(True, alpha=0.3)
+        second_axis = axis.twinx()
+        second_axis.plot(epochs, history["val_bacc"], "g-", label="Val bACC")
+        second_axis.plot(epochs, history["val_roc_auc"], "m-", label="Val ROC-AUC")
+        second_axis.set_ylim(-0.05, 1.05)
+        second_axis.set_ylabel("Score")
+        lines_a, labels_a = axis.get_legend_handles_labels()
+        lines_b, labels_b = second_axis.get_legend_handles_labels()
+        axis.legend(lines_a + lines_b, labels_a + labels_b, fontsize=7, loc="best")
+        axis.set_title(target, fontsize=9)
+    for index in range(len(tasks), len(axes)):
+        axes[index].set_visible(False)
+    figure.suptitle("Exp2 Aug20 Non-Adjacent RGB: Per-Task Models", fontsize=14, y=1.01)
+    figure.tight_layout()
+    path = os.path.join(output_dir, "loss_curves.png")
+    figure.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(figure)
+    print(f"Loss and metric curves saved to {path}", flush=True)
 
-    for i, task in enumerate(tasks):
-        ax = axes[i]
-        task_df = loss_df[loss_df["target"] == task]
-        epochs = task_df["epoch"].to_numpy()
-        ax.plot(epochs, task_df["train_loss"].to_numpy(), "b-", label="Train Loss", linewidth=1.5, alpha=0.7)
-        ax.plot(epochs, task_df["val_loss"].to_numpy(), "r-", label="Val Loss", linewidth=1.5, alpha=0.7)
-        ax.set_xlabel("Epoch")
-        ax.set_ylabel("Loss", color="tab:red")
-        ax.tick_params(axis="y", labelcolor="tab:red")
-        ax.grid(True, alpha=0.3)
 
-        ax2 = ax.twinx()
-        ax2.plot(epochs, task_df["val_bacc"].to_numpy(), "g-", label="Val bACC", linewidth=1.5)
-        ax2.plot(epochs, task_df["val_roc_auc"].to_numpy(), "m-", label="Val ROC-AUC", linewidth=1.5)
-        ax2.set_ylabel("Score", color="tab:green")
-        ax2.tick_params(axis="y", labelcolor="tab:green")
-        ax2.set_ylim(-0.05, 1.05)
+def _train_one_task(face, manifest, target, split, mean, std, device):
+    data = _task_split_data(manifest, target, split)
+    train_labels = data["train"]["labels"]
+    n_positive = int((train_labels > 0.5).sum())
+    n_negative = int((train_labels < 0.5).sum())
+    positive_patients, negative_patients = _class_patient_counts(
+        manifest, data["train"]["row_indices"], train_labels
+    )
+    if (
+        n_positive < MIN_TRAIN_SAMPLES_PER_CLASS
+        or n_negative < MIN_TRAIN_SAMPLES_PER_CLASS
+        or positive_patients < MIN_TRAIN_PATIENTS_PER_CLASS
+        or negative_patients < MIN_TRAIN_PATIENTS_PER_CLASS
+    ):
+        return None, {
+            "target": target,
+            "split": "test",
+            "status": "skipped",
+            "reason": (
+                f"insufficient train class: pos={n_positive}/{positive_patients} patients, "
+                f"neg={n_negative}/{negative_patients} patients"
+            ),
+        }, [], [], []
 
-        lines1, labels1 = ax.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax.legend(lines1 + lines2, labels1 + labels2, fontsize=7, loc="best")
-        ax.set_title(task, fontsize=9)
+    if any(len(data[name]["labels"]) == 0 for name in ("train", "val", "test")):
+        return None, {
+            "target": target,
+            "split": "test",
+            "status": "skipped",
+            "reason": "empty patient split",
+        }, [], [], []
 
-    for j in range(len(tasks), len(axes)):
-        axes[j].set_visible(False)
-    fig.suptitle("Exp2 Face-Only: Per-Task Loss & Validation Metrics", fontsize=14, y=1.01)
-    fig.tight_layout()
-    plot_path = os.path.join(output_dir, "loss_curves.png")
-    fig.savefig(plot_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Loss & metric curves saved to {plot_path}")
+    loaders = {
+        "train": _make_loader(face, data["train"], mean, std, shuffle=True, augment=True),
+        "val": _make_loader(face, data["val"], mean, std, shuffle=False, augment=False),
+        "test": _make_loader(face, data["test"], mean, std, shuffle=False, augment=False),
+    }
+    pos_weight_value = float(
+        min(POS_WEIGHT_MAX, max(1.0, n_negative / max(n_positive, 1)))
+    )
+    model = SingleFrameRGBNet().to(device)
+    criterion = nn.BCEWithLogitsLoss(
+        pos_weight=torch.tensor([pos_weight_value], dtype=torch.float32, device=device)
+    )
+    optimizer = AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+    scheduler = CosineAnnealingLR(
+        optimizer, T_max=MAX_EPOCHS, eta_min=MIN_LEARNING_RATE
+    )
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+
+    print(
+        f"  Samples: train={len(train_labels)} val={len(data['val']['labels'])} "
+        f"test={len(data['test']['labels'])}; "
+        f"pos={n_positive}/{positive_patients} patients; "
+        f"neg={n_negative}/{negative_patients} patients; "
+        f"pos_weight={pos_weight_value:.2f}",
+        flush=True,
+    )
+
+    best_score = -np.inf
+    best_state = None
+    patience = 0
+    history = []
+    for epoch in range(1, MAX_EPOCHS + 1):
+        train_loss = _train_epoch(model, loaders["train"], optimizer, scaler, criterion, device)
+        validation = _evaluate(model, loaders["val"], criterion, device)
+        validation_metrics = _binary_metrics(
+            validation["labels"], validation["probabilities"], threshold=0.5
+        )
+        validation_auc = validation_metrics["roc_auc"]
+        validation_bacc = validation_metrics["balanced_accuracy"]
+        score = validation_auc if np.isfinite(validation_auc) else -validation["loss"]
+        learning_rate = float(optimizer.param_groups[0]["lr"])
+        history.append({
+            "epoch": epoch,
+            "target": target,
+            "train_loss": train_loss,
+            "val_loss": validation["loss"],
+            "val_bacc": validation_bacc,
+            "val_roc_auc": validation_auc,
+            "learning_rate": learning_rate,
+        })
+        print(
+            f"  {target} epoch {epoch:03d}: train_loss={train_loss:.4f} "
+            f"val_loss={validation['loss']:.4f} val_AUC={validation_auc:.4f} "
+            f"val_bACC={validation_bacc:.4f}",
+            flush=True,
+        )
+        if score > best_score + 1e-4:
+            best_score = score
+            best_state = {
+                name: value.detach().cpu().clone()
+                for name, value in model.state_dict().items()
+            }
+            patience = 0
+        else:
+            patience += 1
+        scheduler.step()
+        if patience >= EARLY_STOPPING_PATIENCE:
+            print(f"  {target}: early stopping after epoch {epoch}", flush=True)
+            break
+
+    if best_state is None:
+        raise RuntimeError(f"{target}: no finite checkpoint")
+    model.load_state_dict(best_state)
+    evaluations = {
+        split_name: _evaluate(model, loaders[split_name], criterion, device)
+        for split_name in ("train", "val", "test")
+    }
+    threshold = _optimal_threshold(
+        evaluations["val"]["labels"], evaluations["val"]["probabilities"]
+    )
+
+    metric_rows = []
+    prediction_rows = []
+    for split_name, evaluation in evaluations.items():
+        metrics = _binary_metrics(
+            evaluation["labels"], evaluation["probabilities"], threshold
+        )
+        metric_rows.append({
+            "target": target,
+            "split": split_name,
+            "status": "ok",
+            **{f"metric_{key}": value for key, value in metrics.items()},
+        })
+        for local_index, row_index in enumerate(evaluation["row_indices"]):
+            source = manifest.iloc[int(row_index)]
+            probability = float(evaluation["probabilities"][local_index])
+            prediction_rows.append({
+                "target": target,
+                "split": split_name,
+                "sample_id": source["sample_id"],
+                "event_type": source["event_type"],
+                "base_event_id": source["base_event_id"],
+                "frame_index": int(source["frame_index"]),
+                "video_id": source["video_id"],
+                "hospital_id": str(source["hospital_id"]),
+                "y_true": int(evaluation["labels"][local_index]),
+                "score": probability,
+                "threshold": float(threshold),
+                "y_pred": int(probability >= threshold),
+                "match_delta_h": float(source["match_delta_h"]),
+            })
+
+    checkpoint_path = os.path.join(CHECKPOINT_DIR, f"model_{target}_rgb20_nonadj.pt")
+    torch.save(
+        {
+            "model_state_dict": best_state,
+            "target": target,
+            "threshold": threshold,
+            "rgb_mean": mean,
+            "rgb_std": std,
+            "best_val_auc": best_score,
+            "input_frames": "20 non-adjacent frames from the matched nearest video",
+        },
+        checkpoint_path,
+    )
+    return model, metric_rows, prediction_rows, history, [
+        {"target": target, "hospital_id": hospital_id, "split": split_name}
+        for split_name, hospital_ids in split.items()
+        for hospital_id in sorted(hospital_ids)
+    ]
+
+
+def _aggregate_event_predictions(predictions_df):
+    if predictions_df.empty:
+        return predictions_df.copy()
+    group_columns = ["target", "split", "base_event_id"]
+    event_predictions = predictions_df.groupby(group_columns, as_index=False).agg(
+        event_type=("event_type", "first"),
+        video_id=("video_id", "first"),
+        hospital_id=("hospital_id", "first"),
+        y_true=("y_true", "first"),
+        score=("score", "mean"),
+        threshold=("threshold", "first"),
+        match_delta_h=("match_delta_h", "first"),
+        frame_count=("frame_index", "nunique"),
+    )
+    event_predictions["y_pred"] = (
+        event_predictions["score"] >= event_predictions["threshold"]
+    ).astype(int)
+    return event_predictions
+
+
+def _event_metric_rows(event_predictions):
+    rows = []
+    for (target, split), group in event_predictions.groupby(["target", "split"]):
+        metrics = _binary_metrics(
+            group["y_true"].to_numpy(), group["score"].to_numpy(),
+            float(group["threshold"].iloc[0]),
+        )
+        rows.append({
+            "target": target,
+            "split": split,
+            "status": "ok",
+            **{f"metric_{key}": value for key, value in metrics.items()},
+        })
+    return pd.DataFrame(rows)
 
 
 def train_and_evaluate(manifest, face, output_dir=OUTPUT_DIR):
     _set_seed(SEED)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     os.makedirs(LOG_DIR, exist_ok=True)
+    for path in glob.glob(os.path.join(LOG_DIR, "loss_*.csv")):
+        os.remove(path)
+    for path in glob.glob(os.path.join(LOG_DIR, "training_history*.csv")):
+        os.remove(path)
 
-    total_p, _ = count_parameters(FaceOnlyCNN())
-    print(f"Model: FaceOnlyCNN ({total_p:,} params per task)")
-    all_metrics, all_predictions, all_loss_logs = [], [], []
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    mean, std = _channel_statistics(face)
+    parameter_count, _ = count_parameters(SingleFrameRGBNet())
+    print(f"Device: {device}", flush=True)
+    print(
+        f"Model per task: SingleFrameRGBNet ({parameter_count:,} parameters; "
+        "one non-adjacent RGB frame per augmented sample)",
+        flush=True,
+    )
+    print(
+        f"RGB normalization mean={mean.round(4).tolist()} std={std.round(4).tolist()}",
+        flush=True,
+    )
 
-    for t_idx, target_name in enumerate(TARGETS):
-        print(f"\n{'='*60}\nTask [{t_idx+1}/{len(TARGETS)}]: {target_name}\n{'='*60}")
-        split = _patient_level_split_for_task(manifest, target_name, SEED + t_idx)
+    all_metrics = []
+    all_predictions = []
+    all_history = []
+    all_patient_splits = []
+    for task_index, target in enumerate(TARGETS):
+        print(f"\n{'=' * 68}\nTask [{task_index + 1}/{len(TARGETS)}]: {target}\n{'=' * 68}", flush=True)
+        split = _patient_level_split_for_task(manifest, target, SEED + task_index)
         if split is None:
-            print("  SKIP: insufficient patients")
-            all_metrics.append({"target": target_name, "split": "test", "status": "skipped",
-                                "reason": "insufficient patients"})
+            row = {
+                "target": target,
+                "split": "test",
+                "status": "skipped",
+                "reason": "insufficient stratifiable patients",
+            }
+            all_metrics.append(row)
+            print(f"  SKIP: {row['reason']}", flush=True)
             continue
-        data_dict = _filter_indices_by_split(manifest, face, target_name, split)
-        if data_dict["train"] is None:
-            print("  SKIP: no training samples")
-            all_metrics.append({"target": target_name, "split": "test", "status": "skipped",
-                                "reason": "no training samples"})
-            continue
-        n_train = len(data_dict["train"]["labels"])
-        n_val = len(data_dict["val"]["labels"]) if data_dict["val"] else 0
-        n_test = len(data_dict["test"]["labels"]) if data_dict["test"] else 0
-        pos_rate = float(np.mean(data_dict["train"]["labels"]))
-        print(f"  Samples: train={n_train} val={n_val} test={n_test} pos_rate={pos_rate:.2%}")
-        model, metrics, predictions, loss_log = _train_one_task(data_dict, target_name, device)
-        if isinstance(metrics, dict) and metrics.get("status") == "skipped":
+        model, metrics, predictions, history, patient_splits = _train_one_task(
+            face, manifest, target, split, mean, std, device
+        )
+        if isinstance(metrics, dict):
             all_metrics.append(metrics)
-            print(f"  SKIP: {metrics['reason']}")
+            print(f"  SKIP: {metrics['reason']}", flush=True)
             continue
         all_metrics.extend(metrics)
         all_predictions.extend(predictions)
-        all_loss_logs.extend(loss_log)
-        test_m = [m for m in metrics if m["split"] == "test"]
-        if test_m:
-            tm = test_m[0]
-            print(f"  Test: bACC={float(tm.get('metric_balanced_accuracy', np.nan)):.3f} "
-                  f"ROC-AUC={float(tm.get('metric_roc_auc', np.nan)):.3f}")
-        if model is not None:
-            torch.save(model.state_dict(), os.path.join(CHECKPOINT_DIR, f"model_{target_name}.pt"))
+        all_history.extend(history)
+        all_patient_splits.extend(patient_splits)
+        test_metrics = [row for row in metrics if row["split"] == "test"]
+        if test_metrics:
+            test = test_metrics[0]
+            print(
+                f"  {target} test: "
+                f"bACC={float(test.get('metric_balanced_accuracy', np.nan)):.4f} "
+                f"AUC={float(test.get('metric_roc_auc', np.nan)):.4f}",
+                flush=True,
+            )
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-    metrics_df = pd.DataFrame(all_metrics)
+    frame_metrics_df = pd.DataFrame(all_metrics)
     predictions_df = pd.DataFrame(all_predictions)
-    metrics_df.to_csv(os.path.join(output_dir, "metrics.csv"), index=False)
+    event_predictions_df = _aggregate_event_predictions(predictions_df)
+    event_metrics_df = _event_metric_rows(event_predictions_df)
+    skipped_df = frame_metrics_df[frame_metrics_df.get("status", "") == "skipped"]
+    if len(skipped_df):
+        event_metrics_df = pd.concat([event_metrics_df, skipped_df], ignore_index=True)
+    history_df = pd.DataFrame(all_history)
+    frame_metrics_df.to_csv(os.path.join(output_dir, "frame_metrics.csv"), index=False)
+    event_metrics_df.to_csv(os.path.join(output_dir, "metrics.csv"), index=False)
     predictions_df.to_csv(os.path.join(output_dir, "predictions.csv"), index=False)
-    if all_loss_logs:
-        loss_df = pd.DataFrame(all_loss_logs)
-        loss_df.to_csv(os.path.join(LOG_DIR, "loss_all.csv"), index=False)
-        _plot_loss_curves(loss_df, output_dir)
+    event_predictions_df.to_csv(
+        os.path.join(output_dir, "event_predictions.csv"), index=False
+    )
+    pd.DataFrame(all_patient_splits).to_csv(
+        os.path.join(output_dir, "patient_splits.csv"), index=False
+    )
+    if not history_df.empty:
+        history_df.to_csv(os.path.join(LOG_DIR, "loss_all.csv"), index=False)
+        history_df.to_csv(os.path.join(LOG_DIR, "training_history_all.csv"), index=False)
+        for target in history_df["target"].unique():
+            history_df[history_df["target"] == target].to_csv(
+                os.path.join(LOG_DIR, f"loss_{target}.csv"), index=False
+            )
+        _plot_loss_curves(history_df, output_dir)
 
-    if "metric_balanced_accuracy" in metrics_df.columns:
-        test_rows = metrics_df[(metrics_df["split"] == "test") & metrics_df["metric_balanced_accuracy"].notna()]
-        if len(test_rows):
-            print("\nOVERALL SUMMARY")
-            print(f"  Tasks evaluated: {len(test_rows)}")
-            print(f"  Macro bACC: {test_rows['metric_balanced_accuracy'].astype(float).mean():.4f}")
-            print(f"  Macro AUC:  {test_rows['metric_roc_auc'].astype(float).mean():.4f}")
-    skipped = metrics_df[metrics_df.get("status", "") == "skipped"]
-    if len(skipped):
-        print("\nSkipped Tasks:")
-        for _, r in skipped.iterrows():
-            print(f"  - {r['target']}: {r.get('reason', 'unknown')}")
-    return metrics_df, predictions_df
+    test_rows = event_metrics_df[
+        (event_metrics_df["split"] == "test")
+        & (event_metrics_df["status"] == "ok")
+        & event_metrics_df["metric_roc_auc"].notna()
+    ]
+    print("\nOVERALL TEST SUMMARY", flush=True)
+    print(f"  Tasks evaluated: {len(test_rows)}", flush=True)
+    if len(test_rows):
+        print(
+            f"  Macro bACC: {test_rows['metric_balanced_accuracy'].astype(float).mean():.4f}",
+            flush=True,
+        )
+        print(
+            f"  Macro AUC:  {test_rows['metric_roc_auc'].astype(float).mean():.4f}",
+            flush=True,
+        )
+    return event_metrics_df, predictions_df
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Exp2 face-only training/evaluation")
+    parser = argparse.ArgumentParser(
+        description="Train task-specific RGB models with 20 non-adjacent augmented frames"
+    )
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
-    args = parser.parse_args()
-    features_path = os.path.join(args.output_dir, "features.npz")
-    manifest_path = os.path.join(args.output_dir, "manifest.csv")
+    arguments = parser.parse_args()
+    features_path = os.path.join(arguments.output_dir, "features.npz")
+    manifest_path = os.path.join(arguments.output_dir, "manifest.csv")
     if not os.path.exists(features_path) or not os.path.exists(manifest_path):
-        print(f"ERROR: features.npz/manifest.csv not found under {args.output_dir}")
+        print(f"ERROR: features.npz/manifest.csv not found under {arguments.output_dir}")
         sys.exit(1)
     data = np.load(features_path, allow_pickle=True)
-    manifest = pd.read_csv(manifest_path, dtype=str)
-    _ = train_and_evaluate(manifest, data["face"], output_dir=args.output_dir)
+    manifest = pd.read_csv(manifest_path, dtype={"hospital_id": str})
+    train_and_evaluate(manifest, data["face"], output_dir=arguments.output_dir)
 
 
 if __name__ == "__main__":

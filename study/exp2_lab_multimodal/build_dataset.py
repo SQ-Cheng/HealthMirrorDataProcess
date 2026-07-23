@@ -31,6 +31,8 @@ from .config import (
     TARGETS,
 )
 
+LAB_REPORT_TIMEZONE = "Asia/Shanghai"
+
 
 # ---------------------------------------------------------------------------
 # Utility functions
@@ -58,10 +60,13 @@ def _extract_numeric(series):
 
 
 def _parse_datetime_to_unix(series):
-    """Convert datetime strings like '2026-01-23 14:56:40' to Unix seconds."""
-    dt = pd.to_datetime(series, errors="coerce")
-    unix = dt.astype("int64") // 10**9
-    return pd.Series(unix, index=series.index).where(dt.notna(), np.nan)
+    """Convert local Chinese hospital report times to UTC Unix seconds."""
+    local_time = pd.to_datetime(series, errors="coerce")
+    localized = local_time.dt.tz_localize(
+        LAB_REPORT_TIMEZONE, ambiguous="NaT", nonexistent="NaT"
+    )
+    unix = localized.astype("int64") // 10**9
+    return pd.Series(unix, index=series.index).where(localized.notna(), np.nan)
 
 
 def _first_nonempty(series):

@@ -1,4 +1,4 @@
-"""Run Exp2 face-only dataset build and training."""
+"""Run the non-adjacent 20-frame RGB augmentation experiment."""
 
 import argparse
 import os
@@ -9,7 +9,7 @@ from .config import OUTPUT_DIR
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Exp2 face-only experiment")
+    parser = argparse.ArgumentParser(description="Exp2 Aug20 non-adjacent RGB per-task experiment")
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--max-samples", type=int, default=None)
@@ -19,7 +19,7 @@ def main():
     start = time.time()
     if not args.skip_build:
         print("\n" + "=" * 60)
-        print("STEP 1: Build Face-Only Dataset")
+        print("STEP 1: Build Aug20 Non-Adjacent RGB Dataset")
         print("=" * 60)
         from .build_dataset import build_features
         manifest, face = build_features(output_dir=args.output_dir, max_samples=args.max_samples)
@@ -37,7 +37,7 @@ def main():
 
     print(f"\nDataset: {len(manifest)} samples, {manifest['hospital_id'].nunique()} patients")
     print("\n" + "=" * 60)
-    print("STEP 2: Train/Evaluate Face-Only Models")
+    print("STEP 2: Train/Evaluate Per-Task RGB Models on Augmented Frame Samples")
     print("=" * 60)
     from .train_eval import train_and_evaluate
     train_and_evaluate(manifest, face, output_dir=args.output_dir)

@@ -1,0 +1,68 @@
+"""Configuration for the streaming all-frame pretrained experiment."""
+
+import os
+
+from study.exp2_lab_multimodal.config import DATA_ROOT, SEED
+
+
+EXP_DIR = os.path.dirname(os.path.abspath(__file__))
+SOURCE_DATA_DIR = os.path.abspath(
+    os.path.join(EXP_DIR, "..", "exp2_face_only", "outputs_aug20_24h")
+)
+WEIGHTS_DIR = os.path.abspath(
+    os.path.join(EXP_DIR, "..", "exp2_face_pretrained", "pretrained_weights")
+)
+OUTPUT_DIR = os.path.join(EXP_DIR, "outputs")
+LOG_DIR = os.path.join(EXP_DIR, "logs")
+
+ARCHITECTURES = ("mobilenet_v3_small", "efficientnet_b0")
+TARGETS = (
+    "hemoglobin_low",
+    "pco2_low",
+    "po2_low",
+    "high_blood_pressure",
+    "lactate_high",
+)
+HEAD_HIDDEN_FEATURES = 32
+TORCH_COMPILE_ENABLED = True
+TORCH_COMPILE_MODE = "reduce-overhead"
+
+SOURCE_IMAGE_SIZE = 128
+IMAGE_SIZE = 224
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
+VIEW_NAMES = ("original", "hflip", "center_crop", "brightness", "contrast")
+CROP_SCALE = 0.90
+BRIGHTNESS_DELTA = 0.06
+CONTRAST_DELTA = 0.08
+
+TRAIN_SOURCE_BATCH_SIZES = {
+    "mobilenet_v3_small": 128,
+    "efficientnet_b0": 48,
+}
+EVAL_BATCH_SIZES = {
+    "mobilenet_v3_small": 1024,
+    "efficientnet_b0": 512,
+}
+TRAIN_NUM_WORKERS = 6
+EVAL_NUM_WORKERS = 2
+PREFETCH_FACTOR = 4
+FRAME_SHUFFLE_CHUNK_SIZE = 256
+MAX_OPEN_FILES_PER_WORKER = 64
+DECODE_CACHE_FRAMES = 16
+JPEG_DECODER = "torchvision.io.decode_jpeg_cpu"
+
+HEAD_LEARNING_RATE = 1e-3
+FINETUNE_LEARNING_RATE = 1e-4
+WEIGHT_DECAY = 1e-4
+HEAD_MAX_EPOCHS = 40
+FINETUNE_MAX_EPOCHS = 60
+HEAD_PATIENCE = 10
+FINETUNE_PATIENCE = 12
+MIN_LEARNING_RATE = 1e-6
+GRAD_CLIP_NORM = 1.0
+
+MIN_VIDEOS_PER_CLASS = 5
+MIN_PATIENTS_PER_CLASS = 3
+POS_WEIGHT_MAX = 15.0
+POS_WEIGHT_MIN = 1.0 / POS_WEIGHT_MAX

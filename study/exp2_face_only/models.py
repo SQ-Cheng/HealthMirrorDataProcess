@@ -1,62 +1,92 @@
-"""Face-only models for Exp2."""
+"""Single-frame RGB models for Exp2."""
 
 import torch
 import torch.nn as nn
 
-from .config import CLASSIFIER_HIDDEN, DROPOUT, FACE_CHANNELS, FACE_EMBED_DIM
+from .config import (
+    CLASSIFIER_HIDDEN,
+    DROPOUT,
+    FACE_EMBED_DIM,
+    STAGE_BLOCKS,
+    STAGE_CHANNELS,
+    STEM_CHANNELS,
+)
 
 
-class ConvBlock(nn.Module):
-    def __init__(self, in_ch, out_ch, dropout=0.1):
+def _group_count(channels):
+    for groups in (8, 4, 2, 1):
+        if channels % groups == 0:
+            return groups
+    return 1
+
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
-        self.block = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_ch),
-            nn.SiLU(inplace=True),
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_ch),
-            nn.SiLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Dropout2d(dropout),
+        self.conv1 = nn.Conv2d(
+            in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
         )
+        self.norm1 = nn.GroupNorm(_group_count(out_channels), out_channels)
+        self.conv2 = nn.Conv2d(
+            out_channels, out_channels, kernel_size=3, padding=1, bias=False
+        )
+        self.norm2 = nn.GroupNorm(_group_count(out_channels), out_channels)
+        self.activation = nn.SiLU(inplace=True)
+        if stride != 1 or in_channels != out_channels:
+            self.skip = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.GroupNorm(_group_count(out_channels), out_channels),
+            )
+        else:
+            self.skip = nn.Identity()
 
     def forward(self, x):
-        return self.block(x)
+        identity = self.skip(x)
+        x = self.activation(self.norm1(self.conv1(x)))
+        x = self.norm2(self.conv2(x))
+        return self.activation(x + identity)
 
 
-class FaceOnlyCNN(nn.Module):
-    """Compact CNN for one grayscale face frame (B, 1, 32, 32)."""
+class SingleFrameRGBNet(nn.Module):
+    """One task-specific classifier for one RGB face frame [B, 3, H, W]."""
 
-    def __init__(self, channels=FACE_CHANNELS, embed_dim=FACE_EMBED_DIM,
-                 hidden=CLASSIFIER_HIDDEN, dropout=DROPOUT):
+    def __init__(self, embed_dim=FACE_EMBED_DIM):
         super().__init__()
+        self.stem = nn.Sequential(
+            nn.Conv2d(3, STEM_CHANNELS, kernel_size=5, stride=2, padding=2, bias=False),
+            nn.GroupNorm(_group_count(STEM_CHANNELS), STEM_CHANNELS),
+            nn.SiLU(inplace=True),
+        )
         blocks = []
-        for idx in range(len(channels) - 1):
-            blocks.append(ConvBlock(channels[idx], channels[idx + 1], dropout=0.08 + 0.04 * idx))
+        in_channels = STEM_CHANNELS
+        for stage_index, (out_channels, n_blocks) in enumerate(zip(STAGE_CHANNELS, STAGE_BLOCKS)):
+            for block_index in range(n_blocks):
+                stride = 2 if stage_index > 0 and block_index == 0 else 1
+                blocks.append(ResidualBlock(in_channels, out_channels, stride=stride))
+                in_channels = out_channels
         self.encoder = nn.Sequential(*blocks)
         self.pool = nn.AdaptiveAvgPool2d(1)
         self.projector = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(channels[-1], embed_dim),
+            nn.Linear(in_channels, embed_dim),
             nn.LayerNorm(embed_dim),
             nn.SiLU(inplace=True),
-            nn.Dropout(dropout),
         )
         self.head = nn.Sequential(
-            nn.Linear(embed_dim, hidden),
+            nn.LayerNorm(embed_dim),
+            nn.Dropout(DROPOUT),
+            nn.Linear(embed_dim, CLASSIFIER_HIDDEN),
             nn.SiLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(hidden, 1),
+            nn.Dropout(DROPOUT),
+            nn.Linear(CLASSIFIER_HIDDEN, 1),
         )
 
     def forward(self, face):
-        x = self.encoder(face)
-        x = self.pool(x)
-        x = self.projector(x)
-        return self.head(x)
+        features = self.projector(self.pool(self.encoder(self.stem(face))))
+        return self.head(features)
 
 
 def count_parameters(model):
-    total = sum(p.numel() for p in model.parameters())
-    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total = sum(parameter.numel() for parameter in model.parameters())
+    trainable = sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
     return total, trainable
