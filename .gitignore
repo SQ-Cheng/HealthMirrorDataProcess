@@ -40,54 +40,31 @@ sample_length_report_output.txt
 .vscode/
 .idea/
 
-# ── Exp2: track source code, exclude large generated files ──────────
-/study/exp2_lab_multimodal/outputs/features.npz
-/study/exp2_lab_multimodal/outputs/frames/
-/study/exp2_lab_multimodal/checkpoints/
-/study/exp2_lab_multimodal/logs/run.log
+# Exp2 shared data preparation and generated source tables
 /study/exp2_lab_multimodal/__pycache__/
-!study/exp2_lab_multimodal/outputs/*.csv
-!study/exp2_lab_multimodal/outputs/*.json
-!study/exp2_lab_multimodal/outputs/*.md
-!study/exp2_lab_multimodal/logs/*.json
-
-# Exp2 face-only: track source code and lightweight summaries, exclude generated artifacts
-/study/exp2_face_only/outputs/features.npz
-/study/exp2_face_only/outputs/frames/
-/study/exp2_face_only/checkpoints/
-/study/exp2_face_only/logs/run.log
-/study/exp2_face_only/__pycache__/
-!study/exp2_face_only/outputs/*.csv
-!study/exp2_face_only/outputs/*.json
-!study/exp2_face_only/outputs/*.md
-!study/exp2_face_only/logs/*.json
-
-# Exp2 face-only generated caches and the isolated Aug20 experiment
-/study/exp2_face_only/outputs/rgb_frames/
-/study/exp2_face_only/outputs/rgb_frames_single/
-/study/exp2_face_only/outputs/patient_splits.csv
-/study/exp2_face_only/outputs/video_summary.csv
-/study/exp2_face_only/outputs_aug20/
-/study/exp2_face_only/logs_aug20/
-/study/exp2_face_only/checkpoints_aug20/
-/study/exp2_face_only/outputs_aug20_views5_seed5/
 /study/exp2_face_only/outputs_aug20_24h/
-/study/exp2_face_only/logs_aug20_24h/
-/study/exp2_face_only/checkpoints_aug20_24h/
-/study/exp2_face_only/outputs_aug20_24h_views5_seed5/
+/study/exp2_face_only/__pycache__/
 
-# Exp2 pretrained ImageNet backbone experiment
+# Exp2 shared ImageNet checkpoints
 /study/exp2_face_pretrained/pretrained_weights/*.pth
-/study/exp2_face_pretrained/outputs/
-/study/exp2_face_pretrained/logs/
 /study/exp2_face_pretrained/__pycache__/
 
-# Exp2 pretrained backbones with a 32-wide task head
-/study/exp2_face_pretrained_head32/outputs/
-/study/exp2_face_pretrained_head32/logs/
-/study/exp2_face_pretrained_head32/__pycache__/
-
-# Exp2 streaming all-frame pretrained backbones with a 32-wide head
+# Exp2 binary all-frame Head32, five-view reference
 /study/exp2_face_pretrained_allframes_head32/outputs/
 /study/exp2_face_pretrained_allframes_head32/logs/
 /study/exp2_face_pretrained_allframes_head32/__pycache__/
+
+# Exp2 binary all-frame Head32, three-view primary experiment
+/study/exp2_face_pretrained_allframes_head32_views3/outputs/
+/study/exp2_face_pretrained_allframes_head32_views3/logs/
+/study/exp2_face_pretrained_allframes_head32_views3/__pycache__/
+
+# Exp2 single-task all-frame Head32 abnormal-score regression
+/study/exp2_face_pretrained_allframes_head32_regression/outputs/
+/study/exp2_face_pretrained_allframes_head32_regression/logs/
+/study/exp2_face_pretrained_allframes_head32_regression/__pycache__/
+
+# Exp2 multi-task all-frame Head32 abnormal-score regression
+/study/exp2_face_pretrained_allframes_head32_multitask_regression/outputs/
+/study/exp2_face_pretrained_allframes_head32_multitask_regression/logs/
+/study/exp2_face_pretrained_allframes_head32_multitask_regression/__pycache__/

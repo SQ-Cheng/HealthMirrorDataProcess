@@ -1,1 +1,1 @@
-"""Pretrained ImageNet backbone experiments for Exp2 face frames."""
+"""Shared verified ImageNet checkpoints for retained Exp2 experiments."""

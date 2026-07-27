@@ -78,12 +78,12 @@ def plot_history(input_csv, output_png, title):
 if __name__ == "__main__":
     experiments = [
         (
-            "exp2_face_pretrained",
-            "Exp2 Pretrained RGB: Backbone/Task Models",
+            "exp2_face_pretrained_allframes_head32",
+            "Exp2 Binary All Frames Head32: Five-View Reference",
         ),
         (
-            "exp2_face_pretrained_head32",
-            "Exp2 Pretrained RGB Head32: Backbone/Task Models",
+            "exp2_face_pretrained_allframes_head32_views3",
+            "Exp2 Binary All Frames Head32: Three-View Primary",
         ),
     ]
     for experiment, title in experiments:

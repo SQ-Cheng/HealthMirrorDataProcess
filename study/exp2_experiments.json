@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "path_policy": "compatibility paths remain stable while active jobs depend on them",
+  "assets": [
+    {
+      "id": "exp2_source_24h_rgb",
+      "path": "study/exp2_face_only/outputs_aug20_24h",
+      "status": "retained",
+      "role": "corrected label and video metadata"
+    },
+    {
+      "id": "exp2_imagenet_weights",
+      "path": "study/exp2_face_pretrained/pretrained_weights",
+      "status": "retained",
+      "role": "verified pretrained checkpoints"
+    },
+    {
+      "id": "exp2_allframe_index",
+      "path": "study/exp2_face_pretrained_allframes_head32/outputs/frame_index",
+      "status": "retained",
+      "role": "JPEG byte-offset index without decoded frame cache"
+    }
+  ],
+  "experiments": [
+    {
+      "id": "exp2_binary_allframes_head32_views5",
+      "path": "study/exp2_face_pretrained_allframes_head32",
+      "status": "completed_reference",
+      "task_type": "independent binary classification",
+      "training_views": 5
+    },
+    {
+      "id": "exp2_binary_allframes_head32_views3",
+      "path": "study/exp2_face_pretrained_allframes_head32_views3",
+      "status": "completed_primary",
+      "task_type": "independent binary classification",
+      "training_views": 3
+    },
+    {
+      "id": "exp2_regression_allframes_head32_single_task",
+      "path": "study/exp2_face_pretrained_allframes_head32_regression",
+      "status": "completed_primary",
+      "task_type": "independent abnormal-score regression",
+      "training_views": 5
+    },
+    {
+      "id": "exp2_regression_allframes_head32_multitask",
+      "path": "study/exp2_face_pretrained_allframes_head32_multitask_regression",
+      "status": "active_with_known_split_limitation",
+      "task_type": "shared-backbone multi-output abnormal-score regression",
+      "training_views": 5,
+      "known_limitations": [
+        "PCO2-low positive videos are allocated train/validation/test as 2/4/1"
+      ]
+    }
+  ],
+  "removed": [
+    "exp2_lab_multimodal_model",
+    "exp2_face_only_grayscale",
+    "exp2_face_only_aug20_96px",
+    "exp2_face_pretrained_20frame",
+    "exp2_face_pretrained_20frame_head32"
+  ]
+}
