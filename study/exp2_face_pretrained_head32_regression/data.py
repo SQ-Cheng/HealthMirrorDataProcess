@@ -1,4 +1,4 @@
-"""Conflict-safe video tasks and streaming all-frame image loading."""
+"""Balanced video tasks and streaming selected-frame image loading."""
 
 from collections import OrderedDict
 import hashlib
@@ -46,9 +46,13 @@ def validate_source_data(source_dir):
     timezone = quality.get("lab_report_time", {}).get("source_timezone")
     if timezone != "Asia/Shanghai":
         raise RuntimeError(f"Corrected Asia/Shanghai time basis is missing: {timezone}")
-    policy = quality.get("hemoglobin_conflicting_video_policy", {})
-    if policy.get("scope") != "per target" or "hemoglobin_low" not in policy.get("targets", []):
-        raise RuntimeError("Corrected Hb conflict policy is missing")
+    policy = quality.get("video_match_policy", {})
+    if policy.get("mode") != "raw_video_interval_nearest_lab_per_target":
+        raise RuntimeError(f"Corrected raw-video match policy is missing: {policy}")
+    if policy.get("session_csv_required") is not False:
+        raise RuntimeError("Raw-video source unexpectedly depends on session CSV files")
+    if float(policy.get("maximum_delta_hours", np.inf)) != 24.0:
+        raise RuntimeError(f"Expected a 24-hour source window, found {policy}")
     return quality
 
 
@@ -160,6 +164,27 @@ def build_task_records(base_manifest, video_summary, target):
         return pd.DataFrame(), [], {
             "target": target, "status": "skipped", "reason": "no non-missing labels"
         }
+    prefix = SCORE_DEFINITIONS[target]["value_column"].removesuffix("_value")
+    required_time_columns = (
+        f"{prefix}_delta_h",
+        f"{prefix}_signed_delta_h",
+        f"{prefix}_lab_time_unix",
+    )
+    missing = [column for column in required_time_columns if column not in events]
+    if missing:
+        raise ValueError(f"Missing target-specific time columns for {target}: {missing}")
+    events["match_delta_h"] = pd.to_numeric(
+        events[required_time_columns[0]], errors="coerce"
+    )
+    events["match_signed_delta_h"] = pd.to_numeric(
+        events[required_time_columns[1]], errors="coerce"
+    )
+    events["label_time_unix"] = pd.to_numeric(
+        events[required_time_columns[2]], errors="coerce"
+    )
+    if events[list(required_time_columns)].isna().any().any():
+        raise ValueError(f"Missing nearest-lab alignment values for {target}")
+
     audit_rows = _conflicting_video_audit(events, target)
     conflicting_videos = {row["video_id"] for row in audit_rows}
     clean = events.loc[~events["video_id"].astype(str).isin(conflicting_videos)].copy()
@@ -647,6 +672,7 @@ class GroupedFrameViewSampler(Sampler):
 
 
 class AllFramesDataset(Dataset):
+    """Stream the selected frame offsets without persisting decoded images."""
     def __init__(
         self,
         frame_index,

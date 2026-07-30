@@ -49,20 +49,20 @@ sample_length_report_output.txt
 /study/exp2_face_pretrained/pretrained_weights/*.pth
 /study/exp2_face_pretrained/__pycache__/
 
-# Exp2 binary all-frame Head32, five-view reference
-/study/exp2_face_pretrained_allframes_head32/outputs/
-/study/exp2_face_pretrained_allframes_head32/logs/
-/study/exp2_face_pretrained_allframes_head32/__pycache__/
+# Exp2 binary 20-frame Head32, five-view experiment
+/study/exp2_face_pretrained_head32/outputs/
+/study/exp2_face_pretrained_head32/logs/
+/study/exp2_face_pretrained_head32/__pycache__/
 
 # Exp2 binary all-frame Head32, three-view primary experiment
 /study/exp2_face_pretrained_allframes_head32_views3/outputs/
 /study/exp2_face_pretrained_allframes_head32_views3/logs/
 /study/exp2_face_pretrained_allframes_head32_views3/__pycache__/
 
-# Exp2 single-task all-frame Head32 abnormal-score regression
-/study/exp2_face_pretrained_allframes_head32_regression/outputs/
-/study/exp2_face_pretrained_allframes_head32_regression/logs/
-/study/exp2_face_pretrained_allframes_head32_regression/__pycache__/
+# Exp2 single-task 20-frame Head32 abnormal-score regression
+/study/exp2_face_pretrained_head32_regression/outputs/
+/study/exp2_face_pretrained_head32_regression/logs/
+/study/exp2_face_pretrained_head32_regression/__pycache__/
 
 # Exp2 multi-task all-frame Head32 abnormal-score regression
 /study/exp2_face_pretrained_allframes_head32_multitask_regression/outputs/

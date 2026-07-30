@@ -1,4 +1,4 @@
-"""Configuration for all-frame abnormal-score regression."""
+"""Configuration for raw-video 20-frame abnormal-score regression."""
 
 import os
 
@@ -6,28 +6,41 @@ from study.exp2_lab_multimodal.config import DATA_ROOT, SEED
 
 
 EXP_DIR = os.path.dirname(os.path.abspath(__file__))
-SOURCE_DATA_DIR = os.path.abspath(
-    os.path.join(EXP_DIR, "..", "exp2_face_only", "outputs_aug20_24h")
-)
 WEIGHTS_DIR = os.path.abspath(
     os.path.join(EXP_DIR, "..", "exp2_face_pretrained", "pretrained_weights")
 )
 OUTPUT_DIR = os.path.join(EXP_DIR, "outputs")
 LOG_DIR = os.path.join(EXP_DIR, "logs")
+SOURCE_DATA_DIR = os.path.join(OUTPUT_DIR, "source_data")
+LAB_TIMESERIES_CACHE = os.path.abspath(
+    os.path.join(
+        EXP_DIR, "..", "exp2_face_only", "outputs_aug20_24h", "lab_timeseries.csv"
+    )
+)
+LAB_QUALITY_REPORT = os.path.abspath(
+    os.path.join(
+        EXP_DIR,
+        "..",
+        "exp2_face_only",
+        "outputs_aug20_24h",
+        "data_quality_report.json",
+    )
+)
 
 ARCHITECTURES = ("mobilenet_v3_small", "efficientnet_b0")
 TARGETS = (
     "hemoglobin_low",
-    "pco2_low",
     "po2_low",
-    "high_blood_pressure",
-    "lactate_high",
 )
 HEAD_HIDDEN_FEATURES = 32
 TORCH_COMPILE_ENABLED = True
 TORCH_COMPILE_MODE = "reduce-overhead"
 
 SOURCE_IMAGE_SIZE = 128
+FRAMES_PER_VIDEO = 20
+FRAME_QUANTILES = tuple(0.05 + 0.90 * index / 19 for index in range(20))
+MIN_SOURCE_FRAME_GAP = 2
+LAB_MATCH_MAX_DELTA_HOURS = 24.0
 IMAGE_SIZE = 224
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -44,33 +57,12 @@ SCORE_DEFINITIONS = {
         "unit": "g/L",
         "threshold": {"male": 130.0, "other": 120.0},
     },
-    "pco2_low": {
-        "value_column": "pco2_value",
-        "direction": "low",
-        "threshold": 34.0,
-        "scale": 5.0,
-        "unit": "mmHg",
-    },
     "po2_low": {
         "value_column": "po2_value",
         "direction": "low",
         "threshold": 80.0,
         "scale": 10.0,
         "unit": "mmHg",
-    },
-    "high_blood_pressure": {
-        "value_column": "systolic_blood_pressure",
-        "direction": "high_max",
-        "threshold": {"systolic": 140.0, "diastolic": 90.0},
-        "scale": {"systolic": 20.0, "diastolic": 10.0},
-        "unit": "mmHg",
-    },
-    "lactate_high": {
-        "value_column": "lactate_value",
-        "direction": "high",
-        "threshold": 2.0,
-        "scale": 1.0,
-        "unit": "mmol/L",
     },
 }
 SCORE_TRANSFORM = "asinh"

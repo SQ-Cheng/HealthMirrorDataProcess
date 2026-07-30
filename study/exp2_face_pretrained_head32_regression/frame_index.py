@@ -1,4 +1,4 @@
-"""Compact byte-offset index for streaming every decodable MJPEG frame."""
+"""Compact byte-offset index for 20 deterministic MJPEG frames per video."""
 
 from dataclasses import dataclass
 from io import BytesIO
@@ -10,10 +10,16 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from .config import DATA_ROOT, SOURCE_IMAGE_SIZE
+from .config import (
+    DATA_ROOT,
+    FRAME_QUANTILES,
+    FRAMES_PER_VIDEO,
+    MIN_SOURCE_FRAME_GAP,
+    SOURCE_IMAGE_SIZE,
+)
 
 
-INDEX_SCHEMA_VERSION = 1
+INDEX_SCHEMA_VERSION = 2
 
 
 def video_path_for_row(row):
@@ -26,42 +32,107 @@ def video_path_for_row(row):
 
 
 def _scan_video(video_path):
-    starts, ends, source_indices, failures = [], [], [], []
+    ranges = []
+    if os.path.getsize(video_path) == 0:
+        return [], [], [], [{
+            "source_frame_index": -1,
+            "byte_start": -1,
+            "reason": "empty_video_file",
+        }]
     with open(video_path, "rb") as handle:
         with mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
             position = 0
-            source_index = 0
             while True:
                 start = mapped.find(b"\xff\xd8", position)
                 if start < 0:
                     break
                 end_marker = mapped.find(b"\xff\xd9", start + 2)
                 if end_marker < 0:
-                    failures.append({
-                        "source_frame_index": source_index,
-                        "byte_start": start,
-                        "reason": "missing_jpeg_end_marker",
-                    })
                     break
                 end = end_marker + 2
+                ranges.append((start, end))
+                position = end
+    if not ranges:
+        return [], [], [], [{
+            "source_frame_index": -1,
+            "byte_start": -1,
+            "reason": "no_complete_jpeg_ranges",
+        }]
+
+    target_indices = [
+        int(round(quantile * (len(ranges) - 1)))
+        for quantile in FRAME_QUANTILES
+    ]
+    if (
+        len(target_indices) != FRAMES_PER_VIDEO
+        or len(set(target_indices)) != FRAMES_PER_VIDEO
+        or min(np.diff(target_indices)) < MIN_SOURCE_FRAME_GAP
+    ):
+        target_indices = np.round(
+            np.linspace(0, len(ranges) - 1, FRAMES_PER_VIDEO)
+        ).astype(int).tolist()
+    if (
+        len(set(target_indices)) != FRAMES_PER_VIDEO
+        or min(np.diff(target_indices)) < MIN_SOURCE_FRAME_GAP
+    ):
+        return [], [], [], [{
+            "source_frame_index": -1,
+            "byte_start": -1,
+            "reason": (
+                f"too_few_source_frames={len(ranges)} "
+                f"for_{FRAMES_PER_VIDEO}_nonadjacent_frames"
+            ),
+        }]
+
+    starts, ends, source_indices, failures = [], [], [], []
+    used = set()
+    previous_index = -MIN_SOURCE_FRAME_GAP
+    with open(video_path, "rb") as handle:
+        for target_index in target_indices:
+            offsets = [0]
+            for distance in range(1, 31):
+                offsets.extend((-distance, distance))
+            selected = None
+            for offset in offsets:
+                source_index = target_index + offset
+                if (
+                    source_index < 0
+                    or source_index >= len(ranges)
+                    or source_index in used
+                    or source_index - previous_index < MIN_SOURCE_FRAME_GAP
+                ):
+                    continue
+                start, end = ranges[source_index]
                 try:
-                    payload = mapped[start:end]
+                    handle.seek(start)
+                    payload = handle.read(end - start)
                     with Image.open(BytesIO(payload)) as image:
                         size = image.size
                         image.verify()
                     if size != (SOURCE_IMAGE_SIZE, SOURCE_IMAGE_SIZE):
                         raise ValueError(f"unexpected_frame_size={size}")
-                    starts.append(start)
-                    ends.append(end)
-                    source_indices.append(source_index)
                 except Exception as exc:
                     failures.append({
                         "source_frame_index": source_index,
                         "byte_start": start,
                         "reason": str(exc),
                     })
-                position = end
-                source_index += 1
+                    continue
+                selected = (source_index, start, end)
+                break
+            if selected is None:
+                failures.append({
+                    "source_frame_index": target_index,
+                    "byte_start": ranges[target_index][0],
+                    "reason": "no_decodable_nonadjacent_frame_within_search_radius",
+                })
+                return [], [], [], failures
+            source_index, start, end = selected
+            used.add(source_index)
+            previous_index = source_index
+            source_indices.append(source_index)
+            starts.append(start)
+            ends.append(end)
     return starts, ends, source_indices, failures
 
 
@@ -76,9 +147,13 @@ def _index_is_reusable(index_dir, expected_video_ids):
         if manifest.get("schema_version") != INDEX_SCHEMA_VERSION:
             return False
         rows = manifest.get("videos", [])
-        if not set(expected_video_ids).issubset({row["video_id"] for row in rows}):
+        failed_rows = manifest.get("failed_videos", [])
+        indexed_or_failed = {
+            row["video_id"] for row in (*rows, *failed_rows)
+        }
+        if not set(expected_video_ids).issubset(indexed_or_failed):
             return False
-        for row in rows:
+        for row in (*rows, *failed_rows):
             stat = os.stat(row["video_path"])
             if stat.st_size != row["size_bytes"] or stat.st_mtime_ns != row["mtime_ns"]:
                 return False
@@ -94,7 +169,7 @@ def _index_is_reusable(index_dir, expected_video_ids):
 
 
 def build_or_reuse_frame_index(video_records, index_dir):
-    """Index JPEG ranges once; never persist decoded frame pixels."""
+    """Index 20 selected JPEG ranges per video; never persist decoded pixels."""
     os.makedirs(index_dir, exist_ok=True)
     videos = video_records[
         ["video_id", "mirror", "lab_patient_id"]
@@ -107,28 +182,51 @@ def build_or_reuse_frame_index(video_records, index_dir):
 
     all_starts, all_ends, all_source_indices = [], [], []
     video_ids, video_paths, video_ptr = [], [], [0]
-    summary_rows, failure_rows, manifest_rows = [], [], []
+    summary_rows, failure_rows, manifest_rows, failed_manifest_rows = [], [], [], []
     print(f"Building compact MJPEG index for {len(videos)} videos", flush=True)
     for position, row in enumerate(videos.itertuples(index=False), start=1):
         video_path = video_path_for_row(row)
         if not os.path.isfile(video_path):
             raise FileNotFoundError(f"Missing source video: {video_path}")
         starts, ends, source_indices, failures = _scan_video(video_path)
-        if not starts:
-            raise RuntimeError(f"No decodable 128x128 frames in {video_path}")
+        stat = os.stat(video_path)
+        if len(starts) != FRAMES_PER_VIDEO:
+            summary_rows.append({
+                "video_id": str(row.video_id),
+                "video_path": video_path,
+                "valid_frames": 0,
+                "invalid_frames": len(failures),
+                "size_bytes": stat.st_size,
+                "status": "excluded_cannot_select_20_frames",
+            })
+            failed_manifest_rows.append({
+                "video_id": str(row.video_id),
+                "video_path": video_path,
+                "size_bytes": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+                "reason": "cannot_select_20_nonadjacent_frames",
+            })
+            for failure in failures:
+                failure_rows.append({"video_id": str(row.video_id), **failure})
+            print(
+                f"  excluded {row.video_id}: cannot select "
+                f"{FRAMES_PER_VIDEO} non-adjacent frames",
+                flush=True,
+            )
+            continue
         video_ids.append(str(row.video_id))
         video_paths.append(video_path)
         all_starts.extend(starts)
         all_ends.extend(ends)
         all_source_indices.extend(source_indices)
         video_ptr.append(len(all_starts))
-        stat = os.stat(video_path)
         summary_rows.append({
             "video_id": str(row.video_id),
             "video_path": video_path,
             "valid_frames": len(starts),
             "invalid_frames": len(failures),
             "size_bytes": stat.st_size,
+            "status": "indexed",
         })
         manifest_rows.append({
             "video_id": str(row.video_id),
@@ -171,9 +269,17 @@ def build_or_reuse_frame_index(video_records, index_dir):
         json.dump({
             "schema_version": INDEX_SCHEMA_VERSION,
             "storage_policy": "JPEG byte offsets only; no decoded frames persisted",
+            "frame_policy": {
+                "frames_per_video": FRAMES_PER_VIDEO,
+                "quantiles": list(FRAME_QUANTILES),
+                "minimum_source_frame_gap": MIN_SOURCE_FRAME_GAP,
+            },
             "total_valid_frames": len(all_starts),
             "total_invalid_frames": len(failure_rows),
+            "indexed_video_count": len(manifest_rows),
+            "failed_video_count": len(failed_manifest_rows),
             "videos": manifest_rows,
+            "failed_videos": failed_manifest_rows,
         }, handle, indent=2)
     print(
         f"Saved compact index: frames={len(all_starts)} "

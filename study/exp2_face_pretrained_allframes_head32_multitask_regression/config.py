@@ -2,7 +2,7 @@
 
 import os
 
-from study.exp2_face_pretrained_allframes_head32_regression.config import (
+from study.exp2_face_pretrained_head32_regression.config import (
     BRIGHTNESS_DELTA,
     CONTRAST_DELTA,
     CROP_SCALE,

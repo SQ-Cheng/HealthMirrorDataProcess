@@ -1,4 +1,4 @@
-"""Run all streaming all-frame Head-32 architecture/target jobs."""
+"""Run raw-video 20-frame abnormal-score regression jobs."""
 
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -7,6 +7,7 @@ import json
 import multiprocessing as mp
 import os
 import random
+import shutil
 import traceback
 
 import numpy as np
@@ -15,17 +16,23 @@ import torch
 
 from .config import (
     ARCHITECTURES,
+    FINETUNE_LEARNING_RATE,
     FINETUNE_MAX_EPOCHS,
     FINETUNE_PATIENCE,
+    FRAMES_PER_VIDEO,
     FRAME_SHUFFLE_CHUNK_SIZE,
     HEAD_HIDDEN_FEATURES,
+    HEAD_LEARNING_RATE,
     HEAD_MAX_EPOCHS,
     HEAD_PATIENCE,
     EVAL_BATCH_SIZES,
     EVAL_NUM_WORKERS,
     JPEG_DECODER,
     OUTPUT_DIR,
+    SCORE_DEFINITIONS,
+    SCORE_TRANSFORM,
     SEED,
+    SMOOTH_L1_BETA,
     SOURCE_DATA_DIR,
     TARGETS,
     TRAIN_NUM_WORKERS,
@@ -38,14 +45,13 @@ from .config import (
 from .data import prepare_tasks, validate_source_data
 from .frame_index import FrameOffsetIndex, build_or_reuse_frame_index
 from .models import WEIGHT_FILES
+from .source_data import build_raw_video_source
 from .train import train_task
 
 
 LAB_TARGET_PREFIXES = {
     "hemoglobin_low": "hemoglobin",
-    "pco2_low": "pco2",
     "po2_low": "po2",
-    "lactate_high": "lactate",
 }
 
 _WORKER_FRAME_INDEX = None
@@ -181,7 +187,7 @@ def _add_frame_counts(summary, task_records, frame_index):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source-dir", default=SOURCE_DATA_DIR)
+    parser.add_argument("--source-dir", default=None)
     parser.add_argument("--weights-dir", default=WEIGHTS_DIR)
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
     parser.add_argument("--index-dir", default=None)
@@ -199,6 +205,11 @@ def main():
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
+    args.source_dir = args.source_dir or (
+        SOURCE_DATA_DIR
+        if os.path.abspath(args.output_dir) == os.path.abspath(OUTPUT_DIR)
+        else os.path.join(args.output_dir, "source_data")
+    )
     args.index_dir = args.index_dir or os.path.join(args.output_dir, "frame_index")
 
     architectures = _parse_csv(args.architectures)
@@ -219,16 +230,46 @@ def main():
         raise FileExistsError(
             f"Output already contains a run: {args.output_dir}. Use --overwrite explicitly."
         )
+    if args.overwrite and os.path.isdir(args.output_dir):
+        shutil.rmtree(args.output_dir)
     os.makedirs(os.path.join(args.output_dir, "runs"), exist_ok=True)
     _set_seed(args.seed)
+    build_raw_video_source(args.source_dir, requested_targets)
     source_quality = validate_source_data(args.source_dir)
     weight_manifest = _validate_weights(args.weights_dir, architectures)
     base_manifest = pd.read_csv(
         os.path.join(args.source_dir, "base_manifest.csv"), dtype={"hospital_id": str}
     )
+    video_summary = pd.read_csv(
+        os.path.join(args.source_dir, "video_summary.csv"),
+        dtype={"hospital_id": str},
+    )
     _validate_time_alignment(base_manifest, requested_targets)
+    candidate_mask = base_manifest[list(requested_targets)].notna().any(axis=1)
+    candidate_videos = base_manifest.loc[candidate_mask].drop_duplicates("video_id")
+    frame_index = build_or_reuse_frame_index(candidate_videos, args.index_dir)
+    indexed_video_ids = set(frame_index.video_lookup)
+    excluded_frame_videos = set(
+        candidate_videos["video_id"].astype(str)
+    ) - indexed_video_ids
+    if excluded_frame_videos:
+        print(
+            f"Excluded {len(excluded_frame_videos)} labelled videos that cannot "
+            f"provide {FRAMES_PER_VIDEO} non-adjacent decodable frames",
+            flush=True,
+        )
+    base_manifest = base_manifest[
+        base_manifest["video_id"].astype(str).isin(indexed_video_ids)
+    ].reset_index(drop=True)
+    video_summary = video_summary[
+        video_summary["video_id"].astype(str).isin(indexed_video_ids)
+    ].reset_index(drop=True)
     task_records, task_summary, conflict_audit = prepare_tasks(
-        base_manifest, args.output_dir, requested_targets, args.seed
+        base_manifest,
+        video_summary,
+        args.output_dir,
+        requested_targets,
+        args.seed,
     )
     ready_targets = tuple(
         task_summary.loc[task_summary["status"].eq("ready"), "target"].astype(str)
@@ -236,13 +277,17 @@ def main():
     if set(ready_targets) != set(requested_targets):
         skipped = task_summary.loc[~task_summary["status"].eq("ready"), ["target", "reason"]]
         raise RuntimeError(f"Requested all-frame tasks are not trainable: {skipped.to_dict('records')}")
+    with open(
+        os.path.join(args.output_dir, "split_assignment_manifest.json"),
+        encoding="utf-8",
+    ) as handle:
+        split_assignment_manifest = json.load(handle)
     if args.smoke_test:
         ready_targets = ready_targets[:1]
 
     union_videos = pd.concat(
         [task_records[target] for target in ready_targets], ignore_index=True
     ).drop_duplicates("video_id")
-    frame_index = build_or_reuse_frame_index(union_videos, args.index_dir)
     task_summary = _add_frame_counts(task_summary, task_records, frame_index)
     task_summary.to_csv(os.path.join(args.output_dir, "task_summary.csv"), index=False)
 
@@ -251,7 +296,7 @@ def main():
         index_manifest = json.load(handle)
     experiment_manifest = {
         "schema_version": 1,
-        "experiment": "exp2_face_pretrained_allframes_head32",
+        "experiment": "exp2_raw_video_20frame_head32_regression_balanced_split",
         "source_dir": os.path.abspath(args.source_dir),
         "source_data_quality_report": source_quality,
         "architectures": list(architectures),
@@ -270,21 +315,60 @@ def main():
                 )
                 for target in ready_targets
             },
+            "split_distribution_audit_sha256": _sha256_file(
+                os.path.join(args.output_dir, "split_distribution_audit.csv")
+            ),
+            "split_distribution_pairwise_sha256": _sha256_file(
+                os.path.join(args.output_dir, "split_distribution_pairwise.csv")
+            ),
+            "split_assignment_manifest_sha256": _sha256_file(
+                os.path.join(args.output_dir, "split_assignment_manifest.json")
+            ),
         },
         "model_head": {
             "type": "Linear-LayerNorm-SiLU-Dropout-Linear",
             "hidden_features": HEAD_HIDDEN_FEATURES,
             "dropout": 0.25,
+            "output_activation": None,
+        },
+        "regression_target": {
+            "name": "abnormal_score",
+            "transform": SCORE_TRANSFORM,
+            "definitions": SCORE_DEFINITIONS,
+            "boundary_semantics": (
+                "negative=normal side, positive=abnormal side, zero=boundary"
+            ),
+            "duplicate_event_policy": (
+                "one nearest in-window lab measurement per raw video and target"
+            ),
         },
         "preprocessing": {
-            "frame_policy": "every decodable 128x128 RGB MJPEG frame",
+            "frame_policy": (
+                f"{FRAMES_PER_VIDEO} deterministic non-adjacent RGB MJPEG frames "
+                "per video"
+            ),
             "training_views": list(VIEW_NAMES),
             "model_input_shape": [3, 224, 224],
             "normalization": "ImageNet mean/std",
-            "conflict_policy": "exclude a video per target if both labels occur",
-            "split_policy": "patient-level stratified 60/20/20 shared by architectures",
-            "evaluation_unit": "video; mean probability over all source frames",
+            "conflict_policy": (
+                "not applicable after nearest-measurement selection; one label "
+                "per video and target"
+            ),
+            "frame_eligibility_policy": (
+                f"exclude videos that cannot provide {FRAMES_PER_VIDEO} unique "
+                "decodable frames at the configured non-adjacent spacing"
+            ),
+            "frame_ineligible_labelled_videos": sorted(excluded_frame_videos),
+            "split_policy": (
+                "patient-disjoint 60/20/20 class-stratified candidate search; "
+                "selected by video-level raw-value and abnormal-score distribution"
+            ),
+            "evaluation_unit": (
+                f"video; mean predicted abnormal score over {FRAMES_PER_VIDEO} "
+                "selected source frames"
+            ),
         },
+        "split_assignment": split_assignment_manifest,
         "storage_and_io": {
             "decoded_frame_cache_on_disk": False,
             "index_path": os.path.abspath(args.index_dir),
@@ -292,7 +376,7 @@ def main():
             "total_indexed_frames": index_manifest["total_valid_frames"],
             "training_decode_policy": (
                 "persistent file handles + byte seek + bounded RAM LRU; "
-                "randomized contiguous-frame chunks reduce seeks; "
+                "only selected frame offsets are decoded; "
                 "views/resize/normalization run on GPU"
             ),
             "jpeg_decoder": JPEG_DECODER,
@@ -301,11 +385,17 @@ def main():
             "frame_prediction_format": "compressed numeric NPZ; no per-frame CSV",
         },
         "training": {
-            "stage_1": "frozen encoder, lr=1e-3",
-            "stage_2": "all parameters unfrozen, lr=1e-4",
+            "stage_1": (
+                f"frozen encoder, lr={HEAD_LEARNING_RATE:.8g}"
+            ),
+            "stage_2": (
+                f"all parameters unfrozen, lr={FINETUNE_LEARNING_RATE:.8g}"
+            ),
+            "objective": "unweighted SmoothL1 abnormal-score regression",
+            "smooth_l1_beta": SMOOTH_L1_BETA,
+            "loss_weighting": "none",
             "head_max_epochs": args.head_epochs,
             "finetune_max_epochs": args.finetune_epochs,
-            "class_weight_basis": "actual valid training-frame counts",
             "scheduler": "dynamic process queue with one persistent training slot per GPU",
             "workers_per_gpu": args.workers_per_gpu,
             "explicit_worker_override": args.workers,
@@ -329,10 +419,40 @@ def main():
         os.path.join(args.output_dir, "experiment_manifest.json"), "w", encoding="utf-8"
     ) as handle:
         json.dump(experiment_manifest, handle, ensure_ascii=False, indent=2)
+    with open(
+        os.path.join(args.output_dir, "score_definition.json"), "w", encoding="utf-8"
+    ) as handle:
+        json.dump(
+            {
+                "schema_version": 1,
+                "transform": SCORE_TRANSFORM,
+                "definitions": SCORE_DEFINITIONS,
+                "boundary_semantics": {
+                    "normal": "score < 0",
+                    "boundary": "score == 0",
+                    "abnormal": "score > 0",
+                },
+                "formulas": {
+                    "low": "asinh((lower_threshold - value) / scale)",
+                    "high": "asinh((value - upper_threshold) / scale)",
+                    "high_blood_pressure": (
+                        "asinh(max((systolic - 140) / 20, "
+                        "(diastolic - 90) / 10))"
+                    ),
+                },
+                "event_policy": (
+                    "retain one closest lab measurement within 24 hours for each "
+                    "raw video and target"
+                ),
+            },
+            handle,
+            ensure_ascii=False,
+            indent=2,
+        )
 
     print(
-        f"Prepared all-frame experiment: videos={len(union_videos)} "
-        f"indexed_frames={index_manifest['total_valid_frames']} "
+        f"Prepared 20-frame raw-video experiment: videos={len(union_videos)} "
+        f"selected_frames={index_manifest['total_valid_frames']} "
         f"tasks={len(ready_targets)} architectures={len(architectures)}",
         flush=True,
     )
@@ -360,7 +480,7 @@ def main():
             })
     available_gpus = torch.cuda.device_count()
     if available_gpus < 1:
-        raise RuntimeError("The all-frame experiment requires CUDA")
+        raise RuntimeError("The 20-frame experiment requires CUDA")
     requested_workers = (
         args.workers
         if args.workers is not None

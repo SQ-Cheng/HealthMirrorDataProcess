@@ -17,7 +17,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
-from study.exp2_face_pretrained_allframes_head32_regression.train import (
+from study.exp2_face_pretrained_head32_regression.train import (
     _prepare_images,
     _regression_metrics,
 )

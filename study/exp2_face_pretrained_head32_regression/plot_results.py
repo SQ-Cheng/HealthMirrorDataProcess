@@ -19,13 +19,7 @@ ARCHITECTURE_LABELS = {
     "mobilenet_v3_small": "MobileNetV3-Small",
     "efficientnet_b0": "EfficientNet-B0",
 }
-TASKS = (
-    "hemoglobin_low",
-    "pco2_low",
-    "po2_low",
-    "high_blood_pressure",
-    "lactate_high",
-)
+TASKS = ("hemoglobin_low", "po2_low")
 TASK_LABELS = {
     "hemoglobin_low": "Hemoglobin low",
     "pco2_low": "pCO2 low",
@@ -56,7 +50,12 @@ def _style():
 
 
 def plot_training_curves(history):
-    figure, axes = plt.subplots(5, 2, figsize=(15, 19), squeeze=False)
+    figure, axes = plt.subplots(
+        len(TASKS),
+        2,
+        figsize=(15, max(8, 3.8 * len(TASKS))),
+        squeeze=False,
+    )
     for row, target in enumerate(TASKS):
         for column, architecture in enumerate(ARCHITECTURES):
             axis = axes[row, column]
@@ -241,7 +240,12 @@ def plot_predictions(metrics):
     test_metrics = metrics.loc[metrics["split"].eq("test")].set_index(
         ["architecture", "target"]
     )
-    figure, axes = plt.subplots(5, 2, figsize=(13, 22), squeeze=False)
+    figure, axes = plt.subplots(
+        len(TASKS),
+        2,
+        figsize=(13, max(9, 4.6 * len(TASKS))),
+        squeeze=False,
+    )
     for row, target in enumerate(TASKS):
         for column, architecture in enumerate(ARCHITECTURES):
             axis = axes[row, column]
@@ -308,7 +312,7 @@ def plot_predictions(metrics):
 
 
 def main(output_dir=None):
-    global OUTPUT_DIR, FIGURE_DIR, EXPERIMENT_LABEL
+    global OUTPUT_DIR, FIGURE_DIR, EXPERIMENT_LABEL, TASKS
     if output_dir is not None:
         OUTPUT_DIR = Path(output_dir).resolve()
         FIGURE_DIR = OUTPUT_DIR / "figures"
@@ -316,6 +320,10 @@ def main(output_dir=None):
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     history = pd.read_csv(OUTPUT_DIR / "history_all.csv")
     metrics = pd.read_csv(OUTPUT_DIR / "metrics_all.csv")
+    available_targets = set(metrics["target"].astype(str))
+    TASKS = tuple(target for target in TASK_LABELS if target in available_targets)
+    if not TASKS:
+        raise RuntimeError(f"No supported completed targets in {OUTPUT_DIR}")
     plot_training_curves(history)
     plot_test_metrics(metrics)
     plot_split_generalization(metrics)

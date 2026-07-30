@@ -14,11 +14,11 @@ import numpy as np
 import pandas as pd
 import torch
 
-from study.exp2_face_pretrained_allframes_head32_regression.frame_index import (
+from study.exp2_face_pretrained_head32_regression.frame_index import (
     FrameOffsetIndex,
     build_or_reuse_frame_index,
 )
-from study.exp2_face_pretrained_allframes_head32_regression.run_all import (
+from study.exp2_face_pretrained_head32_regression.run_all import (
     _validate_time_alignment,
 )
 

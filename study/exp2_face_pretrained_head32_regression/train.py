@@ -1,4 +1,4 @@
-"""Two-stage training and video-level evaluation for one backbone/target pair."""
+"""Two-stage selected-frame training and video-level evaluation."""
 
 from functools import lru_cache
 import hashlib
@@ -45,6 +45,7 @@ from .config import (
     IMAGENET_MEAN,
     IMAGENET_STD,
     MIN_LEARNING_RATE,
+    FRAMES_PER_VIDEO,
     EVAL_NUM_WORKERS,
     PREFETCH_FACTOR,
     SMOOTH_L1_BETA,
@@ -823,7 +824,10 @@ def train_task(
         },
         "input_size": [224, 224],
         "normalization": "ImageNet mean/std",
-        "frame_policy": "all decodable MJPEG frames streamed by byte offset",
+        "frame_policy": (
+            f"{FRAMES_PER_VIDEO} deterministic non-adjacent MJPEG frames "
+            "streamed by byte offset per video"
+        ),
         "training_views_per_frame": len(VIEW_NAMES),
         "pretrained_weight_file": os.path.basename(weight_path),
         "pretrained_weight_sha256": _sha256(weight_path),

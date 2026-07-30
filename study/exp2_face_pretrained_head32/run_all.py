@@ -1,4 +1,4 @@
-"""Run all abnormal-score regression architecture/target jobs."""
+"""Run aligned raw-video 20-frame Head-32 binary jobs."""
 
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -7,6 +7,7 @@ import json
 import multiprocessing as mp
 import os
 import random
+import shutil
 import traceback
 
 import numpy as np
@@ -14,10 +15,12 @@ import pandas as pd
 import torch
 
 from .config import (
+    ALIGNED_RECORDS_DIR,
     ARCHITECTURES,
     FINETUNE_LEARNING_RATE,
     FINETUNE_MAX_EPOCHS,
     FINETUNE_PATIENCE,
+    FRAMES_PER_VIDEO,
     FRAME_SHUFFLE_CHUNK_SIZE,
     HEAD_HIDDEN_FEATURES,
     HEAD_LEARNING_RATE,
@@ -27,10 +30,8 @@ from .config import (
     EVAL_NUM_WORKERS,
     JPEG_DECODER,
     OUTPUT_DIR,
-    SCORE_DEFINITIONS,
-    SCORE_TRANSFORM,
     SEED,
-    SMOOTH_L1_BETA,
+    SHARED_INDEX_DIR,
     SOURCE_DATA_DIR,
     TARGETS,
     TRAIN_NUM_WORKERS,
@@ -40,17 +41,15 @@ from .config import (
     VIEW_NAMES,
     WEIGHTS_DIR,
 )
-from .data import prepare_tasks, validate_source_data
-from .frame_index import FrameOffsetIndex, build_or_reuse_frame_index
 from .models import WEIGHT_FILES
 from .train import train_task
+from study.exp2_face_pretrained_head32_regression.data import validate_source_data
+from study.exp2_face_pretrained_head32_regression.frame_index import FrameOffsetIndex
 
 
 LAB_TARGET_PREFIXES = {
     "hemoglobin_low": "hemoglobin",
-    "pco2_low": "pco2",
     "po2_low": "po2",
-    "lactate_high": "lactate",
 }
 
 _WORKER_FRAME_INDEX = None
@@ -76,6 +75,21 @@ def _set_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.benchmark = True
+
+
+def _clear_output_preserving_index(output_dir, index_dir):
+    output_path = os.path.abspath(output_dir)
+    index_path = os.path.abspath(index_dir)
+    if not os.path.isdir(output_path):
+        return
+    for name in os.listdir(output_path):
+        path = os.path.join(output_path, name)
+        if os.path.commonpath((path, index_path)) == path:
+            continue
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.unlink(path)
 
 
 def _worker_init(index_path, gpu_queue):
@@ -184,9 +198,122 @@ def _add_frame_counts(summary, task_records, frame_index):
     return result
 
 
+def _load_aligned_task_records(
+    records_dir,
+    output_dir,
+    targets,
+    frame_index,
+):
+    source_output_dir = os.path.dirname(os.path.abspath(records_dir))
+    required_support_files = (
+        "split_assignment_manifest.json",
+        "split_distribution_audit.csv",
+        "split_distribution_pairwise.csv",
+        "task_summary.csv",
+    )
+    missing = [
+        name
+        for name in required_support_files
+        if not os.path.isfile(os.path.join(source_output_dir, name))
+    ]
+    if missing:
+        raise FileNotFoundError(
+            f"Aligned regression metadata is incomplete: {missing}"
+        )
+
+    output_records_dir = os.path.join(output_dir, "task_records")
+    os.makedirs(output_records_dir, exist_ok=True)
+    task_records = {}
+    for target in targets:
+        source_path = os.path.join(records_dir, f"{target}.csv")
+        if not os.path.isfile(source_path):
+            raise FileNotFoundError(
+                f"Missing aligned regression task records: {source_path}"
+            )
+        records = pd.read_csv(
+            source_path,
+            dtype={"hospital_id": str, "video_id": str},
+        )
+        required_columns = {
+            "hospital_id",
+            "video_id",
+            "split",
+            "binary_label",
+            "abnormal_score",
+            "raw_value",
+        }
+        missing_columns = required_columns - set(records.columns)
+        if missing_columns:
+            raise ValueError(
+                f"Aligned records for {target} lack columns={sorted(missing_columns)}"
+            )
+        if records["video_id"].duplicated().any():
+            raise ValueError(f"Aligned records contain duplicate videos for {target}")
+        if not set(records["split"]).issubset({"train", "val", "test"}):
+            raise ValueError(f"Aligned records contain invalid split values for {target}")
+        patient_split_counts = records.groupby("hospital_id")["split"].nunique()
+        if patient_split_counts.gt(1).any():
+            raise ValueError(f"Patient leakage detected in aligned split for {target}")
+        labels = pd.to_numeric(records["binary_label"], errors="raise")
+        if not labels.isin((0, 1)).all():
+            raise ValueError(f"Non-binary labels found for {target}")
+        missing_videos = set(records["video_id"]) - set(frame_index.video_lookup)
+        if missing_videos:
+            raise ValueError(
+                f"{target} has {len(missing_videos)} videos absent from shared index"
+            )
+        frame_counts = np.asarray(
+            [
+                frame_index.frame_range(video_id)[1]
+                - frame_index.frame_range(video_id)[0]
+                for video_id in records["video_id"]
+            ],
+            dtype=np.int64,
+        )
+        if not np.all(frame_counts == FRAMES_PER_VIDEO):
+            bad = int(np.sum(frame_counts != FRAMES_PER_VIDEO))
+            raise ValueError(
+                f"{target} has {bad} videos without exactly "
+                f"{FRAMES_PER_VIDEO} indexed frames"
+            )
+        records.to_csv(
+            os.path.join(output_records_dir, f"{target}.csv"),
+            index=False,
+        )
+        task_records[target] = records
+
+    source_summary = pd.read_csv(os.path.join(source_output_dir, "task_summary.csv"))
+    task_summary = source_summary[
+        source_summary["target"].astype(str).isin(targets)
+    ].copy()
+    if set(task_summary["target"].astype(str)) != set(targets):
+        raise ValueError("Aligned task summary does not cover all requested targets")
+    task_summary["status"] = "ready"
+    task_summary["reason"] = ""
+
+    for name in required_support_files[:3]:
+        shutil.copy2(
+            os.path.join(source_output_dir, name),
+            os.path.join(output_dir, name),
+        )
+    pd.DataFrame(
+        columns=(
+            "target",
+            "video_id",
+            "hospital_id",
+            "positive_event_count",
+            "negative_event_count",
+            "event_count",
+            "action",
+        )
+    ).to_csv(os.path.join(output_dir, "conflicting_videos.csv"), index=False)
+    return task_records, task_summary
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-dir", default=SOURCE_DATA_DIR)
+    parser.add_argument("--records-dir", default=ALIGNED_RECORDS_DIR)
     parser.add_argument("--weights-dir", default=WEIGHTS_DIR)
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
     parser.add_argument("--index-dir", default=None)
@@ -204,7 +331,7 @@ def main():
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
-    args.index_dir = args.index_dir or os.path.join(args.output_dir, "frame_index")
+    args.index_dir = args.index_dir or SHARED_INDEX_DIR
 
     architectures = _parse_csv(args.architectures)
     requested_targets = _parse_csv(args.targets)
@@ -224,6 +351,8 @@ def main():
         raise FileExistsError(
             f"Output already contains a run: {args.output_dir}. Use --overwrite explicitly."
         )
+    if args.overwrite:
+        _clear_output_preserving_index(args.output_dir, args.index_dir)
     os.makedirs(os.path.join(args.output_dir, "runs"), exist_ok=True)
     _set_seed(args.seed)
     source_quality = validate_source_data(args.source_dir)
@@ -231,36 +360,36 @@ def main():
     base_manifest = pd.read_csv(
         os.path.join(args.source_dir, "base_manifest.csv"), dtype={"hospital_id": str}
     )
-    video_summary = pd.read_csv(
-        os.path.join(args.source_dir, "video_summary.csv"),
-        dtype={"hospital_id": str},
-    )
     _validate_time_alignment(base_manifest, requested_targets)
-    task_records, task_summary, conflict_audit = prepare_tasks(
-        base_manifest,
-        video_summary,
+    index_path = os.path.join(args.index_dir, "frame_offsets.npz")
+    if not os.path.isfile(index_path):
+        raise FileNotFoundError(f"Missing shared 20-frame index: {index_path}")
+    frame_index = FrameOffsetIndex.load(index_path)
+    task_records, task_summary = _load_aligned_task_records(
+        args.records_dir,
         args.output_dir,
         requested_targets,
-        args.seed,
+        frame_index,
     )
     ready_targets = tuple(
         task_summary.loc[task_summary["status"].eq("ready"), "target"].astype(str)
     )
     if set(ready_targets) != set(requested_targets):
         skipped = task_summary.loc[~task_summary["status"].eq("ready"), ["target", "reason"]]
-        raise RuntimeError(f"Requested all-frame tasks are not trainable: {skipped.to_dict('records')}")
+        raise RuntimeError(
+            f"Requested aligned tasks are not trainable: {skipped.to_dict('records')}"
+        )
+    if args.smoke_test:
+        ready_targets = ready_targets[:1]
     with open(
         os.path.join(args.output_dir, "split_assignment_manifest.json"),
         encoding="utf-8",
     ) as handle:
         split_assignment_manifest = json.load(handle)
-    if args.smoke_test:
-        ready_targets = ready_targets[:1]
 
     union_videos = pd.concat(
         [task_records[target] for target in ready_targets], ignore_index=True
     ).drop_duplicates("video_id")
-    frame_index = build_or_reuse_frame_index(union_videos, args.index_dir)
     task_summary = _add_frame_counts(task_summary, task_records, frame_index)
     task_summary.to_csv(os.path.join(args.output_dir, "task_summary.csv"), index=False)
 
@@ -269,8 +398,9 @@ def main():
         index_manifest = json.load(handle)
     experiment_manifest = {
         "schema_version": 1,
-        "experiment": "exp2_face_pretrained_allframes_head32_regression_balanced_split",
+        "experiment": "exp2_face_pretrained_head32",
         "source_dir": os.path.abspath(args.source_dir),
+        "aligned_records_dir": os.path.abspath(args.records_dir),
         "source_data_quality_report": source_quality,
         "architectures": list(architectures),
         "targets": list(ready_targets),
@@ -282,12 +412,6 @@ def main():
             "data_quality_report_sha256": _sha256_file(
                 os.path.join(args.source_dir, "data_quality_report.json")
             ),
-            "task_record_sha256": {
-                target: _sha256_file(
-                    os.path.join(args.output_dir, "task_records", f"{target}.csv")
-                )
-                for target in ready_targets
-            },
             "split_distribution_audit_sha256": _sha256_file(
                 os.path.join(args.output_dir, "split_distribution_audit.csv")
             ),
@@ -297,36 +421,37 @@ def main():
             "split_assignment_manifest_sha256": _sha256_file(
                 os.path.join(args.output_dir, "split_assignment_manifest.json")
             ),
+            "task_record_sha256": {
+                target: _sha256_file(
+                    os.path.join(args.output_dir, "task_records", f"{target}.csv")
+                )
+                for target in ready_targets
+            },
         },
         "model_head": {
             "type": "Linear-LayerNorm-SiLU-Dropout-Linear",
             "hidden_features": HEAD_HIDDEN_FEATURES,
             "dropout": 0.25,
-            "output_activation": None,
-        },
-        "regression_target": {
-            "name": "abnormal_score",
-            "transform": SCORE_TRANSFORM,
-            "definitions": SCORE_DEFINITIONS,
-            "boundary_semantics": (
-                "negative=normal side, positive=abnormal side, zero=boundary"
-            ),
-            "duplicate_event_policy": (
-                "exclude sign-conflicting videos, then select the event with minimum "
-                "absolute video-lab time delta"
-            ),
         },
         "preprocessing": {
-            "frame_policy": "every decodable 128x128 RGB MJPEG frame",
+            "frame_policy": (
+                f"{FRAMES_PER_VIDEO} deterministic non-adjacent RGB MJPEG "
+                "frames per video, reused from the aligned regression experiment"
+            ),
             "training_views": list(VIEW_NAMES),
             "model_input_shape": [3, 224, 224],
             "normalization": "ImageNet mean/std",
-            "conflict_policy": "exclude a video per target if both labels occur",
-            "split_policy": (
-                "patient-disjoint 60/20/20 class-stratified candidate search; "
-                "selected by video-level raw-value and abnormal-score distribution"
+            "label_policy": (
+                "reuse the regression task's one-nearest-lab-per-video binary_label"
             ),
-            "evaluation_unit": "video; mean predicted abnormal score over all source frames",
+            "split_policy": (
+                "reuse the exact patient-disjoint 60/20/20 assignment from the "
+                "distribution-balanced regression experiment"
+            ),
+            "evaluation_unit": (
+                f"video; mean probability over the same {FRAMES_PER_VIDEO} "
+                "selected source frames as regression"
+            ),
         },
         "split_assignment": split_assignment_manifest,
         "storage_and_io": {
@@ -336,7 +461,7 @@ def main():
             "total_indexed_frames": index_manifest["total_valid_frames"],
             "training_decode_policy": (
                 "persistent file handles + byte seek + bounded RAM LRU; "
-                "randomized contiguous-frame chunks reduce seeks; "
+                "only shared selected frame offsets are decoded; "
                 "views/resize/normalization run on GPU"
             ),
             "jpeg_decoder": JPEG_DECODER,
@@ -345,17 +470,14 @@ def main():
             "frame_prediction_format": "compressed numeric NPZ; no per-frame CSV",
         },
         "training": {
-            "stage_1": (
-                f"frozen encoder, lr={HEAD_LEARNING_RATE:.8g}"
-            ),
+            "stage_1": f"frozen encoder, lr={HEAD_LEARNING_RATE:.8g}",
             "stage_2": (
                 f"all parameters unfrozen, lr={FINETUNE_LEARNING_RATE:.8g}"
             ),
-            "objective": "unweighted SmoothL1 abnormal-score regression",
-            "smooth_l1_beta": SMOOTH_L1_BETA,
-            "loss_weighting": "none",
+            "objective": "binary BCEWithLogitsLoss",
             "head_max_epochs": args.head_epochs,
             "finetune_max_epochs": args.finetune_epochs,
+            "class_weight_basis": "actual valid training-frame counts",
             "scheduler": "dynamic process queue with one persistent training slot per GPU",
             "workers_per_gpu": args.workers_per_gpu,
             "explicit_worker_override": args.workers,
@@ -379,39 +501,9 @@ def main():
         os.path.join(args.output_dir, "experiment_manifest.json"), "w", encoding="utf-8"
     ) as handle:
         json.dump(experiment_manifest, handle, ensure_ascii=False, indent=2)
-    with open(
-        os.path.join(args.output_dir, "score_definition.json"), "w", encoding="utf-8"
-    ) as handle:
-        json.dump(
-            {
-                "schema_version": 1,
-                "transform": SCORE_TRANSFORM,
-                "definitions": SCORE_DEFINITIONS,
-                "boundary_semantics": {
-                    "normal": "score < 0",
-                    "boundary": "score == 0",
-                    "abnormal": "score > 0",
-                },
-                "formulas": {
-                    "low": "asinh((lower_threshold - value) / scale)",
-                    "high": "asinh((value - upper_threshold) / scale)",
-                    "high_blood_pressure": (
-                        "asinh(max((systolic - 140) / 20, "
-                        "(diastolic - 90) / 10))"
-                    ),
-                },
-                "event_policy": (
-                    "exclude videos containing both binary signs for the target; "
-                    "otherwise retain the closest lab event by absolute time delta"
-                ),
-            },
-            handle,
-            ensure_ascii=False,
-            indent=2,
-        )
 
     print(
-        f"Prepared all-frame experiment: videos={len(union_videos)} "
+        f"Prepared aligned 20-frame experiment: videos={len(union_videos)} "
         f"indexed_frames={index_manifest['total_valid_frames']} "
         f"tasks={len(ready_targets)} architectures={len(architectures)}",
         flush=True,

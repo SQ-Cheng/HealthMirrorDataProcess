@@ -15,17 +15,17 @@
       "role": "verified pretrained checkpoints"
     },
     {
-      "id": "exp2_allframe_index",
-      "path": "study/exp2_face_pretrained_allframes_head32/outputs/frame_index",
+      "id": "exp2_20frame_index",
+      "path": "study/exp2_face_pretrained_head32_regression/outputs/frame_index",
       "status": "retained",
-      "role": "JPEG byte-offset index without decoded frame cache"
+      "role": "deterministic 20-frame JPEG byte-offset index without decoded frame cache"
     }
   ],
   "experiments": [
     {
-      "id": "exp2_binary_allframes_head32_views5",
-      "path": "study/exp2_face_pretrained_allframes_head32",
-      "status": "completed_reference",
+      "id": "exp2_binary_20frame_head32_views5",
+      "path": "study/exp2_face_pretrained_head32",
+      "status": "active",
       "task_type": "independent binary classification",
       "training_views": 5
     },
@@ -37,8 +37,8 @@
       "training_views": 3
     },
     {
-      "id": "exp2_regression_allframes_head32_single_task",
-      "path": "study/exp2_face_pretrained_allframes_head32_regression",
+      "id": "exp2_regression_20frame_head32_single_task",
+      "path": "study/exp2_face_pretrained_head32_regression",
       "status": "completed_primary",
       "task_type": "independent abnormal-score regression",
       "training_views": 5

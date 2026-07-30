@@ -2,11 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="/root/autodl-tmp/HealthMirrorDataProcess"
-EXPERIMENT="exp2_face_pretrained_allframes_head32_multitask_regression"
-SESSION_NAME="${SESSION_NAME:-${EXPERIMENT}}"
-LOG_DIR="${ROOT_DIR}/study/${EXPERIMENT}/logs"
+SESSION_NAME="${SESSION_NAME:-exp2_face_pretrained_head32}"
+LOG_DIR="${ROOT_DIR}/study/exp2_face_pretrained_head32/logs"
 LOG_FILE="${LOG_DIR}/run.log"
-INDEX_DIR="${ROOT_DIR}/study/exp2_face_pretrained_head32_regression/outputs/frame_index"
 
 if screen -ls 2>/dev/null | grep -q "[.]${SESSION_NAME}[[:space:]]"; then
     echo "screen session already exists: ${SESSION_NAME}" >&2
@@ -17,7 +15,7 @@ EXTRA_ARGS=""
 if (( $# > 0 )); then
     printf -v EXTRA_ARGS ' %q' "$@"
 fi
-COMMAND="set -o pipefail; cd ${ROOT_DIR} && source /root/miniconda3/etc/profile.d/conda.sh && conda activate healthmirrorenv && MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 python -u -m study.${EXPERIMENT}.run_all --index-dir ${INDEX_DIR}${EXTRA_ARGS} 2>&1 | tee ${LOG_FILE}"
+COMMAND="set -o pipefail; cd ${ROOT_DIR} && source /root/miniconda3/etc/profile.d/conda.sh && conda activate healthmirrorenv && MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 python -u -m study.exp2_face_pretrained_head32.run_all${EXTRA_ARGS} 2>&1 | tee ${LOG_FILE}"
 screen -dmS "${SESSION_NAME}" bash -lc "${COMMAND}"
 echo "Started detached screen session: ${SESSION_NAME}"
 echo "Attach: screen -r ${SESSION_NAME}"
