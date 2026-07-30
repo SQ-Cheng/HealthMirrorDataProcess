@@ -618,6 +618,10 @@ def main():
     print(f"Experiment outputs saved to {args.output_dir}", flush=True)
     if failure_rows:
         raise RuntimeError(f"{len(failure_rows)} jobs failed; see failures.csv")
+    print("[plot] Generating result figures", flush=True)
+    from study.exp2_face_pretrained_head32.plot_results import main as plot_results
+
+    plot_results(output_dir=args.output_dir)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,11 @@ The only intentional task-level differences from regression are the binary targe
 `BCEWithLogitsLoss` with training-frame-derived `pos_weight`, video-level probability
 aggregation, and ROC-AUC-based model selection.
 
+After all jobs finish successfully, `run_all.py` automatically validates the result
+set and writes the result figures and plotting tables to `outputs/figures`. A failed
+job stops the run before plotting, so an incomplete experiment is not presented as a
+complete result.
+
 ## Storage and I/O
 
 Decoded frames are never written to disk. The regression experiment's compact frame

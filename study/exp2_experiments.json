@@ -1,6 +1,10 @@
 {
   "schema_version": 1,
   "path_policy": "compatibility paths remain stable while active jobs depend on them",
+  "completion_policy": {
+    "auto_generate_validated_figures": true,
+    "plot_only_after_all_jobs_succeed": true
+  },
   "assets": [
     {
       "id": "exp2_source_24h_rgb",

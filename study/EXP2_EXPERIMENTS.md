@@ -2,6 +2,8 @@
 
 The directory names below are stable compatibility paths. Canonical IDs distinguish
 task type and augmentation without moving paths used by the active training process.
+New experiments must automatically generate their validated result figures after all
+training jobs finish successfully.
 
 | Canonical ID | Compatibility path | Status |
 | --- | --- | --- |
