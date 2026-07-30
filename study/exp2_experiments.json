@@ -20,9 +20,15 @@
     },
     {
       "id": "exp2_20frame_index",
-      "path": "study/exp2_face_pretrained_head32_regression/outputs/frame_index",
+      "path": "study/exp2_face_pretrained_head32_regression/outputs/20frame/frame_index",
       "status": "retained",
       "role": "deterministic 20-frame JPEG byte-offset index without decoded frame cache"
+    },
+    {
+      "id": "exp2_allframe_index",
+      "path": "study/exp2_face_pretrained_head32_regression/outputs/allframes/frame_index",
+      "status": "retained",
+      "role": "all-decodable-frame JPEG byte-offset index without decoded frame cache"
     }
   ],
   "experiments": [
@@ -43,8 +49,18 @@
     {
       "id": "exp2_regression_20frame_head32_single_task",
       "path": "study/exp2_face_pretrained_head32_regression",
+      "result_variant": "outputs/20frame",
       "status": "completed_primary",
       "task_type": "independent abnormal-score regression",
+      "training_views": 5
+    },
+    {
+      "id": "exp2_regression_allframes_head32_single_task",
+      "path": "study/exp2_face_pretrained_head32_regression",
+      "result_variant": "outputs/allframes",
+      "status": "active",
+      "task_type": "independent abnormal-score regression",
+      "targets": ["hemoglobin_low", "po2_low", "lactate_high"],
       "training_views": 5
     },
     {

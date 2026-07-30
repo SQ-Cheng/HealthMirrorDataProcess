@@ -1,4 +1,4 @@
-"""Compact byte-offset index for 20 deterministic MJPEG frames per video."""
+"""Compact byte-offset indexes for selected or all decodable MJPEG frames."""
 
 from dataclasses import dataclass
 from io import BytesIO
@@ -19,7 +19,7 @@ from .config import (
 )
 
 
-INDEX_SCHEMA_VERSION = 2
+INDEX_SCHEMA_VERSIONS = {"20frame": 2, "allframes": 3}
 
 
 def video_path_for_row(row):
@@ -31,7 +31,7 @@ def video_path_for_row(row):
     )
 
 
-def _scan_video(video_path):
+def _scan_20_frames(video_path):
     ranges = []
     if os.path.getsize(video_path) == 0:
         return [], [], [], [{
@@ -136,7 +136,59 @@ def _scan_video(video_path):
     return starts, ends, source_indices, failures
 
 
-def _index_is_reusable(index_dir, expected_video_ids):
+def _scan_all_frames(video_path):
+    starts, ends, source_indices, failures = [], [], [], []
+    if os.path.getsize(video_path) == 0:
+        return [], [], [], [{
+            "source_frame_index": -1,
+            "byte_start": -1,
+            "reason": "empty_video_file",
+        }]
+    with open(video_path, "rb") as handle:
+        with mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
+            position = 0
+            source_index = 0
+            while True:
+                start = mapped.find(b"\xff\xd8", position)
+                if start < 0:
+                    break
+                end_marker = mapped.find(b"\xff\xd9", start + 2)
+                if end_marker < 0:
+                    failures.append({
+                        "source_frame_index": source_index,
+                        "byte_start": start,
+                        "reason": "missing_jpeg_end_marker",
+                    })
+                    break
+                end = end_marker + 2
+                try:
+                    payload = mapped[start:end]
+                    with Image.open(BytesIO(payload)) as image:
+                        size = image.size
+                        image.verify()
+                    if size != (SOURCE_IMAGE_SIZE, SOURCE_IMAGE_SIZE):
+                        raise ValueError(f"unexpected_frame_size={size}")
+                    starts.append(start)
+                    ends.append(end)
+                    source_indices.append(source_index)
+                except Exception as exc:
+                    failures.append({
+                        "source_frame_index": source_index,
+                        "byte_start": start,
+                        "reason": str(exc),
+                    })
+                position = end
+                source_index += 1
+    if not starts and not failures:
+        failures.append({
+            "source_frame_index": -1,
+            "byte_start": -1,
+            "reason": "no_complete_jpeg_ranges",
+        })
+    return starts, ends, source_indices, failures
+
+
+def _index_is_reusable(index_dir, expected_video_ids, frame_policy):
     index_path = os.path.join(index_dir, "frame_offsets.npz")
     manifest_path = os.path.join(index_dir, "index_manifest.json")
     if not os.path.exists(index_path) or not os.path.exists(manifest_path):
@@ -144,7 +196,13 @@ def _index_is_reusable(index_dir, expected_video_ids):
     try:
         with open(manifest_path, encoding="utf-8") as handle:
             manifest = json.load(handle)
-        if manifest.get("schema_version") != INDEX_SCHEMA_VERSION:
+        if manifest.get("schema_version") != INDEX_SCHEMA_VERSIONS[frame_policy]:
+            return False
+        policy = manifest.get("frame_policy", {})
+        if frame_policy == "20frame":
+            if policy.get("frames_per_video") != FRAMES_PER_VIDEO:
+                return False
+        elif policy.get("mode") != "all_decodable_frames":
             return False
         rows = manifest.get("videos", [])
         failed_rows = manifest.get("failed_videos", [])
@@ -168,51 +226,61 @@ def _index_is_reusable(index_dir, expected_video_ids):
     return True
 
 
-def build_or_reuse_frame_index(video_records, index_dir):
-    """Index 20 selected JPEG ranges per video; never persist decoded pixels."""
+def build_or_reuse_frame_index(video_records, index_dir, frame_policy="20frame"):
+    """Index JPEG byte ranges without persisting decoded frame pixels."""
+    if frame_policy not in INDEX_SCHEMA_VERSIONS:
+        raise ValueError(f"Unsupported frame policy: {frame_policy}")
     os.makedirs(index_dir, exist_ok=True)
     videos = video_records[
         ["video_id", "mirror", "lab_patient_id"]
     ].drop_duplicates("video_id").sort_values("video_id").reset_index(drop=True)
     expected_video_ids = videos["video_id"].astype(str).tolist()
     index_path = os.path.join(index_dir, "frame_offsets.npz")
-    if _index_is_reusable(index_dir, expected_video_ids):
-        print(f"Reusing compact all-frame index: {index_path}", flush=True)
+    if _index_is_reusable(index_dir, expected_video_ids, frame_policy):
+        print(f"Reusing compact {frame_policy} index: {index_path}", flush=True)
         return FrameOffsetIndex.load(index_path)
 
     all_starts, all_ends, all_source_indices = [], [], []
     video_ids, video_paths, video_ptr = [], [], [0]
     summary_rows, failure_rows, manifest_rows, failed_manifest_rows = [], [], [], []
-    print(f"Building compact MJPEG index for {len(videos)} videos", flush=True)
+    print(
+        f"Building compact {frame_policy} MJPEG index for {len(videos)} videos",
+        flush=True,
+    )
     for position, row in enumerate(videos.itertuples(index=False), start=1):
         video_path = video_path_for_row(row)
         if not os.path.isfile(video_path):
             raise FileNotFoundError(f"Missing source video: {video_path}")
-        starts, ends, source_indices, failures = _scan_video(video_path)
+        if frame_policy == "20frame":
+            starts, ends, source_indices, failures = _scan_20_frames(video_path)
+            valid_video = len(starts) == FRAMES_PER_VIDEO
+            excluded_status = "excluded_cannot_select_20_frames"
+            excluded_reason = "cannot_select_20_nonadjacent_frames"
+        else:
+            starts, ends, source_indices, failures = _scan_all_frames(video_path)
+            valid_video = bool(starts)
+            excluded_status = "excluded_no_decodable_frames"
+            excluded_reason = "no_decodable_frames"
         stat = os.stat(video_path)
-        if len(starts) != FRAMES_PER_VIDEO:
+        if not valid_video:
             summary_rows.append({
                 "video_id": str(row.video_id),
                 "video_path": video_path,
                 "valid_frames": 0,
                 "invalid_frames": len(failures),
                 "size_bytes": stat.st_size,
-                "status": "excluded_cannot_select_20_frames",
+                "status": excluded_status,
             })
             failed_manifest_rows.append({
                 "video_id": str(row.video_id),
                 "video_path": video_path,
                 "size_bytes": stat.st_size,
                 "mtime_ns": stat.st_mtime_ns,
-                "reason": "cannot_select_20_nonadjacent_frames",
+                "reason": excluded_reason,
             })
             for failure in failures:
                 failure_rows.append({"video_id": str(row.video_id), **failure})
-            print(
-                f"  excluded {row.video_id}: cannot select "
-                f"{FRAMES_PER_VIDEO} non-adjacent frames",
-                flush=True,
-            )
+            print(f"  excluded {row.video_id}: {excluded_reason}", flush=True)
             continue
         video_ids.append(str(row.video_id))
         video_paths.append(video_path)
@@ -267,13 +335,18 @@ def build_or_reuse_frame_index(video_records, index_dir):
         os.path.join(index_dir, "index_manifest.json"), "w", encoding="utf-8"
     ) as handle:
         json.dump({
-            "schema_version": INDEX_SCHEMA_VERSION,
+            "schema_version": INDEX_SCHEMA_VERSIONS[frame_policy],
             "storage_policy": "JPEG byte offsets only; no decoded frames persisted",
-            "frame_policy": {
-                "frames_per_video": FRAMES_PER_VIDEO,
-                "quantiles": list(FRAME_QUANTILES),
-                "minimum_source_frame_gap": MIN_SOURCE_FRAME_GAP,
-            },
+            "frame_policy": (
+                {
+                    "mode": "deterministic_nonadjacent_selection",
+                    "frames_per_video": FRAMES_PER_VIDEO,
+                    "quantiles": list(FRAME_QUANTILES),
+                    "minimum_source_frame_gap": MIN_SOURCE_FRAME_GAP,
+                }
+                if frame_policy == "20frame"
+                else {"mode": "all_decodable_frames"}
+            ),
             "total_valid_frames": len(all_starts),
             "total_invalid_frames": len(failure_rows),
             "indexed_video_count": len(manifest_rows),

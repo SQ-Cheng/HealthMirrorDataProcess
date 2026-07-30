@@ -10,14 +10,17 @@ training jobs finish successfully.
 | `exp2_binary_20frame_head32_views5` | `exp2_face_pretrained_head32` | Active five-view binary experiment |
 | `exp2_binary_allframes_head32_views3` | `exp2_face_pretrained_allframes_head32_views3` | Completed primary binary experiment |
 | `exp2_regression_20frame_head32_single_task` | `exp2_face_pretrained_head32_regression` | Completed distribution-balanced single-task regression |
+| `exp2_regression_allframes_head32_single_task` | `exp2_face_pretrained_head32_regression` | Active distribution-balanced single-task regression |
 | `exp2_regression_allframes_head32_multitask` | `exp2_face_pretrained_allframes_head32_multitask_regression` | Active multi-output regression |
 
 Shared retained assets:
 
 - `exp2_face_only/outputs_aug20_24h`: corrected 24-hour label/video source
 - `exp2_face_pretrained/pretrained_weights`: verified ImageNet checkpoints
-- `exp2_face_pretrained_head32_regression/outputs/frame_index`: current compact
+- `exp2_face_pretrained_head32_regression/outputs/20frame/frame_index`: compact
   deterministic 20-frame MJPEG byte-offset index
+- `exp2_face_pretrained_head32_regression/outputs/allframes/frame_index`: compact
+  all-decodable-frame MJPEG byte-offset index
 
 The original multimodal experiment, initial grayscale face models, 96-pixel Aug20
 models, obsolete monitors, and their generated results have been deleted.

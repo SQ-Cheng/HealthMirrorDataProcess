@@ -5,7 +5,7 @@ ROOT_DIR="/root/autodl-tmp/HealthMirrorDataProcess"
 SESSION_NAME="${SESSION_NAME:-exp2_face_pretrained_allframes_head32_views3}"
 LOG_DIR="${ROOT_DIR}/study/exp2_face_pretrained_allframes_head32_views3/logs"
 LOG_FILE="${LOG_DIR}/run.log"
-INDEX_DIR="${ROOT_DIR}/study/exp2_face_pretrained_head32_regression/outputs/frame_index"
+INDEX_DIR="${ROOT_DIR}/study/exp2_face_pretrained_head32_regression/outputs/allframes/frame_index"
 
 if screen -ls 2>/dev/null | grep -q "[.]${SESSION_NAME}[[:space:]]"; then
     echo "screen session already exists: ${SESSION_NAME}" >&2

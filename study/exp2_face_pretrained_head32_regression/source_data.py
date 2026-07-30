@@ -28,6 +28,7 @@ from .config import (
 TARGET_ANALYTES = {
     "hemoglobin_low": "hemoglobin",
     "po2_low": "po2",
+    "lactate_high": "lactate",
 }
 
 
@@ -412,7 +413,7 @@ def build_raw_video_source(output_dir, targets):
     }
     report = {
         "schema_version": 2,
-        "experiment": "exp2_raw_video_20frame_nearest_lab_source",
+        "experiment": "exp2_raw_video_nearest_lab_source",
         "lab_report_time": upstream_quality["lab_report_time"],
         "video_match_policy": {
             "mode": "raw_video_interval_nearest_lab_per_target",

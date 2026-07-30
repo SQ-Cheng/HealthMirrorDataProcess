@@ -15,7 +15,10 @@ from sklearn.metrics import confusion_matrix, roc_curve
 EXP_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = EXP_DIR / "outputs"
 REGRESSION_DIR = (
-    EXP_DIR.parent / "exp2_face_pretrained_head32_regression" / "outputs"
+    EXP_DIR.parent
+    / "exp2_face_pretrained_head32_regression"
+    / "outputs"
+    / "20frame"
 )
 FIGURE_DIR = OUTPUT_DIR / "figures"
 

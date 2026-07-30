@@ -6,7 +6,7 @@ EXPERIMENT="exp2_face_pretrained_allframes_head32_multitask_regression"
 SESSION_NAME="${SESSION_NAME:-${EXPERIMENT}}"
 LOG_DIR="${ROOT_DIR}/study/${EXPERIMENT}/logs"
 LOG_FILE="${LOG_DIR}/run.log"
-INDEX_DIR="${ROOT_DIR}/study/exp2_face_pretrained_head32_regression/outputs/frame_index"
+INDEX_DIR="${ROOT_DIR}/study/exp2_face_pretrained_head32_regression/outputs/allframes/frame_index"
 
 if screen -ls 2>/dev/null | grep -q "[.]${SESSION_NAME}[[:space:]]"; then
     echo "screen session already exists: ${SESSION_NAME}" >&2

@@ -49,11 +49,34 @@ def _style():
     )
 
 
+def _validate_complete_results(metrics):
+    run_index = pd.read_csv(OUTPUT_DIR / "run_index.csv")
+    if run_index.empty or not run_index["status"].eq("ok").all():
+        raise RuntimeError(f"Incomplete or failed jobs in {OUTPUT_DIR}")
+    jobs = set(
+        run_index[["architecture", "target"]].itertuples(index=False, name=None)
+    )
+    if len(jobs) != len(run_index):
+        raise RuntimeError(f"Duplicate jobs in {OUTPUT_DIR}")
+    metric_splits = set(
+        metrics[["architecture", "target", "split"]].itertuples(
+            index=False, name=None
+        )
+    )
+    missing = {
+        (architecture, target, split)
+        for architecture, target in jobs
+        for split in ("train", "val", "test")
+    } - metric_splits
+    if missing:
+        raise RuntimeError(f"Missing metric rows in {OUTPUT_DIR}: {sorted(missing)}")
+
+
 def plot_training_curves(history):
     figure, axes = plt.subplots(
         len(TASKS),
-        2,
-        figsize=(15, max(8, 3.8 * len(TASKS))),
+        len(ARCHITECTURES),
+        figsize=(7.5 * len(ARCHITECTURES), max(8, 3.8 * len(TASKS))),
         squeeze=False,
     )
     for row, target in enumerate(TASKS):
@@ -127,7 +150,7 @@ def plot_training_curves(history):
 def plot_test_metrics(metrics):
     test = metrics.loc[metrics["split"].eq("test")]
     x = np.arange(len(TASKS), dtype=np.float64)
-    width = 0.36
+    architecture_width = 0.80 / len(ARCHITECTURES)
     figure, axes = plt.subplots(2, 2, figsize=(15, 11))
     specifications = (
         (axes[0, 0], ("mae", "rmse"), ("MAE", "RMSE"), "Prediction error", None),
@@ -148,14 +171,16 @@ def plot_test_metrics(metrics):
         ),
     )
     for axis, columns, labels, ylabel, ylim in specifications:
-        subwidth = width / len(columns)
+        subwidth = architecture_width / len(columns)
         for architecture_index, architecture in enumerate(ARCHITECTURES):
             selected = (
                 test.loc[test["architecture"].eq(architecture)]
                 .set_index("target")
                 .loc[list(TASKS)]
             )
-            center = x + (architecture_index - 0.5) * width
+            center = x + (
+                architecture_index - (len(ARCHITECTURES) - 1) / 2
+            ) * architecture_width
             for metric_index, (column, label) in enumerate(zip(columns, labels)):
                 position = center + (
                     metric_index - (len(columns) - 1) / 2
@@ -192,7 +217,12 @@ def plot_test_metrics(metrics):
 def plot_split_generalization(metrics):
     x = np.arange(len(TASKS), dtype=np.float64)
     width = 0.24
-    figure, axes = plt.subplots(2, 2, figsize=(16, 11), squeeze=False)
+    figure, axes = plt.subplots(
+        len(ARCHITECTURES),
+        2,
+        figsize=(16, max(6, 5.5 * len(ARCHITECTURES))),
+        squeeze=False,
+    )
     for row, architecture in enumerate(ARCHITECTURES):
         selected = metrics.loc[metrics["architecture"].eq(architecture)]
         for column, (metric, ylabel) in enumerate(
@@ -242,8 +272,8 @@ def plot_predictions(metrics):
     )
     figure, axes = plt.subplots(
         len(TASKS),
-        2,
-        figsize=(13, max(9, 4.6 * len(TASKS))),
+        len(ARCHITECTURES),
+        figsize=(6.5 * len(ARCHITECTURES), max(9, 4.6 * len(TASKS))),
         squeeze=False,
     )
     for row, target in enumerate(TASKS):
@@ -312,7 +342,7 @@ def plot_predictions(metrics):
 
 
 def main(output_dir=None):
-    global OUTPUT_DIR, FIGURE_DIR, EXPERIMENT_LABEL, TASKS
+    global OUTPUT_DIR, FIGURE_DIR, EXPERIMENT_LABEL, TASKS, ARCHITECTURES
     if output_dir is not None:
         OUTPUT_DIR = Path(output_dir).resolve()
         FIGURE_DIR = OUTPUT_DIR / "figures"
@@ -320,10 +350,19 @@ def main(output_dir=None):
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     history = pd.read_csv(OUTPUT_DIR / "history_all.csv")
     metrics = pd.read_csv(OUTPUT_DIR / "metrics_all.csv")
+    _validate_complete_results(metrics)
     available_targets = set(metrics["target"].astype(str))
     TASKS = tuple(target for target in TASK_LABELS if target in available_targets)
+    available_architectures = set(metrics["architecture"].astype(str))
+    ARCHITECTURES = tuple(
+        architecture
+        for architecture in ARCHITECTURE_LABELS
+        if architecture in available_architectures
+    )
     if not TASKS:
         raise RuntimeError(f"No supported completed targets in {OUTPUT_DIR}")
+    if not ARCHITECTURES:
+        raise RuntimeError(f"No supported completed architectures in {OUTPUT_DIR}")
     plot_training_curves(history)
     plot_test_metrics(metrics)
     plot_split_generalization(metrics)

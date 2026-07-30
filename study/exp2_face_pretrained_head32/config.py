@@ -10,13 +10,13 @@ ALIGNED_REGRESSION_DIR = os.path.abspath(
     os.path.join(EXP_DIR, "..", "exp2_face_pretrained_head32_regression")
 )
 SOURCE_DATA_DIR = os.path.abspath(
-    os.path.join(ALIGNED_REGRESSION_DIR, "outputs", "source_data")
+    os.path.join(ALIGNED_REGRESSION_DIR, "outputs", "20frame", "source_data")
 )
 ALIGNED_RECORDS_DIR = os.path.abspath(
-    os.path.join(ALIGNED_REGRESSION_DIR, "outputs", "task_records")
+    os.path.join(ALIGNED_REGRESSION_DIR, "outputs", "20frame", "task_records")
 )
 SHARED_INDEX_DIR = os.path.abspath(
-    os.path.join(ALIGNED_REGRESSION_DIR, "outputs", "frame_index")
+    os.path.join(ALIGNED_REGRESSION_DIR, "outputs", "20frame", "frame_index")
 )
 WEIGHTS_DIR = os.path.abspath(
     os.path.join(EXP_DIR, "..", "exp2_face_pretrained", "pretrained_weights")

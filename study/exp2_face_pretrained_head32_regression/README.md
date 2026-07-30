@@ -1,27 +1,32 @@
-# Exp2 Raw-Video 20-Frame Abnormal-Score Regression
+# Exp2 Raw-Video Head32 Abnormal-Score Regression
 
-Canonical ID: `exp2_raw_video_20frame_head32_regression_balanced_split`.
+Canonical IDs:
 
-This experiment predicts continuous abnormal scores from raw face videos. It does
-not use cleaned ECG/rPPG session CSV files to select videos or estimate capture
-time. The source builder enumerates every raw `video.avi`, maps its hospital ID,
-and reads the capture interval from the corresponding frame-level `video.avi.ts`.
+- `exp2_raw_video_20frame_head32_regression_balanced_split`
+- `exp2_raw_video_allframes_head32_regression_balanced_split`
+
+Both variants live in this directory. Versioned artifacts are stored under
+`outputs/20frame` and `outputs/allframes`; logs use the same names under `logs`.
+The source builder enumerates every raw `video.avi`, maps its hospital ID, and reads
+the capture interval from the corresponding frame-level `video.avi.ts`. It does not
+use cleaned ECG/rPPG session CSV files.
 
 ## Data Policy
 
 - Maximum video-lab interval distance: 24 hours.
 - One label per video and target: choose the nearest valid measurement by interval
   distance, then video-midpoint distance, then report timestamp.
-- Targets: `hemoglobin_low` and `po2_low`.
-- Frames: 20 deterministic non-adjacent frames per video, sampled from 5% through
-  95% of the MJPEG source frame sequence.
+- The retained 20-frame variant predicts `hemoglobin_low` and `po2_low` from 20
+  deterministic non-adjacent frames sampled from 5% through 95% of each video.
+- The all-frame variant predicts `hemoglobin_low`, `po2_low`, and `lactate_high`
+  from every decodable frame in each video.
 - Training views: original, horizontal flip, 90% center crop, brightness +6%, and
   contrast +8%.
-- Validation and test use the same 20 source frames with only the original view.
+- Validation and test use every frame selected by the variant with only the
+  original view.
 
-The source audit is regenerated under `outputs/source_data/`. It records every raw
-video and the reason it was retained or rejected. JPEG byte offsets are cached in
-`outputs/frame_index/`; decoded images are never persisted.
+Each variant contains its own source audit and compact JPEG byte-offset index.
+Decoded images are never persisted.
 
 ## Model And Optimization
 
@@ -35,32 +40,32 @@ Each architecture/target pair has an independent model:
 - Both stages minimize unweighted SmoothL1 abnormal-score loss (`beta=0.5`) with
   early stopping on validation video-level MAE.
 
-Hemoglobin uses 130 g/L for male patients and 120 g/L otherwise. PO2 uses 80 mmHg.
-The target is `asinh((threshold - value) / scale)`, with scales 10 g/L and
-10 mmHg respectively. Positive scores are on the abnormal-low side.
+Hemoglobin uses 130 g/L for male patients and 120 g/L otherwise; PO2 uses 80 mmHg.
+Lactate uses an upper threshold of 2 mmol/L. Scores are transformed with `asinh`;
+positive scores always indicate the abnormal side.
 
 Splits are patient-disjoint 60/20/20. The existing 512-candidate balanced split
 search is retained and audits raw-value and abnormal-score distributions. Both
 architectures receive identical records and splits.
 
-Four independent architecture/target jobs are dispatched dynamically across the
-four visible GPUs. Each training run saves full CSV/PNG history, checkpoints,
-frame predictions, video predictions, and train/validation/test metrics.
+The all-frame run has six independent architecture/target jobs dispatched
+dynamically across four GPUs. Every successful experiment automatically generates
+its validated result figures after training.
 
 ## Start
 
 ```bash
-bash study/exp2_face_pretrained_head32_regression/launch_screen.sh --overwrite
+bash study/exp2_face_pretrained_head32_regression/launch_screen.sh allframes
 ```
 
 Attach with:
 
 ```bash
-screen -r exp2_face_pretrained_head32_regression
+screen -r exp2_face_pretrained_head32_regression_allframes
 ```
 
-Regenerate result figures after completion with:
+The retained 20-frame entry is:
 
 ```bash
-python study/exp2_face_pretrained_head32_regression/plot_results.py
+bash study/exp2_face_pretrained_head32_regression/launch_screen.sh 20frame
 ```

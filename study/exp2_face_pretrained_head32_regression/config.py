@@ -1,4 +1,4 @@
-"""Configuration for raw-video 20-frame abnormal-score regression."""
+"""Configuration for versioned raw-video abnormal-score regression."""
 
 import os
 
@@ -9,7 +9,12 @@ EXP_DIR = os.path.dirname(os.path.abspath(__file__))
 WEIGHTS_DIR = os.path.abspath(
     os.path.join(EXP_DIR, "..", "exp2_face_pretrained", "pretrained_weights")
 )
-OUTPUT_DIR = os.path.join(EXP_DIR, "outputs")
+OUTPUT_ROOT = os.path.join(EXP_DIR, "outputs")
+OUTPUT_DIRS = {
+    "20frame": os.path.join(OUTPUT_ROOT, "20frame"),
+    "allframes": os.path.join(OUTPUT_ROOT, "allframes"),
+}
+OUTPUT_DIR = OUTPUT_DIRS["20frame"]
 LOG_DIR = os.path.join(EXP_DIR, "logs")
 SOURCE_DATA_DIR = os.path.join(OUTPUT_DIR, "source_data")
 LAB_TIMESERIES_CACHE = os.path.abspath(
@@ -31,6 +36,7 @@ ARCHITECTURES = ("mobilenet_v3_small", "efficientnet_b0")
 TARGETS = (
     "hemoglobin_low",
     "po2_low",
+    "lactate_high",
 )
 HEAD_HIDDEN_FEATURES = 32
 TORCH_COMPILE_ENABLED = True
@@ -63,6 +69,13 @@ SCORE_DEFINITIONS = {
         "threshold": 80.0,
         "scale": 10.0,
         "unit": "mmHg",
+    },
+    "lactate_high": {
+        "value_column": "lactate_value",
+        "direction": "high",
+        "threshold": 2.0,
+        "scale": 1.0,
+        "unit": "mmol/L",
     },
 }
 SCORE_TRANSFORM = "asinh"
