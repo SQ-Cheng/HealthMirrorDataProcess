@@ -876,6 +876,176 @@ def _plot_trajectory_examples(events, figure_dir):
     plt.close(figure)
 
 
+def _plot_normalized_trajectory_panels(events, metrics, figure_dir):
+    """Plot patient-balanced true and predicted changes over normalized follow-up."""
+    progress_step = 20
+    summary_rows = []
+    figure, axes = plt.subplots(2, 2, figsize=(14, 10), squeeze=False)
+
+    for row, target in enumerate(TARGETS):
+        definition = TARGETS[target]
+        for column, architecture in enumerate(ARCHITECTURES):
+            axis = axes[row, column]
+            selected = events.loc[
+                events["target"].eq(target)
+                & events["architecture"].eq(architecture)
+            ].copy()
+            selected = selected.sort_values(
+                ["hospital_id", "lab_time_unix", "video_id"],
+                kind="stable",
+            )
+            grouped = selected.groupby("hospital_id", sort=False)
+            first_time = grouped["lab_time_unix"].transform("min")
+            last_time = grouped["lab_time_unix"].transform("max")
+            duration = last_time - first_time
+            if (duration <= 0).any():
+                raise ValueError(
+                    f"Non-positive longitudinal span for {target}/{architecture}"
+                )
+            selected["followup_percent"] = (
+                100.0 * (selected["lab_time_unix"] - first_time) / duration
+            )
+            selected["progress_bin"] = np.floor(
+                (selected["followup_percent"] + progress_step / 2) / progress_step
+            ).clip(0, 100 // progress_step)
+            selected["progress_percent"] = (
+                selected["progress_bin"].astype(int) * progress_step
+            )
+            selected["true_change"] = (
+                selected["lab_value"]
+                - grouped["lab_value"].transform("first")
+            )
+            selected["predicted_change"] = (
+                selected["predicted_raw_value"]
+                - grouped["predicted_raw_value"].transform("first")
+            )
+
+            # One patient contributes once per progress bin, even if multiple
+            # time points round into the same bin.
+            patient_bins = (
+                selected.groupby(
+                    ["hospital_id", "progress_percent"],
+                    as_index=False,
+                )
+                .agg(
+                    true_change=("true_change", "median"),
+                    predicted_change=("predicted_change", "median"),
+                    events=("video_id", "size"),
+                )
+                .sort_values(["progress_percent", "hospital_id"])
+            )
+            for progress, values in patient_bins.groupby(
+                "progress_percent", sort=True
+            ):
+                row_values = {
+                    "target": target,
+                    "architecture": architecture,
+                    "progress_percent": int(progress),
+                    "patients": int(values["hospital_id"].nunique()),
+                    "events": int(values["events"].sum()),
+                }
+                for source in ("true", "predicted"):
+                    observed = values[f"{source}_change"]
+                    row_values[f"{source}_q25"] = float(observed.quantile(0.25))
+                    row_values[f"{source}_median"] = float(observed.median())
+                    row_values[f"{source}_q75"] = float(observed.quantile(0.75))
+                summary_rows.append(row_values)
+
+            panel = pd.DataFrame(
+                [
+                    item
+                    for item in summary_rows
+                    if item["target"] == target
+                    and item["architecture"] == architecture
+                ]
+            ).sort_values("progress_percent")
+            x = panel["progress_percent"].to_numpy()
+            axis.fill_between(
+                x,
+                panel["true_q25"].to_numpy(),
+                panel["true_q75"].to_numpy(),
+                color="#777777",
+                alpha=0.18,
+                linewidth=0,
+            )
+            axis.plot(
+                x,
+                panel["true_median"],
+                color="#202020",
+                marker="o",
+                linewidth=1.8,
+                label="True lab change",
+            )
+            model_color = ARCHITECTURE_COLORS[architecture]
+            axis.fill_between(
+                x,
+                panel["predicted_q25"].to_numpy(),
+                panel["predicted_q75"].to_numpy(),
+                color=model_color,
+                alpha=0.18,
+                linewidth=0,
+            )
+            axis.plot(
+                x,
+                panel["predicted_median"],
+                color=model_color,
+                marker="s",
+                linestyle="--",
+                linewidth=1.8,
+                label="Predicted change",
+            )
+            for progress, patients in zip(x, panel["patients"]):
+                axis.annotate(
+                    f"n={int(patients)}",
+                    xy=(progress, 0.98),
+                    xycoords=("data", "axes fraction"),
+                    ha="center",
+                    va="top",
+                    fontsize=7,
+                    color="#444444",
+                )
+            row_metrics = metrics.loc[
+                metrics["target"].eq(target)
+                & metrics["architecture"].eq(architecture)
+            ].iloc[0]
+            axis.axhline(0, color="#777777", linewidth=0.8, linestyle=":")
+            axis.set_xlim(-4, 104)
+            axis.set_xticks(np.arange(0, 101, progress_step))
+            axis.set_xlabel("Within-patient follow-up (%)")
+            axis.set_ylabel(f"Change from first time point ({definition['unit']})")
+            axis.set_title(
+                f"{definition['label']} | {ARCHITECTURE_LABELS[architecture]}\n"
+                f"adjacent-change agreement="
+                f"{row_metrics['direction_concordance']:.1%}, "
+                f"rho={row_metrics['delta_spearman_r']:.2f}"
+            )
+            axis.margins(y=0.15)
+            axis.grid(alpha=0.18)
+            axis.legend(loc="best")
+
+    figure.suptitle(
+        "Held-out longitudinal trajectories: median and IQR of change from baseline",
+        fontsize=15,
+    )
+    figure.text(
+        0.5,
+        0.01,
+        "Patient timeline normalized from first (0%) to last (100%) matched lab; "
+        "n = unique patients per bin",
+        ha="center",
+        fontsize=9,
+        color="#444444",
+    )
+    figure.tight_layout(rect=(0, 0.035, 1, 0.96))
+    figure.savefig(
+        figure_dir / "true_vs_predicted_trajectory_panels.png",
+        dpi=180,
+        bbox_inches="tight",
+    )
+    plt.close(figure)
+    return pd.DataFrame(summary_rows)
+
+
 def _write_report(metrics, comparison, events, transitions, output_dir):
     lines = [
         "# Test-Set Longitudinal Change Analysis",
@@ -1027,6 +1197,15 @@ def main(input_dir, output_dir, seed, bootstrap_repetitions, permutation_repetit
     _plot_direction_summary(metrics, figure_dir)
     _plot_patient_heatmap(transitions, figure_dir)
     _plot_trajectory_examples(events, figure_dir)
+    trajectory_summary = _plot_normalized_trajectory_panels(
+        events,
+        metrics,
+        figure_dir,
+    )
+    trajectory_summary.to_csv(
+        table_dir / "normalized_trajectory_summary.csv",
+        index=False,
+    )
     _write_report(metrics, comparison, events, transitions, output_dir)
 
     with open(output_dir / "analysis_manifest.json", "w", encoding="utf-8") as handle:
