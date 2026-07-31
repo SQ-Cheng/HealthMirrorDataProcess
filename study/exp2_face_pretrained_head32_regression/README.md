@@ -69,3 +69,19 @@ The retained 20-frame entry is:
 ```bash
 bash study/exp2_face_pretrained_head32_regression/launch_screen.sh 20frame
 ```
+
+## Longitudinal Test Analysis
+
+The trained 20-frame models can be evaluated for within-patient temporal tracking
+on held-out test patients with at least two independent lab/video time points:
+
+```bash
+python -m study.exp2_face_pretrained_head32_regression.analyze_longitudinal_test
+```
+
+The analysis reuses the saved 20-frame video predictions, removes repeated video
+assignments to the same lab event, and compares adjacent true and predicted changes.
+Patient-cluster bootstrap confidence intervals and patient-level permutation tests
+account for repeated transitions within a patient. Human-readable figures and the
+report are separated from machine-readable CSV tables under
+`outputs/20frame/longitudinal_test`.
