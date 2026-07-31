@@ -1,4 +1,4 @@
-"""ImageNet-pretrained backbones with independent binary classification heads."""
+"""ImageNet-pretrained backbones with independent scalar regression heads."""
 
 import os
 

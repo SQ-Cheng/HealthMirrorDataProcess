@@ -1,4 +1,4 @@
-"""Configuration for aligned raw-video 20-frame binary classification."""
+"""Configuration for versioned raw-video abnormal-score regression."""
 
 import os
 
@@ -6,23 +6,31 @@ from study.exp2_lab_multimodal.config import DATA_ROOT, SEED
 
 
 EXP_DIR = os.path.dirname(os.path.abspath(__file__))
-ALIGNED_REGRESSION_DIR = os.path.abspath(
-    os.path.join(EXP_DIR, "..", "exp2_face_pretrained_head32_regression")
-)
-SOURCE_DATA_DIR = os.path.abspath(
-    os.path.join(ALIGNED_REGRESSION_DIR, "outputs", "allframes", "source_data")
-)
-ALIGNED_RECORDS_DIR = os.path.abspath(
-    os.path.join(EXP_DIR, "inputs", "task_records")
-)
-SHARED_INDEX_DIR = os.path.abspath(
-    os.path.join(ALIGNED_REGRESSION_DIR, "outputs", "20frame", "frame_index")
-)
 WEIGHTS_DIR = os.path.abspath(
     os.path.join(EXP_DIR, "..", "exp2_face_pretrained", "pretrained_weights")
 )
-OUTPUT_DIR = os.path.join(EXP_DIR, "outputs")
+OUTPUT_ROOT = os.path.join(EXP_DIR, "outputs")
+OUTPUT_DIRS = {
+    "20frame": os.path.join(OUTPUT_ROOT, "20frame"),
+    "allframes": os.path.join(OUTPUT_ROOT, "allframes"),
+}
+OUTPUT_DIR = OUTPUT_DIRS["20frame"]
 LOG_DIR = os.path.join(EXP_DIR, "logs")
+SOURCE_DATA_DIR = os.path.join(OUTPUT_DIR, "source_data")
+LAB_TIMESERIES_CACHE = os.path.abspath(
+    os.path.join(
+        EXP_DIR, "..", "exp2_face_only", "outputs_aug20_24h", "lab_timeseries.csv"
+    )
+)
+LAB_QUALITY_REPORT = os.path.abspath(
+    os.path.join(
+        EXP_DIR,
+        "..",
+        "exp2_face_only",
+        "outputs_aug20_24h",
+        "data_quality_report.json",
+    )
+)
 
 ARCHITECTURES = ("mobilenet_v3_small", "efficientnet_b0")
 TARGETS = (
@@ -30,14 +38,15 @@ TARGETS = (
     "po2_low",
     "lactate_high",
 )
-HEAD_HIDDEN_FEATURES = 64
-TORCH_COMPILE_ENABLED = os.environ.get(
-    "EXP2_DISABLE_TORCH_COMPILE", "0"
-) != "1"
+HEAD_HIDDEN_FEATURES = 32
+TORCH_COMPILE_ENABLED = True
 TORCH_COMPILE_MODE = "reduce-overhead"
 
 SOURCE_IMAGE_SIZE = 128
 FRAMES_PER_VIDEO = 20
+FRAME_QUANTILES = tuple(0.05 + 0.90 * index / 19 for index in range(20))
+MIN_SOURCE_FRAME_GAP = 2
+LAB_MATCH_MAX_DELTA_HOURS = 24.0
 IMAGE_SIZE = 224
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
