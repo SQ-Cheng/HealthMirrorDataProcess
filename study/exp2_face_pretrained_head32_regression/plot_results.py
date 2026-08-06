@@ -1,4 +1,4 @@
-"""Generate video-level result figures for abnormal-score regression."""
+"""Generate video-level figures for robust-scaled raw-value regression."""
 
 import argparse
 from pathlib import Path
@@ -13,7 +13,7 @@ import pandas as pd
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 FIGURE_DIR = OUTPUT_DIR / "figures"
-EXPERIMENT_LABEL = "Distribution-balanced abnormal-score regression"
+EXPERIMENT_LABEL = "Face-only robust-scaled raw-value regression"
 ARCHITECTURES = ("mobilenet_v3_small", "efficientnet_b0")
 ARCHITECTURE_LABELS = {
     "mobilenet_v3_small": "MobileNetV3-Small",
@@ -21,11 +21,19 @@ ARCHITECTURE_LABELS = {
 }
 TASKS = ("hemoglobin_low", "po2_low")
 TASK_LABELS = {
-    "hemoglobin_low": "Hemoglobin low",
+    "hemoglobin_low": "Hemoglobin",
     "pco2_low": "pCO2 low",
-    "po2_low": "pO2 low",
+    "po2_low": "PO2",
+    "oxyhemoglobin_fraction": "Oxyhemoglobin fraction",
     "high_blood_pressure": "High blood pressure",
     "lactate_high": "Lactate high",
+}
+TASK_UNITS = {
+    "hemoglobin_low": "g/L",
+    "pco2_low": "mmHg",
+    "po2_low": "mmHg",
+    "oxyhemoglobin_fraction": "%",
+    "lactate_high": "mmol/L",
 }
 COLORS = {
     "mobilenet_v3_small": "#2878B5",
@@ -117,7 +125,9 @@ def plot_training_curves(history):
                 linewidth=1.1,
                 label="Validation Pearson r",
             )
-            score_axis.set_ylabel("Video-level metric")
+            score_axis.set_ylabel(
+                f"Raw-unit MAE ({TASK_UNITS[target]}) / correlation"
+            )
             stage_change = selected.loc[selected["stage"].eq("finetune"), "global_epoch"]
             if not stage_change.empty:
                 axis.axvline(
@@ -153,7 +163,13 @@ def plot_test_metrics(metrics):
     architecture_width = 0.80 / len(ARCHITECTURES)
     figure, axes = plt.subplots(2, 2, figsize=(15, 11))
     specifications = (
-        (axes[0, 0], ("mae", "rmse"), ("MAE", "RMSE"), "Prediction error", None),
+        (
+            axes[0, 0],
+            ("mae", "rmse"),
+            ("MAE", "RMSE"),
+            "Raw-unit prediction error",
+            None,
+        ),
         (
             axes[0, 1],
             ("pearson_r", "spearman_r"),
@@ -166,7 +182,7 @@ def plot_test_metrics(metrics):
             axes[1, 1],
             ("sign_roc_auc", "sign_balanced_accuracy"),
             ("Sign ROC-AUC", "Sign bACC"),
-            "Zero-boundary classification",
+            "Clinical-threshold classification",
             (0, 1.04),
         ),
     )
@@ -290,7 +306,7 @@ def plot_predictions(metrics):
             predictions = predictions.loc[predictions["split"].eq("test")]
             y_true = predictions["y_true"].to_numpy(dtype=np.float64)
             y_pred = predictions["y_pred"].to_numpy(dtype=np.float64)
-            normal = y_true < 0
+            normal = predictions["binary_label"].to_numpy(dtype=np.int64) == 0
             axis.scatter(
                 y_true[normal],
                 y_pred[normal],
@@ -314,17 +330,16 @@ def plot_predictions(metrics):
             padding = max((upper - lower) * 0.06, 0.05)
             limits = (lower - padding, upper + padding)
             axis.plot(limits, limits, color="#333333", linestyle="--", linewidth=1)
-            axis.axhline(0, color="#888888", linewidth=0.7)
-            axis.axvline(0, color="#888888", linewidth=0.7)
             axis.set_xlim(limits)
             axis.set_ylim(limits)
             axis.set_aspect("equal", adjustable="box")
-            axis.set_xlabel("True abnormal score")
-            axis.set_ylabel("Predicted abnormal score")
+            axis.set_xlabel(f"True value ({TASK_UNITS[target]})")
+            axis.set_ylabel(f"Predicted value ({TASK_UNITS[target]})")
             row_metrics = test_metrics.loc[(architecture, target)]
             axis.set_title(
                 f"{TASK_LABELS[target]} | {ARCHITECTURE_LABELS[architecture]}\n"
-                f"n={int(row_metrics['n'])}, MAE={row_metrics['mae']:.3f}, "
+                f"n={int(row_metrics['n'])}, MAE={row_metrics['mae']:.3f} "
+                f"{TASK_UNITS[target]}, "
                 f"r={row_metrics['pearson_r']:.3f}"
             )
             axis.grid(alpha=0.18)

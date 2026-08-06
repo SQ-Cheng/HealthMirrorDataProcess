@@ -12,9 +12,7 @@ import pandas as pd
 
 from study.exp2_lab_multimodal.build_dataset import (
     LAB_REPORT_TIMEZONE,
-    _extract_numeric,
     _normalize_hospital_id,
-    _parse_datetime_to_unix,
     _read_merged_patient_info,
 )
 from study.exp2_lab_multimodal.config import DATA_ROOT, LAB_CSV
@@ -33,7 +31,6 @@ TARGET_ANALYTES = {
     "hemoglobin_low": "hemoglobin",
     "po2_low": "po2",
     "lactate_high": "lactate",
-    "oxyhemoglobin_fraction": "oxyhemoglobin_fraction",
 }
 
 
@@ -72,75 +69,7 @@ def _read_video_time_bounds(path):
     }
 
 
-def _load_oxyhemoglobin_fraction():
-    columns = [
-        "首页病案号",
-        "检验项名称",
-        "检验值(文本)",
-        "单位",
-        "标本名称",
-        "报告时间",
-    ]
-    raw = pd.read_csv(LAB_CSV, dtype=str, keep_default_na=False, usecols=columns)
-    selected = raw.loc[raw["检验项名称"].eq("氧合血红蛋白分数")].copy()
-    selected["hospital_id"] = selected["首页病案号"].map(_normalize_hospital_id)
-    selected["timestamp_unix"] = _parse_datetime_to_unix(selected["报告时间"])
-    selected["value"] = _extract_numeric(selected["检验值(文本)"])
-    numeric = selected["value"].notna()
-    percent_unit = selected["单位"].astype(str).str.strip().eq("%")
-    non_venous = ~selected["标本名称"].astype(str).str.contains("静脉", regex=False)
-    physical_range = selected["value"].between(0.0, 100.0, inclusive="both")
-    valid = (
-        selected["hospital_id"].ne("")
-        & selected["timestamp_unix"].notna()
-        & numeric
-        & percent_unit
-        & non_venous
-        & physical_range
-    )
-    result = selected.loc[valid].copy()
-    conflicts = (
-        result.groupby(["hospital_id", "timestamp_unix"])["value"]
-        .nunique()
-        .gt(1)
-    )
-    if conflicts.any():
-        raise ValueError(
-            "Oxyhemoglobin fraction has conflicting values at the same patient "
-            f"timestamp: {int(conflicts.sum())} events"
-        )
-    result = result.drop_duplicates(
-        ["hospital_id", "timestamp_unix", "value"], keep="first"
-    )
-    labs = pd.DataFrame(
-        {
-            "hospital_id": result["hospital_id"],
-            "analyte": "oxyhemoglobin_fraction",
-            "value": result["value"].astype(float),
-            "timestamp_unix": result["timestamp_unix"].astype(float),
-            "unit": "%",
-            "item_name": "氧合血红蛋白分数",
-        }
-    )
-    policy = {
-        "canonical_item_name": "氧合血红蛋白分数",
-        "canonical_unit": "%",
-        "excluded_non_numeric_rows": int((~numeric).sum()),
-        "excluded_non_percent_unit_rows": int((numeric & ~percent_unit).sum()),
-        "excluded_venous_rows": int((numeric & percent_unit & ~non_venous).sum()),
-        "excluded_outside_0_100_rows": int(
-            (numeric & percent_unit & non_venous & ~physical_range).sum()
-        ),
-        "retained_rows": int(len(labs)),
-        "retained_patients": int(labs["hospital_id"].nunique()),
-        "enforcement": (
-            "exact item name, percent unit, non-venous specimen, finite 0-100 value"
-        ),
-    }
-    return labs, policy
-
-
-def _load_lab_data(targets):
+def _load_lab_data():
     required = {
         "hospital_id",
         "analyte",
@@ -212,12 +141,6 @@ def _load_lab_data(targets):
             "enforcement": "filter by exact item_name before label matching",
         },
     }
-    if "oxyhemoglobin_fraction" in targets:
-        oxyhemoglobin, oxyhemoglobin_policy = _load_oxyhemoglobin_fraction()
-        labs = pd.concat([labs, oxyhemoglobin], ignore_index=True)
-        quality["analyte_source_policies"]["oxyhemoglobin_fraction"] = (
-            oxyhemoglobin_policy
-        )
 
     sex_source = pd.read_csv(
         LAB_CSV,
@@ -297,7 +220,7 @@ def build_raw_video_source(output_dir, targets):
     if unknown:
         raise ValueError(f"Unsupported raw-video targets: {unknown}")
 
-    labs, sex_lookup, upstream_quality = _load_lab_data(targets)
+    labs, sex_lookup, upstream_quality = _load_lab_data()
     info_lookup = _read_merged_patient_info()
     measurements = defaultdict(lambda: defaultdict(list))
     for row in labs.itertuples(index=False):

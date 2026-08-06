@@ -53,11 +53,6 @@ def validate_source_data(source_dir):
         raise RuntimeError("Raw-video source unexpectedly depends on session CSV files")
     if float(policy.get("maximum_delta_hours", np.inf)) != 24.0:
         raise RuntimeError(f"Expected a 24-hour source window, found {policy}")
-    po2_policy = quality.get("analyte_source_policies", {}).get("po2", {})
-    if po2_policy.get("canonical_item_name") != "氧分压":
-        raise RuntimeError(f"Canonical PO2 source policy is missing: {po2_policy}")
-    if po2_policy.get("enforcement") != "filter by exact item_name before label matching":
-        raise RuntimeError(f"Strict PO2 filtering was not enforced: {po2_policy}")
     return quality
 
 
@@ -616,12 +611,7 @@ def prepare_tasks(
         )
         conflicts.extend(audit_rows)
         if summary["status"] != "skipped":
-            reference_path = (
-                os.path.join(reference_records_dir, f"{target}.csv")
-                if reference_records_dir is not None
-                else None
-            )
-            if reference_path is None or not os.path.isfile(reference_path):
+            if reference_records_dir is None:
                 records, reason, audit_rows, pair_rows, selection = add_patient_split(
                     records, target, seed
                 )
@@ -736,6 +726,7 @@ class AllFramesDataset(Dataset):
         self,
         frame_index,
         video_records,
+        history_store,
         views=("original",),
         interpolation="bilinear",
         expand_all_views=False,
@@ -749,18 +740,38 @@ class AllFramesDataset(Dataset):
             raise ValueError("expand_all_views requires multiple training views")
         frame_indices, frame_video_rows = [], []
         record_index_videos = []
+        history_lookup = history_store.lookup()
+        history_features = np.zeros(
+            (len(self.video_records), max(1, history_store.max_length), 2),
+            dtype=np.float32,
+        )
+        history_mask = np.zeros(
+            (len(self.video_records), max(1, history_store.max_length)),
+            dtype=np.bool_,
+        )
         for record_index, row in enumerate(self.video_records.itertuples(index=False)):
             index_video = self.index.video_lookup[str(row.video_id)]
             start, end = self.index.frame_range(row.video_id)
             frame_indices.append(np.arange(start, end, dtype=np.int64))
             frame_video_rows.append(np.full(end - start, record_index, dtype=np.int32))
             record_index_videos.append(index_video)
+            history_row = history_lookup.get(str(row.video_id))
+            if history_row is None:
+                raise KeyError(f"Missing history features for video {row.video_id}")
+            history_start = int(history_store.offsets[history_row])
+            history_end = int(history_store.offsets[history_row + 1])
+            history_count = history_end - history_start
+            if history_count:
+                history_features[record_index, :history_count] = history_store.features[
+                    history_start:history_end
+                ]
+                history_mask[record_index, :history_count] = True
         self.frame_indices = np.concatenate(frame_indices)
         self.frame_video_rows = np.concatenate(frame_video_rows)
         self.record_index_videos = np.asarray(record_index_videos, dtype=np.int32)
-        self.labels_by_video = self.video_records[
-            "robust_scaled_raw_value"
-        ].to_numpy(np.float32)
+        self.labels_by_video = self.video_records["binary_label"].to_numpy(np.float32)
+        self.history_features_by_video = history_features
+        self.history_mask_by_video = history_mask
         self.frame_count = len(self.frame_indices)
         self._handles = OrderedDict()
         self._decoded_cache = OrderedDict()
@@ -834,6 +845,8 @@ class AllFramesDataset(Dataset):
             torch.tensor(label, dtype=torch.float32),
             torch.tensor(base_frame_index, dtype=torch.long),
             view_index,
+            torch.from_numpy(self.history_features_by_video[video_row]),
+            torch.from_numpy(self.history_mask_by_video[video_row]),
         )
 
     def frame_labels(self):

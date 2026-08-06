@@ -119,7 +119,9 @@ _ANALYTE_MAP = {
         "direction": "min",
     },
     "po2": {
-        "item_names": ["氧分压", "患者体温下氧分压"],
+        # The clinical thresholds used by Exp2 apply to the standard PO2
+        # result. Temperature-corrected PO2 is a distinct derived quantity.
+        "item_names": ["氧分压"],
         "direction": "min",
     },
     "pco2": {

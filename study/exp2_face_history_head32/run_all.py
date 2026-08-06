@@ -1,4 +1,4 @@
-"""Run robust-scaled raw laboratory value face-regression jobs."""
+"""Run 20-frame binary classification with prior lab history."""
 
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -8,6 +8,9 @@ import multiprocessing as mp
 import os
 import random
 import shutil
+import subprocess
+import threading
+import time
 import traceback
 
 import numpy as np
@@ -21,21 +24,27 @@ from .config import (
     FINETUNE_PATIENCE,
     FRAMES_PER_VIDEO,
     FRAME_SHUFFLE_CHUNK_SIZE,
+    GPU_AVAILABILITY_POLL_SECONDS,
+    GPU_FREE_MEMORY_USED_MIB_MAX,
     HEAD_HIDDEN_FEATURES,
     HEAD_LEARNING_RATE,
     HEAD_MAX_EPOCHS,
     HEAD_PATIENCE,
+    HISTORY_HIDDEN_FEATURES,
+    HISTORY_INPUT_FEATURES,
+    HISTORY_OUTPUT_FEATURES,
+    HISTORY_POLICY,
     EVAL_BATCH_SIZES,
     EVAL_NUM_WORKERS,
     JPEG_DECODER,
     OUTPUT_DIRS,
+    REFERENCE_INDEX_DIR,
     REFERENCE_OUTPUT_DIR,
-    REGRESSION_TARGET_COLUMN,
-    REGRESSION_TARGET_TRANSFORM,
+    REFERENCE_SOURCE_DATA_DIR,
+    SOURCE_DATA_DIR,
     SCORE_DEFINITIONS,
     SCORE_TRANSFORM,
     SEED,
-    SMOOTH_L1_BETA,
     TARGETS,
     TRAIN_NUM_WORKERS,
     TRAIN_SOURCE_BATCH_SIZES,
@@ -46,9 +55,13 @@ from .config import (
 )
 from .data import prepare_tasks, validate_source_data
 from .frame_index import FrameOffsetIndex, build_or_reuse_frame_index
-from .models import WEIGHT_FILES
+from .history_data import (
+    HistoryFeatureStore,
+    build_history_artifacts,
+    write_history_manifest,
+)
+from .models import HistoryEncoder, WEIGHT_FILES
 from .source_data import build_raw_video_source
-from .scaling import fit_robust_target_scaler, write_target_scalers
 from .train import train_task
 
 
@@ -56,7 +69,6 @@ LAB_TARGET_PREFIXES = {
     "hemoglobin_low": "hemoglobin",
     "po2_low": "po2",
     "lactate_high": "lactate",
-    "oxyhemoglobin_fraction": "oxyhemoglobin_fraction",
 }
 
 _WORKER_FRAME_INDEX = None
@@ -75,30 +87,6 @@ def _sha256_file(path):
     return digest.hexdigest()
 
 
-def _validate_saved_checkpoint(run_dir, architecture, target):
-    path = os.path.join(run_dir, "model.pt")
-    if not os.path.isfile(path) or os.path.getsize(path) <= 0:
-        raise RuntimeError(f"Missing or empty final checkpoint: {path}")
-    checkpoint = torch.load(path, map_location="cpu", weights_only=True)
-    if checkpoint.get("architecture") != architecture:
-        raise RuntimeError(f"Checkpoint architecture mismatch: {path}")
-    if checkpoint.get("target") != target:
-        raise RuntimeError(f"Checkpoint target mismatch: {path}")
-    state = checkpoint.get("model_state_dict")
-    if not isinstance(state, dict) or not state:
-        raise RuntimeError(f"Checkpoint has no model_state_dict: {path}")
-    if checkpoint.get("task_type") != "robust_scaled_raw_value_regression":
-        raise RuntimeError(f"Checkpoint has the wrong regression target type: {path}")
-    scaler = checkpoint.get("target_scaler")
-    if not isinstance(scaler, dict) or scaler.get("target") != target:
-        raise RuntimeError(f"Checkpoint has no matching target scaler: {path}")
-    return {
-        "model_pt_bytes": os.path.getsize(path),
-        "model_pt_sha256": _sha256_file(path),
-        "selected_stage": checkpoint.get("selected_stage", ""),
-    }
-
-
 def _set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -106,6 +94,49 @@ def _set_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.benchmark = True
+
+
+def _gpu_memory_used_mib():
+    completed = subprocess.run(
+        [
+            "nvidia-smi",
+            "--query-gpu=index,memory.used",
+            "--format=csv,noheader,nounits",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = {}
+    for line in completed.stdout.splitlines():
+        index, memory = (part.strip() for part in line.split(",", maxsplit=1))
+        result[int(index)] = int(memory)
+    return result
+
+
+def _monitor_gpu_admission(gpu_queue, candidate_gpus, admitted, lock, stop_event):
+    while not stop_event.is_set():
+        try:
+            memory = _gpu_memory_used_mib()
+        except Exception as exc:
+            print(f"[gpu-monitor-warning] {type(exc).__name__}: {exc}", flush=True)
+            stop_event.wait(GPU_AVAILABILITY_POLL_SECONDS)
+            continue
+        with lock:
+            newly_free = [
+                gpu_id
+                for gpu_id in candidate_gpus
+                if gpu_id not in admitted
+                and memory.get(gpu_id, np.inf) <= GPU_FREE_MEMORY_USED_MIB_MAX
+            ]
+            for gpu_id in newly_free:
+                admitted.add(gpu_id)
+                gpu_queue.put(gpu_id)
+                print(
+                    f"[gpu-admitted] cuda:{gpu_id} memory_used={memory[gpu_id]}MiB",
+                    flush=True,
+                )
+        stop_event.wait(GPU_AVAILABILITY_POLL_SECONDS)
 
 
 def _worker_init(index_path, gpu_queue):
@@ -135,7 +166,7 @@ def _worker_train(job):
         target=job["target"],
         frame_index=_WORKER_FRAME_INDEX,
         records=records,
-        target_scaler=job["target_scaler"],
+        history_path=job["history_path"],
         weights_dir=job["weights_dir"],
         run_dir=job["run_dir"],
         head_epochs=job["head_epochs"],
@@ -216,15 +247,9 @@ def _add_frame_counts(summary, task_records, frame_index):
 
 
 def _validate_reference_task_records(task_records, reference_output_dir):
+    """Require identical samples/splits while auditing canonical value changes."""
     for target, records in task_records.items():
         path = os.path.join(reference_output_dir, "task_records", f"{target}.csv")
-        if not os.path.isfile(path):
-            print(
-                f"[data-match] target={target} reference=unavailable "
-                "action=new_patient_disjoint_balanced_split",
-                flush=True,
-            )
-            continue
         reference = pd.read_csv(path, dtype={"hospital_id": str})
         current = records.sort_values("video_id").reset_index(drop=True)
         reference = reference.sort_values("video_id").reset_index(drop=True)
@@ -243,16 +268,20 @@ def _validate_reference_task_records(task_records, reference_output_dir):
             check_dtype=False,
             check_exact=True,
         )
-        if not np.allclose(
-            current["raw_value"].to_numpy(np.float64),
-            reference["raw_value"].to_numpy(np.float64),
-            rtol=0.0,
-            atol=1e-14,
-        ):
-            raise AssertionError(f"Raw values differ from reference for {target}")
+        changed_values = int(
+            np.count_nonzero(
+                ~np.isclose(
+                current["raw_value"].to_numpy(np.float64),
+                reference["raw_value"].to_numpy(np.float64),
+                rtol=0.0,
+                atol=1e-14,
+            )
+            )
+        )
         print(
             f"[data-match] target={target} videos={len(current)} "
-            "samples_labels_raw_values_and_split=exact",
+            "samples_labels_and_split=exact "
+            f"canonical_raw_values_changed={changed_values}",
             flush=True,
         )
 
@@ -268,7 +297,7 @@ def main():
     parser.add_argument("--weights-dir", default=WEIGHTS_DIR)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--index-dir", default=None)
-    parser.add_argument("--reference-output-dir", default=None)
+    parser.add_argument("--reference-output-dir", default=REFERENCE_OUTPUT_DIR)
     parser.add_argument("--architectures", default=",".join(ARCHITECTURES))
     parser.add_argument("--targets", default=None)
     parser.add_argument("--seed", type=int, default=SEED)
@@ -282,23 +311,16 @@ def main():
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
-    parser.add_argument(
-        "--add-targets",
-        action="store_true",
-        help="Train only --targets and preserve completed targets in this output.",
-    )
     args = parser.parse_args()
     args.output_dir = args.output_dir or OUTPUT_DIRS[args.frame_policy]
-    args.source_dir = args.source_dir or os.path.join(args.output_dir, "source_data")
-    args.index_dir = args.index_dir or os.path.join(args.output_dir, "frame_index")
-    if args.reference_output_dir is None and args.frame_policy == "20frame":
-        args.reference_output_dir = REFERENCE_OUTPUT_DIR
+    args.source_dir = args.source_dir or SOURCE_DATA_DIR
+    args.index_dir = args.index_dir or REFERENCE_INDEX_DIR
 
     architectures = _parse_csv(args.architectures)
     requested_targets = (
         _parse_csv(args.targets)
         if args.targets
-        else (TARGETS if args.frame_policy == "allframes" else TARGETS[:3])
+        else TARGETS
     )
     unknown_architectures = sorted(set(architectures) - set(ARCHITECTURES))
     unknown_targets = sorted(set(requested_targets) - set(TARGETS))
@@ -306,39 +328,13 @@ def main():
         raise ValueError(
             f"Unknown architectures={unknown_architectures}, targets={unknown_targets}"
         )
-    if args.overwrite and args.add_targets:
-        raise ValueError("--overwrite and --add-targets are mutually exclusive")
     if args.smoke_test:
         args.head_epochs = args.finetune_epochs = 1
         args.head_patience = args.finetune_patience = 1
         args.max_batches = args.max_batches or 2
 
     run_index_path = os.path.join(args.output_dir, "run_index.csv")
-    existing_manifest = {}
-    if args.add_targets:
-        manifest_path = os.path.join(args.output_dir, "experiment_manifest.json")
-        if not os.path.isfile(run_index_path) or not os.path.isfile(manifest_path):
-            raise FileNotFoundError(
-                "--add-targets requires a completed run_index.csv and manifest"
-            )
-        with open(manifest_path, encoding="utf-8") as handle:
-            existing_manifest = json.load(handle)
-        existing_targets = tuple(existing_manifest.get("targets", ()))
-        preparation_targets = tuple(
-            target
-            for target in TARGETS
-            if target in set(existing_targets) | set(requested_targets)
-        )
-        manifest_architectures = tuple(
-            architecture
-            for architecture in ARCHITECTURES
-            if architecture
-            in set(existing_manifest.get("architectures", ())) | set(architectures)
-        )
-    else:
-        preparation_targets = requested_targets
-        manifest_architectures = architectures
-    if os.path.exists(run_index_path) and not (args.overwrite or args.add_targets):
+    if os.path.exists(run_index_path) and not args.overwrite:
         raise FileExistsError(
             f"Output already contains a run: {args.output_dir}. Use --overwrite explicitly."
         )
@@ -346,21 +342,8 @@ def main():
         shutil.rmtree(args.output_dir)
     os.makedirs(os.path.join(args.output_dir, "runs"), exist_ok=True)
     _set_seed(args.seed)
-    build_raw_video_source(args.source_dir, preparation_targets)
+    build_raw_video_source(args.source_dir, requested_targets)
     source_quality = validate_source_data(args.source_dir)
-    if "oxyhemoglobin_fraction" in preparation_targets:
-        oxy_policy = source_quality.get("analyte_source_policies", {}).get(
-            "oxyhemoglobin_fraction", {}
-        )
-        if (
-            oxy_policy.get("canonical_item_name") != "氧合血红蛋白分数"
-            or oxy_policy.get("canonical_unit") != "%"
-            or oxy_policy.get("enforcement")
-            != "exact item name, percent unit, non-venous specimen, finite 0-100 value"
-        ):
-            raise RuntimeError(
-                f"Strict oxyhemoglobin-fraction source policy is missing: {oxy_policy}"
-            )
     weight_manifest = _validate_weights(args.weights_dir, architectures)
     base_manifest = pd.read_csv(
         os.path.join(args.source_dir, "base_manifest.csv"), dtype={"hospital_id": str}
@@ -369,8 +352,8 @@ def main():
         os.path.join(args.source_dir, "video_summary.csv"),
         dtype={"hospital_id": str},
     )
-    _validate_time_alignment(base_manifest, preparation_targets)
-    candidate_mask = base_manifest[list(preparation_targets)].notna().any(axis=1)
+    _validate_time_alignment(base_manifest, requested_targets)
+    candidate_mask = base_manifest[list(requested_targets)].notna().any(axis=1)
     candidate_videos = base_manifest.loc[candidate_mask].drop_duplicates("video_id")
     frame_index = build_or_reuse_frame_index(
         candidate_videos,
@@ -402,50 +385,41 @@ def main():
         base_manifest,
         video_summary,
         args.output_dir,
-        preparation_targets,
+        requested_targets,
         args.seed,
-        reference_records_dir=(
-            os.path.join(args.reference_output_dir, "task_records")
-            if args.reference_output_dir
-            else None
+        reference_records_dir=os.path.join(
+            args.reference_output_dir, "task_records"
         ),
     )
     ready_targets = tuple(
         task_summary.loc[task_summary["status"].eq("ready"), "target"].astype(str)
     )
-    if set(ready_targets) != set(preparation_targets):
+    if set(ready_targets) != set(requested_targets):
         skipped = task_summary.loc[~task_summary["status"].eq("ready"), ["target", "reason"]]
         raise RuntimeError(
             f"Requested {args.frame_policy} tasks are not trainable: "
             f"{skipped.to_dict('records')}"
         )
-    if args.reference_output_dir:
-        _validate_reference_task_records(task_records, args.reference_output_dir)
-    target_scalers = {}
-    for target in ready_targets:
-        unit = SCORE_DEFINITIONS[target]["unit"]
-        scaler = fit_robust_target_scaler(target, task_records[target], unit)
-        task_records[target][REGRESSION_TARGET_COLUMN] = scaler.transform(
-            task_records[target]["raw_value"]
+    _validate_reference_task_records(task_records, args.reference_output_dir)
+    history_dir = os.path.join(args.output_dir, "history_records")
+    history_summaries = [
+        build_history_artifacts(
+            target,
+            task_records[target],
+            base_manifest,
+            history_dir,
         )
-        task_records[target].to_csv(
-            os.path.join(args.output_dir, "task_records", f"{target}.csv"),
-            index=False,
-        )
-        target_scalers[target] = scaler
-        print(
-            f"[target-scaler] task={target} train_only=True "
-            f"median={scaler.median:.6g} q1={scaler.q1:.6g} "
-            f"q3={scaler.q3:.6g} iqr={scaler.iqr:.6g}",
-            flush=True,
-        )
-    scaler_path = os.path.join(args.output_dir, "target_scalers.json")
-    write_target_scalers(target_scalers, scaler_path)
+        for target in ready_targets
+    ]
+    write_history_manifest(history_summaries, history_dir)
     with open(
         os.path.join(args.output_dir, "split_assignment_manifest.json"),
         encoding="utf-8",
     ) as handle:
         split_assignment_manifest = json.load(handle)
+    if args.smoke_test:
+        ready_targets = ready_targets[:1]
+
     union_videos = pd.concat(
         [task_records[target] for target in ready_targets], ignore_index=True
     ).drop_duplicates("video_id")
@@ -457,13 +431,11 @@ def main():
         index_manifest = json.load(handle)
     experiment_manifest = {
         "schema_version": 1,
-        "experiment": (
-            f"exp2_raw_video_{args.frame_policy}_head32_regression_balanced_split"
-        ),
+        "experiment": "exp2_face_history_head32_binary_classification",
         "result_variant": args.frame_policy,
         "source_dir": os.path.abspath(args.source_dir),
         "source_data_quality_report": source_quality,
-        "architectures": list(manifest_architectures),
+        "architectures": list(architectures),
         "targets": list(ready_targets),
         "seed": args.seed,
         "data_fingerprints": {
@@ -479,6 +451,18 @@ def main():
                 )
                 for target in ready_targets
             },
+            "history_record_sha256": {
+                target: _sha256_file(
+                    os.path.join(history_dir, f"{target}.csv")
+                )
+                for target in ready_targets
+            },
+            "history_feature_sha256": {
+                target: _sha256_file(
+                    os.path.join(history_dir, f"{target}.npz")
+                )
+                for target in ready_targets
+            },
             "split_distribution_audit_sha256": _sha256_file(
                 os.path.join(args.output_dir, "split_distribution_audit.csv")
             ),
@@ -488,32 +472,33 @@ def main():
             "split_assignment_manifest_sha256": _sha256_file(
                 os.path.join(args.output_dir, "split_assignment_manifest.json")
             ),
-            "target_scalers_sha256": _sha256_file(scaler_path),
         },
         "model_head": {
-            "type": "Linear-LayerNorm-SiLU-Dropout-Linear",
+            "type": "concat(image_features, history_features)-Linear-LayerNorm-SiLU-Dropout-Linear",
             "hidden_features": HEAD_HIDDEN_FEATURES,
             "dropout": 0.25,
             "output_activation": None,
         },
-        "regression_target": {
-            "name": "raw_lab_value",
-            "model_target_column": REGRESSION_TARGET_COLUMN,
-            "transform": REGRESSION_TARGET_TRANSFORM,
-            "formula": "(raw_value - train_median) / train_IQR",
-            "inverse_formula": "raw_value = model_output * train_IQR + train_median",
-            "clipping": None,
-            "scalers": {
-                target: scaler.to_dict() for target, scaler in target_scalers.items()
-            },
-            "scaler_fit_scope": "training videos only, independently per target",
-            "reported_metrics": "inverse-transformed original laboratory units",
-            "clinical_thresholds_for_secondary_sign_metrics": SCORE_DEFINITIONS,
+        "history_encoder": {
+            "type": "per-measurement MLP with masked mean pooling",
+            "input_features": HISTORY_INPUT_FEATURES,
+            "hidden_features": HISTORY_HIDDEN_FEATURES,
+            "output_features": HISTORY_OUTPUT_FEATURES,
+            "parameter_count": sum(
+                parameter.numel() for parameter in HistoryEncoder().parameters()
+            ),
+            "policy": HISTORY_POLICY,
+            "artifacts_dir": os.path.abspath(history_dir),
+        },
+        "classification_target": {
+            "name": "binary_label",
+            "definitions": SCORE_DEFINITIONS,
             "duplicate_event_policy": (
                 "one nearest in-window lab measurement per raw video and target"
             ),
             "po2_item_policy": (
-                "use exact item_name '氧分压'; exclude temperature-corrected PO2"
+                "use exact item_name '氧分压'; exclude all patient-temperature-"
+                "corrected PO2 rows"
             ),
         },
         "preprocessing": {
@@ -542,24 +527,16 @@ def main():
             ),
             "frame_ineligible_labelled_videos": sorted(excluded_frame_videos),
             "split_policy": (
-                "exact patient-disjoint 60/20/20 assignment reused from the "
-                "face-plus-history reference experiment"
-                if args.reference_output_dir
-                else (
-                    "patient-disjoint 60/20/20 class-stratified candidate search; "
-                    "selected by raw-value and abnormal-score distribution"
-                )
+                "patient-disjoint 60/20/20 class-stratified candidate search; "
+                "selected by video-level raw-value and abnormal-score distribution"
             ),
             "evaluation_unit": (
                 (
-                    f"video; mean robust-scaled raw prediction over {FRAMES_PER_VIDEO} "
-                    "selected source frames, then inverse transform to raw units"
+                    f"video; mean predicted probability over {FRAMES_PER_VIDEO} "
+                    "selected source frames"
                 )
                 if args.frame_policy == "20frame"
-                else (
-                    "video; mean robust-scaled raw prediction over all indexed "
-                    "frames, then inverse transform to raw units"
-                )
+                else "video; mean predicted abnormal score over all indexed frames"
             ),
         },
         "split_assignment": split_assignment_manifest,
@@ -579,26 +556,21 @@ def main():
             "frame_prediction_format": "compressed numeric NPZ; no per-frame CSV",
         },
         "training": {
-            "execution_mode": (
-                "add_targets" if args.add_targets else "full_output_overwrite"
-                if args.overwrite else "new_run"
-            ),
-            "trained_targets_this_invocation": list(requested_targets),
-            "preserved_targets": [
-                target for target in ready_targets if target not in requested_targets
-            ],
             "stage_1": (
-                f"frozen encoder, lr={HEAD_LEARNING_RATE:.8g}"
+                f"frozen image encoder; train history encoder and classification head, "
+                f"lr={HEAD_LEARNING_RATE:.8g}"
             ),
             "stage_2": (
                 f"all parameters unfrozen, lr={FINETUNE_LEARNING_RATE:.8g}"
             ),
-            "objective": "unweighted SmoothL1 on train-only robust-scaled raw values",
-            "smooth_l1_beta": SMOOTH_L1_BETA,
-            "loss_weighting": "none",
+            "objective": "BCEWithLogitsLoss",
+            "class_weight_basis": "actual valid training-frame counts",
             "head_max_epochs": args.head_epochs,
             "finetune_max_epochs": args.finetune_epochs,
-            "scheduler": "dynamic process queue with one persistent training slot per GPU",
+            "scheduler": (
+                "GPU-memory-aware dynamic process queue; idle GPUs admitted at start "
+                "and busy GPUs admitted after release"
+            ),
             "workers_per_gpu": args.workers_per_gpu,
             "explicit_worker_override": args.workers,
             "train_source_batch_sizes": TRAIN_SOURCE_BATCH_SIZES,
@@ -614,9 +586,6 @@ def main():
             "torch_compile_enabled": TORCH_COMPILE_ENABLED,
             "torch_compile_mode": TORCH_COMPILE_MODE,
             "checkpoint_state_source": "unwrapped eager model",
-            "final_checkpoint_validation": (
-                "reload model.pt on CPU and validate target/scaler/state"
-            ),
         },
         "pretrained_weights": weight_manifest,
     }
@@ -624,29 +593,6 @@ def main():
         os.path.join(args.output_dir, "experiment_manifest.json"), "w", encoding="utf-8"
     ) as handle:
         json.dump(experiment_manifest, handle, ensure_ascii=False, indent=2)
-    with open(
-        os.path.join(args.output_dir, "target_definition.json"), "w", encoding="utf-8"
-    ) as handle:
-        json.dump(
-            {
-                "schema_version": 1,
-                "target": "raw laboratory value",
-                "training_transform": REGRESSION_TARGET_TRANSFORM,
-                "scaler_file": os.path.abspath(scaler_path),
-                "scaler_fit_scope": "train split only",
-                "loss_space": "robust-scaled raw value",
-                "metric_space": "inverse-transformed raw value",
-                "clinical_thresholds_for_secondary_sign_metrics": SCORE_DEFINITIONS,
-                "event_policy": (
-                    "retain one closest lab measurement within 24 hours for each "
-                    "raw video and target"
-                ),
-            },
-            handle,
-            ensure_ascii=False,
-            indent=2,
-        )
-
     print(
         f"Prepared {args.frame_policy} raw-video experiment: "
         f"videos={len(union_videos)} "
@@ -660,14 +606,16 @@ def main():
 
     jobs = []
     for architecture in architectures:
-        for target in requested_targets:
+        for target in ready_targets:
             jobs.append({
                 "architecture": architecture,
                 "target": target,
                 "records_path": os.path.join(
                     args.output_dir, "task_records", f"{target}.csv"
                 ),
-                "target_scaler": target_scalers[target],
+                "history_path": os.path.join(
+                    history_dir, f"{target}.npz"
+                ),
                 "weights_dir": args.weights_dir,
                 "run_dir": os.path.join(args.output_dir, "runs", architecture, target),
                 "seed": args.seed,
@@ -677,39 +625,6 @@ def main():
                 "finetune_patience": args.finetune_patience,
                 "max_batches": args.max_batches,
             })
-    replacement_keys = {(job["architecture"], job["target"]) for job in jobs}
-    preserved_run_rows = []
-    preserved_metric_frames = []
-    if args.add_targets:
-        old_run_index = pd.read_csv(run_index_path)
-        preserve_mask = ~old_run_index.apply(
-            lambda row: (str(row["architecture"]), str(row["target"]))
-            in replacement_keys,
-            axis=1,
-        )
-        preserved_run_rows = old_run_index.loc[preserve_mask].to_dict("records")
-        for row in preserved_run_rows:
-            if str(row.get("status")) == "ok":
-                row.update(
-                    _validate_saved_checkpoint(
-                        str(row["run_dir"]),
-                        str(row["architecture"]),
-                        str(row["target"]),
-                    )
-                )
-        metrics_path = os.path.join(args.output_dir, "metrics_all.csv")
-        if os.path.isfile(metrics_path):
-            old_metrics = pd.read_csv(metrics_path)
-            metric_preserve_mask = ~old_metrics.apply(
-                lambda row: (str(row["architecture"]), str(row["target"]))
-                in replacement_keys,
-                axis=1,
-            )
-            preserved = old_metrics.loc[metric_preserve_mask].copy()
-            if not preserved.empty:
-                preserved_metric_frames.append(preserved)
-        for job in jobs:
-            shutil.rmtree(job["run_dir"], ignore_errors=True)
     available_gpus = torch.cuda.device_count()
     if available_gpus < 1:
         raise RuntimeError(f"The {args.frame_policy} experiment requires CUDA")
@@ -724,22 +639,40 @@ def main():
             f"Invalid worker configuration: workers={args.workers}, "
             f"workers_per_gpu={args.workers_per_gpu}"
         )
-    gpu_ids = [slot % available_gpus for slot in range(worker_count)]
-    print(
-        f"Dynamic scheduler: jobs={len(jobs)} workers={worker_count} "
-        f"available_gpus={available_gpus} assignments="
-        f"{','.join(f'cuda:{gpu}' for gpu in gpu_ids)}",
-        flush=True,
-    )
+    candidate_gpus = list(range(available_gpus))
 
-    run_rows = preserved_run_rows
-    metric_frames = preserved_metric_frames
-    failure_rows = []
+    run_rows, metric_frames, failure_rows = [], [], []
     context = mp.get_context("spawn")
     manager = context.Manager()
     gpu_queue = manager.Queue()
-    for gpu_id in gpu_ids:
-        gpu_queue.put(gpu_id)
+    admitted = set()
+    admission_lock = threading.Lock()
+    initial_memory = _gpu_memory_used_mib()
+    for gpu_id in candidate_gpus:
+        if initial_memory.get(gpu_id, np.inf) <= GPU_FREE_MEMORY_USED_MIB_MAX:
+            admitted.add(gpu_id)
+            gpu_queue.put(gpu_id)
+    print(
+        f"Dynamic GPU scheduler: jobs={len(jobs)} workers={worker_count} "
+        f"candidate_gpus={candidate_gpus} initially_admitted={sorted(admitted)} "
+        f"held_busy={sorted(set(candidate_gpus) - admitted)} "
+        f"memory_threshold={GPU_FREE_MEMORY_USED_MIB_MAX}MiB",
+        flush=True,
+    )
+    stop_monitor = threading.Event()
+    monitor = threading.Thread(
+        target=_monitor_gpu_admission,
+        args=(
+            gpu_queue,
+            candidate_gpus,
+            admitted,
+            admission_lock,
+            stop_monitor,
+        ),
+        name="gpu-admission-monitor",
+        daemon=True,
+    )
+    monitor.start()
     index_path = os.path.join(args.index_dir, "frame_offsets.npz")
     try:
         with ProcessPoolExecutor(
@@ -748,60 +681,63 @@ def main():
             initializer=_worker_init,
             initargs=(index_path, gpu_queue),
         ) as executor:
-            futures = {executor.submit(_worker_train, job): job for job in jobs}
-            for completed, future in enumerate(as_completed(futures), start=1):
-                job = futures[future]
-                architecture, target, run_dir = (
-                    job["architecture"], job["target"], job["run_dir"]
-                )
-                try:
-                    result = future.result()
-                    checkpoint_metadata = _validate_saved_checkpoint(
-                        run_dir, architecture, target
+            try:
+                futures = {executor.submit(_worker_train, job): job for job in jobs}
+                for completed, future in enumerate(as_completed(futures), start=1):
+                    job = futures[future]
+                    architecture, target, run_dir = (
+                        job["architecture"], job["target"], job["run_dir"]
                     )
-                    metric_frames.append(result["metrics"])
-                    status, reason, job_seed = "ok", "", result["job_seed"]
-                except Exception as exc:
-                    status, reason, job_seed = "failed", str(exc), np.nan
-                    checkpoint_metadata = {
-                        "model_pt_bytes": np.nan,
-                        "model_pt_sha256": "",
-                        "selected_stage": "",
-                    }
-                    os.makedirs(run_dir, exist_ok=True)
-                    with open(
-                        os.path.join(run_dir, "error.txt"), "w", encoding="utf-8"
-                    ) as handle:
-                        handle.write(traceback.format_exc())
-                    failure_rows.append({
-                        "architecture": architecture, "target": target, "error": str(exc)
+                    try:
+                        result = future.result()
+                        metric_frames.append(result["metrics"])
+                        status, reason, job_seed = "ok", "", result["job_seed"]
+                    except Exception as exc:
+                        status, reason, job_seed = "failed", str(exc), np.nan
+                        os.makedirs(run_dir, exist_ok=True)
+                        with open(
+                            os.path.join(run_dir, "error.txt"), "w", encoding="utf-8"
+                        ) as handle:
+                            handle.write(traceback.format_exc())
+                        failure_rows.append({
+                            "architecture": architecture,
+                            "target": target,
+                            "error": str(exc),
+                        })
+                        print(
+                            f"[job-failed] arch={architecture} task={target}: {exc}",
+                            flush=True,
+                        )
+                    run_rows.append({
+                        "architecture": architecture,
+                        "target": target,
+                        "status": status,
+                        "reason": reason,
+                        "job_seed": job_seed,
+                        "run_dir": run_dir,
                     })
+                    pd.DataFrame(run_rows).to_csv(run_index_path, index=False)
+                    if metric_frames:
+                        pd.concat(metric_frames, ignore_index=True).to_csv(
+                            os.path.join(args.output_dir, "metrics_all.csv"), index=False
+                        )
+                    _collect_histories(args.output_dir).to_csv(
+                        os.path.join(args.output_dir, "history_all.csv"), index=False
+                    )
                     print(
-                        f"[job-failed] arch={architecture} task={target}: {exc}",
+                        f"[scheduler] {completed}/{len(jobs)} "
+                        f"arch={architecture} task={target} status={status}",
                         flush=True,
                     )
-                run_rows.append({
-                    "architecture": architecture,
-                    "target": target,
-                    "status": status,
-                    "reason": reason,
-                    "job_seed": job_seed,
-                    "run_dir": run_dir,
-                    **checkpoint_metadata,
-                })
-                pd.DataFrame(run_rows).to_csv(run_index_path, index=False)
-                if metric_frames:
-                    pd.concat(metric_frames, ignore_index=True).to_csv(
-                        os.path.join(args.output_dir, "metrics_all.csv"), index=False
-                    )
-                _collect_histories(args.output_dir).to_csv(
-                    os.path.join(args.output_dir, "history_all.csv"), index=False
-                )
-                print(
-                    f"[scheduler] {completed}/{len(jobs)} arch={architecture} "
-                    f"task={target} status={status}", flush=True
-                )
+            finally:
+                stop_monitor.set()
+                # Release workers still blocked in their initializer. No jobs
+                # remain for these fallback assignments.
+                for _ in range(worker_count):
+                    gpu_queue.put(0)
     finally:
+        stop_monitor.set()
+        monitor.join(timeout=GPU_AVAILABILITY_POLL_SECONDS + 2)
         manager.shutdown()
     pd.DataFrame(
         failure_rows, columns=("architecture", "target", "error")

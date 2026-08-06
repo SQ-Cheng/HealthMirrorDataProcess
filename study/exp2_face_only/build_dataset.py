@@ -429,6 +429,16 @@ def _write_data_quality_report(output_dir, conflict_audit, before_manifest, afte
             "details_file": os.path.basename(audit_path),
             "counts": target_counts,
         },
+        "analyte_source_policies": {
+            "po2": {
+                "canonical_item_name": "氧分压",
+                "excluded_item_names": ["患者体温下氧分压"],
+                "reason": (
+                    "standard and patient-temperature-corrected PO2 are distinct "
+                    "reporting scopes and must not be pooled or double counted"
+                ),
+            }
+        },
     }
     report_path = os.path.join(output_dir, "data_quality_report.json")
     with open(report_path, "w", encoding="utf-8") as handle:

@@ -24,11 +24,22 @@ if screen -ls 2>/dev/null | grep -q "[.]${SESSION_NAME}[[:space:]]"; then
 fi
 mkdir -p "${LOG_DIR}"
 EXTRA_ARGS=" --frame-policy ${VARIANT}"
+TEE_ARGS=""
+ADD_TARGETS=false
 if (( $# > 0 )); then
+    for argument in "$@"; do
+        if [[ "${argument}" == "--add-targets" ]]; then
+            ADD_TARGETS=true
+        fi
+    done
     printf -v USER_ARGS ' %q' "$@"
     EXTRA_ARGS+="${USER_ARGS}"
 fi
-COMMAND="set -o pipefail; cd ${ROOT_DIR} && source /root/miniconda3/etc/profile.d/conda.sh && conda activate healthmirrorenv && CUDA_VISIBLE_DEVICES=0,1,2,3 MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 python -u -m study.exp2_face_pretrained_head32_regression.run_all${EXTRA_ARGS} 2>&1 | tee ${LOG_FILE}"
+if [[ "${ADD_TARGETS}" == true ]]; then
+    TEE_ARGS="-a"
+    printf '\n[add-targets-launch] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "${LOG_FILE}"
+fi
+COMMAND="set -o pipefail; cd ${ROOT_DIR} && source /root/miniconda3/etc/profile.d/conda.sh && conda activate healthmirrorenv && CUDA_VISIBLE_DEVICES=0,1,2,3 MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 python -u -m study.exp2_face_pretrained_head32_regression.run_all${EXTRA_ARGS} 2>&1 | tee ${TEE_ARGS} ${LOG_FILE}"
 screen -dmS "${SESSION_NAME}" bash -lc "${COMMAND}"
 echo "Started detached screen session: ${SESSION_NAME}"
 echo "Attach: screen -r ${SESSION_NAME}"
