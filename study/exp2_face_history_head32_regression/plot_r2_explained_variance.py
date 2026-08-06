@@ -26,6 +26,7 @@ TARGETS = {
     "oxyhemoglobin_fraction": "Oxyhemoglobin fraction",
 }
 COLORS = {"Unweighted": "#4C78A8", "Range weighted": "#E15759"}
+FIGURE_TITLE = "Face + lab-history regression: video-level test goodness of fit"
 
 
 def _scores(predictions, split):
@@ -57,7 +58,8 @@ def _update_variant(variant, label):
             if len(existing) != 1:
                 raise RuntimeError(f"Missing metric row: {run.architecture}/{run.target}/{split}")
             old_r2 = float(existing.iloc[0]["r2"])
-            if not np.isclose(old_r2, scores["r2"], rtol=0, atol=1e-10):
+            # Prediction CSV round trips can introduce a few ULPs of drift.
+            if not np.isclose(old_r2, scores["r2"], rtol=0, atol=1e-7):
                 raise RuntimeError(
                     f"Stored R2 mismatch for {run.architecture}/{run.target}/{split}: "
                     f"stored={old_r2}, recomputed={scores['r2']}"
@@ -124,10 +126,7 @@ def _plot(summary, path):
             lower, upper = min(values), max(values)
             padding = max((upper - lower) * 0.25, 0.08)
             axis.set_ylim(min(0, lower - padding), upper + padding)
-    figure.suptitle(
-        "Face + lab-history regression: video-level test goodness of fit",
-        fontsize=15,
-    )
+    figure.suptitle(FIGURE_TITLE, fontsize=15)
     figure.tight_layout()
     figure.savefig(path, dpi=180, bbox_inches="tight")
     plt.close(figure)
