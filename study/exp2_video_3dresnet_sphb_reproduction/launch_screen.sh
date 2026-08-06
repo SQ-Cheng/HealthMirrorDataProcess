@@ -15,7 +15,7 @@ EXTRA_ARGS=""
 if (( $# > 0 )); then
     printf -v EXTRA_ARGS ' %q' "$@"
 fi
-COMMAND="set -o pipefail; cd ${ROOT_DIR} && source /root/miniconda3/etc/profile.d/conda.sh && conda activate healthmirrorenv && CUDA_VISIBLE_DEVICES=0 MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 python -u -m study.exp2_video_3dresnet_sphb_reproduction.run_all${EXTRA_ARGS} 2>&1 | tee ${LOG_FILE}"
+COMMAND="set -o pipefail; cd ${ROOT_DIR} && source /root/miniconda3/etc/profile.d/conda.sh && conda activate healthmirrorenv && MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 python -u -m study.exp2_video_3dresnet_sphb_reproduction.run_all --prepare-only${EXTRA_ARGS} 2>&1 | tee ${LOG_FILE} && CUDA_VISIBLE_DEVICES=0,1,2,3 MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 torchrun --standalone --nproc_per_node=4 -m study.exp2_video_3dresnet_sphb_reproduction.distributed_train 2>&1 | tee -a ${LOG_FILE}"
 screen -dmS "${SESSION_NAME}" bash -lc "${COMMAND}"
 echo "Started detached screen session: ${SESSION_NAME}"
 echo "Attach: screen -r ${SESSION_NAME}"

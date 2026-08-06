@@ -42,8 +42,8 @@ and ReLU. The model is trained from scratch, as in the paper.
 ## Training protocol
 
 - MSE loss in g/dL, Adam at `1e-3`, up to 100 epochs.
-- Effective batch size 4. On 16 GB GPUs this is implemented as micro-batch 1
-  with four-step gradient accumulation.
+- Effective batch size 4. Formal training uses four-process distributed data
+  parallelism with one complete video per GPU, so the global batch is exactly 4.
 - The paper's early-stop threshold `validation MSE < 0.3` is retained.
 - No augmentation or learning-rate schedule is introduced because neither is
   specified for the residual model.
