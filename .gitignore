@@ -68,3 +68,15 @@ sample_length_report_output.txt
 /study/exp2_face_pretrained_allframes_head32_multitask_regression/outputs/
 /study/exp2_face_pretrained_allframes_head32_multitask_regression/logs/
 /study/exp2_face_pretrained_allframes_head32_multitask_regression/__pycache__/
+
+# Exp2 raw-video + ECG official Mamba single-task experiment
+/study/exp2_video_ecg_mamba/outputs/
+/study/exp2_video_ecg_mamba/outputs_smoke/
+/study/exp2_video_ecg_mamba/logs/
+/study/exp2_video_ecg_mamba/__pycache__/
+
+# Exp2 controlled native-video-only Mamba ablation
+/study/exp2_video_only_mamba_ablation/outputs/
+/study/exp2_video_only_mamba_ablation/outputs_smoke/
+/study/exp2_video_only_mamba_ablation/logs/
+/study/exp2_video_only_mamba_ablation/__pycache__/
