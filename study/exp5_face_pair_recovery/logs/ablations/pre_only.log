@@ -1,0 +1,40 @@
+[job-start] mode=pre_only device=cuda:1 videos=233/69/72 patients=99/32/32 frames=4660/1380/1440 train_inputs=13980 parameters=4097981 head_trainable=90433
+[stage-start] stage=head lr=2.0e-04
+[epoch] stage=head 001/30 train_loss=0.08507 train_MAE=0.1021 train_R2=0.5218 val_MAE=0.1796 val_RMSE=0.2118 val_R2=-0.0898 val_r=0.1824 throughput=1688.0/s mem=0.42GiB patience=0/8*
+[epoch] stage=head 002/30 train_loss=0.05502 train_MAE=0.0889 train_R2=0.6088 val_MAE=0.1795 val_RMSE=0.2123 val_R2=-0.0944 val_r=0.1077 throughput=2063.3/s mem=0.42GiB patience=0/8*
+[epoch] stage=head 003/30 train_loss=0.04907 train_MAE=0.0862 train_R2=0.6075 val_MAE=0.1750 val_RMSE=0.2104 val_R2=-0.0753 val_r=0.1478 throughput=2092.8/s mem=0.42GiB patience=0/8*
+[epoch] stage=head 004/30 train_loss=0.04491 train_MAE=0.0868 train_R2=0.6130 val_MAE=0.1768 val_RMSE=0.2137 val_R2=-0.1090 val_r=0.1625 throughput=2083.6/s mem=0.42GiB patience=1/8
+[epoch] stage=head 005/30 train_loss=0.04350 train_MAE=0.0849 train_R2=0.6139 val_MAE=0.1771 val_RMSE=0.2119 val_R2=-0.0905 val_r=0.1478 throughput=2100.0/s mem=0.42GiB patience=2/8
+[epoch] stage=head 006/30 train_loss=0.04181 train_MAE=0.0838 train_R2=0.6158 val_MAE=0.1797 val_RMSE=0.2146 val_R2=-0.1187 val_r=0.1624 throughput=2052.1/s mem=0.42GiB patience=3/8
+[epoch] stage=head 007/30 train_loss=0.04085 train_MAE=0.0828 train_R2=0.6244 val_MAE=0.1750 val_RMSE=0.2090 val_R2=-0.0602 val_r=0.1104 throughput=2142.1/s mem=0.42GiB patience=4/8
+[epoch] stage=head 008/30 train_loss=0.04109 train_MAE=0.0828 train_R2=0.6177 val_MAE=0.1734 val_RMSE=0.2107 val_R2=-0.0784 val_r=0.1385 throughput=2111.8/s mem=0.42GiB patience=0/8*
+[epoch] stage=head 009/30 train_loss=0.03967 train_MAE=0.0819 train_R2=0.6239 val_MAE=0.1775 val_RMSE=0.2145 val_R2=-0.1170 val_r=0.0955 throughput=2087.7/s mem=0.42GiB patience=1/8
+[epoch] stage=head 010/30 train_loss=0.03938 train_MAE=0.0822 train_R2=0.6205 val_MAE=0.1725 val_RMSE=0.2091 val_R2=-0.0612 val_r=0.1560 throughput=1837.0/s mem=0.42GiB patience=0/8*
+[epoch] stage=head 011/30 train_loss=0.03882 train_MAE=0.0827 train_R2=0.6193 val_MAE=0.1824 val_RMSE=0.2174 val_R2=-0.1474 val_r=0.0796 throughput=1363.8/s mem=0.42GiB patience=1/8
+[epoch] stage=head 012/30 train_loss=0.03896 train_MAE=0.0831 train_R2=0.6178 val_MAE=0.1763 val_RMSE=0.2116 val_R2=-0.0868 val_r=0.1414 throughput=1252.9/s mem=0.42GiB patience=2/8
+[epoch] stage=head 013/30 train_loss=0.03877 train_MAE=0.0819 train_R2=0.6241 val_MAE=0.1745 val_RMSE=0.2121 val_R2=-0.0922 val_r=0.1140 throughput=1313.2/s mem=0.42GiB patience=3/8
+[epoch] stage=head 014/30 train_loss=0.03848 train_MAE=0.0825 train_R2=0.6221 val_MAE=0.1781 val_RMSE=0.2124 val_R2=-0.0959 val_r=0.1351 throughput=1795.0/s mem=0.42GiB patience=4/8
+[epoch] stage=head 015/30 train_loss=0.03803 train_MAE=0.0829 train_R2=0.6244 val_MAE=0.1789 val_RMSE=0.2148 val_R2=-0.1199 val_r=0.0968 throughput=1796.1/s mem=0.42GiB patience=5/8
+[epoch] stage=head 016/30 train_loss=0.03806 train_MAE=0.0824 train_R2=0.6282 val_MAE=0.1743 val_RMSE=0.2097 val_R2=-0.0683 val_r=0.1478 throughput=2182.3/s mem=0.42GiB patience=6/8
+[epoch] stage=head 017/30 train_loss=0.03791 train_MAE=0.0815 train_R2=0.6280 val_MAE=0.1775 val_RMSE=0.2139 val_R2=-0.1113 val_r=0.1206 throughput=2136.2/s mem=0.42GiB patience=7/8
+[epoch] stage=head 018/30 train_loss=0.03738 train_MAE=0.0818 train_R2=0.6264 val_MAE=0.1771 val_RMSE=0.2142 val_R2=-0.1144 val_r=0.1274 throughput=2148.7/s mem=0.42GiB patience=8/8
+[early-stop] stage=head
+[stage-start] stage=last_stage backbone_lr=1.0e-05 head_lr=1.0e-04 trainable=1219825
+[epoch] stage=last_stage 001/50 train_loss=0.10391 train_MAE=0.1125 train_R2=0.4250 val_MAE=0.1804 val_RMSE=0.2232 val_R2=-0.2101 val_r=-0.0014 throughput=1666.6/s mem=0.44GiB patience=0/10*
+[epoch] stage=last_stage 002/50 train_loss=0.07706 train_MAE=0.0939 train_R2=0.5659 val_MAE=0.1870 val_RMSE=0.2285 val_R2=-0.2681 val_r=-0.0078 throughput=1634.3/s mem=0.44GiB patience=1/10
+[epoch] stage=last_stage 003/50 train_loss=0.06261 train_MAE=0.0869 train_R2=0.6032 val_MAE=0.1828 val_RMSE=0.2214 val_R2=-0.1904 val_r=-0.0152 throughput=1706.7/s mem=0.44GiB patience=2/10
+[epoch] stage=last_stage 004/50 train_loss=0.05671 train_MAE=0.0847 train_R2=0.6172 val_MAE=0.1829 val_RMSE=0.2204 val_R2=-0.1797 val_r=0.0258 throughput=1617.4/s mem=0.44GiB patience=3/10
+[epoch] stage=last_stage 005/50 train_loss=0.05276 train_MAE=0.0842 train_R2=0.6136 val_MAE=0.1799 val_RMSE=0.2151 val_R2=-0.1236 val_r=0.0384 throughput=1662.3/s mem=0.44GiB patience=0/10*
+[epoch] stage=last_stage 006/50 train_loss=0.05016 train_MAE=0.0844 train_R2=0.6187 val_MAE=0.1760 val_RMSE=0.2115 val_R2=-0.0864 val_r=0.0758 throughput=1682.3/s mem=0.44GiB patience=0/10*
+[epoch] stage=last_stage 007/50 train_loss=0.04887 train_MAE=0.0831 train_R2=0.6190 val_MAE=0.1782 val_RMSE=0.2153 val_R2=-0.1257 val_r=0.0644 throughput=1658.1/s mem=0.44GiB patience=1/10
+[epoch] stage=last_stage 008/50 train_loss=0.04716 train_MAE=0.0835 train_R2=0.6190 val_MAE=0.1771 val_RMSE=0.2119 val_R2=-0.0902 val_r=0.0977 throughput=1427.8/s mem=0.44GiB patience=2/10
+[epoch] stage=last_stage 009/50 train_loss=0.04592 train_MAE=0.0824 train_R2=0.6222 val_MAE=0.1820 val_RMSE=0.2176 val_R2=-0.1500 val_r=0.0288 throughput=1465.2/s mem=0.44GiB patience=3/10
+[epoch] stage=last_stage 010/50 train_loss=0.04547 train_MAE=0.0833 train_R2=0.6111 val_MAE=0.1841 val_RMSE=0.2212 val_R2=-0.1878 val_r=0.0415 throughput=1454.0/s mem=0.44GiB patience=4/10
+[epoch] stage=last_stage 011/50 train_loss=0.04396 train_MAE=0.0828 train_R2=0.6191 val_MAE=0.1796 val_RMSE=0.2169 val_R2=-0.1429 val_r=0.0822 throughput=1460.9/s mem=0.44GiB patience=5/10
+[epoch] stage=last_stage 012/50 train_loss=0.04361 train_MAE=0.0826 train_R2=0.6202 val_MAE=0.1844 val_RMSE=0.2174 val_R2=-0.1482 val_r=0.0628 throughput=1336.5/s mem=0.44GiB patience=6/10
+[epoch] stage=last_stage 013/50 train_loss=0.04356 train_MAE=0.0828 train_R2=0.6161 val_MAE=0.1824 val_RMSE=0.2177 val_R2=-0.1503 val_r=0.0642 throughput=1610.2/s mem=0.44GiB patience=7/10
+[epoch] stage=last_stage 014/50 train_loss=0.04280 train_MAE=0.0828 train_R2=0.6203 val_MAE=0.1828 val_RMSE=0.2169 val_R2=-0.1421 val_r=0.0601 throughput=1619.9/s mem=0.44GiB patience=8/10
+[epoch] stage=last_stage 015/50 train_loss=0.04226 train_MAE=0.0817 train_R2=0.6250 val_MAE=0.1801 val_RMSE=0.2128 val_R2=-0.0999 val_r=0.0803 throughput=1679.1/s mem=0.44GiB patience=9/10
+[epoch] stage=last_stage 016/50 train_loss=0.04143 train_MAE=0.0817 train_R2=0.6243 val_MAE=0.1814 val_RMSE=0.2155 val_R2=-0.1278 val_r=0.0741 throughput=1593.1/s mem=0.44GiB patience=10/10
+[early-stop] stage=last_stage
+[job-complete] mode=pre_only selected=head test_MAE=0.1785 test_R2=-0.3774 test_r=-0.1219

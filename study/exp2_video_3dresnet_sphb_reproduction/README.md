@@ -8,13 +8,16 @@ DOI: 10.3390/bios15080485.
 ## Controlled data
 
 - The target is raw Hemoglobin converted from g/L to g/dL.
-- `task_records.csv` exactly reuses all 906 videos and the patient-disjoint
-  train/validation/test assignment from
+- `task_records.csv` retains 839 of the 906 reference videos and preserves their
+  patient-disjoint train/validation/test assignment from
   `exp2_face_pretrained_head32_regression/outputs/20frame`.
-- Each model input spans the complete source video with 224 deterministic,
-  uniformly positioned frames. No temporal interpolation is used. For the 67
-  videos with fewer than 224 decodable frames, nearest positions are repeated;
-  this is recorded per video and preserves the exact split and sample set.
+- Each model input is the source-frame-contiguous 224-frame window nearest the
+  video midpoint. Frames are never repeated or temporally interpolated. The 67
+  videos with fewer than 224 consecutive decodable frames are excluded and
+  recorded in `frame_sampling_exclusions.csv`.
+- The retained train/validation/test sets contain 500/166/173 videos from
+  169/57/56 patients. No patient changes split and no patient leakage is
+  introduced.
 - Frames are streamed from the existing all-frame JPEG byte-offset index. No
   decoded video cache is written. The entry point validates and reuses that
   index, or rebuilds the compact byte offsets automatically if it is absent or
@@ -53,6 +56,12 @@ adaptations. In particular, the paper inconsistently mentions both 224 and 30
 frames, and both 100 and 50 epochs; this implementation follows its methods and
 Table 2: 224 frames and 100 epochs.
 
+Training completion automatically generates the training history, held-out
+regression/Bland-Altman figure, and a Hemoglobin regression comparison against
+the existing pretrained Head32 and history Head32 models. The comparison
+recomputes every model on the current 3D CNN's common test-video cohort, so
+videos excluded for lacking 224 consecutive frames do not bias the comparison.
+
 ## Commands
 
 Prepare and validate without training:
@@ -61,7 +70,7 @@ Prepare and validate without training:
 python -m study.exp2_video_3dresnet_sphb_reproduction.run_all --prepare-only
 ```
 
-Formal detached training entry point (do not run until approved):
+Formal detached training entry point:
 
 ```bash
 bash study/exp2_video_3dresnet_sphb_reproduction/launch_screen.sh

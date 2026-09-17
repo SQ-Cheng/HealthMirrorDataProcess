@@ -1,4 +1,4 @@
-"""Exact split reuse and streaming 224-frame video loading."""
+"""Exact split reuse and streaming centered contiguous video clips."""
 
 from collections import OrderedDict
 import hashlib
@@ -72,25 +72,101 @@ def validate_index(records, index_dir):
 def selected_global_indices(index, video_id):
     start, end = index.frame_range(video_id)
     count = end - start
-    if count < 1:
-        raise ValueError(f"No indexed frames for {video_id}")
-    local = np.rint(np.linspace(0, count - 1, FRAMES_PER_CLIP)).astype(np.int64)
-    return start + local, count, int(FRAMES_PER_CLIP - len(np.unique(local)))
+    if count < FRAMES_PER_CLIP:
+        raise ValueError(
+            f"fewer_than_{FRAMES_PER_CLIP}_decodable_frames:{count}"
+        )
+
+    source_indices = index.source_indices[start:end]
+    boundaries = np.flatnonzero(np.diff(source_indices) != 1) + 1
+    runs = np.split(np.arange(count, dtype=np.int64), boundaries)
+    candidates = []
+    video_midpoint = (float(source_indices[0]) + float(source_indices[-1])) / 2.0
+    for run in runs:
+        if len(run) < FRAMES_PER_CLIP:
+            continue
+        first_start = int(run[0])
+        last_start = int(run[-1]) - FRAMES_PER_CLIP + 1
+        ideal_source_start = video_midpoint - (FRAMES_PER_CLIP - 1) / 2.0
+        ideal_local_start = first_start + int(
+            np.floor(ideal_source_start - source_indices[first_start])
+        )
+        candidate_start = min(max(ideal_local_start, first_start), last_start)
+        candidate_midpoint = (
+            float(source_indices[candidate_start])
+            + float(source_indices[candidate_start + FRAMES_PER_CLIP - 1])
+        ) / 2.0
+        candidates.append(
+            (abs(candidate_midpoint - video_midpoint), candidate_start)
+        )
+    if not candidates:
+        longest_run = max((len(run) for run in runs), default=0)
+        raise ValueError(
+            f"no_{FRAMES_PER_CLIP}_frame_contiguous_run:longest={longest_run}"
+        )
+
+    local_start = min(candidates)[1]
+    local = np.arange(local_start, local_start + FRAMES_PER_CLIP, dtype=np.int64)
+    selected = start + local
+    if not np.all(np.diff(index.source_indices[selected]) == 1):
+        raise AssertionError(f"Non-contiguous source frame selection for {video_id}")
+    return selected, count
+
+
+def filter_records_for_complete_clips(records, index, output_dir):
+    retained_rows, excluded_rows = [], []
+    for row_index, row in enumerate(records.itertuples(index=False)):
+        try:
+            selected_global_indices(index, row.video_id)
+            retained_rows.append(row_index)
+        except ValueError as error:
+            start, end = index.frame_range(row.video_id)
+            source_indices = index.source_indices[start:end]
+            boundaries = np.flatnonzero(np.diff(source_indices) != 1) + 1
+            runs = np.split(np.arange(len(source_indices)), boundaries)
+            excluded_rows.append({
+                "hospital_id": row.hospital_id,
+                "video_id": row.video_id,
+                "split": row.split,
+                "source_decodable_frames": len(source_indices),
+                "longest_contiguous_run": max((len(run) for run in runs), default=0),
+                "reason": str(error),
+            })
+    exclusions = pd.DataFrame(excluded_rows, columns=[
+        "hospital_id", "video_id", "split", "source_decodable_frames",
+        "longest_contiguous_run", "reason",
+    ])
+    exclusions.to_csv(
+        os.path.join(output_dir, "frame_sampling_exclusions.csv"), index=False
+    )
+    return records.iloc[retained_rows].reset_index(drop=True), exclusions
 
 
 def write_sampling_audit(records, index, output_dir):
     rows = []
     for row in records.itertuples(index=False):
-        selected, source_count, repeats = selected_global_indices(index, row.video_id)
+        selected, source_count = selected_global_indices(index, row.video_id)
+        selected_sources = index.source_indices[selected]
+        selected_center = (
+            float(selected_sources[0]) + float(selected_sources[-1])
+        ) / 2.0
+        source_start, source_end = index.frame_range(row.video_id)
+        available_sources = index.source_indices[source_start:source_end]
+        available_center = (
+            float(available_sources[0]) + float(available_sources[-1])
+        ) / 2.0
         rows.append({
             "hospital_id": row.hospital_id,
             "video_id": row.video_id,
             "split": row.split,
             "source_decodable_frames": source_count,
             "selected_frames": len(selected),
-            "repeated_positions": repeats,
-            "first_source_frame_index": int(index.source_indices[selected[0]]),
-            "last_source_frame_index": int(index.source_indices[selected[-1]]),
+            "sampling_policy": "centered_contiguous_window",
+            "first_source_frame_index": int(selected_sources[0]),
+            "last_source_frame_index": int(selected_sources[-1]),
+            "source_frame_span": int(selected_sources[-1] - selected_sources[0] + 1),
+            "maximum_source_frame_gap": int(np.diff(selected_sources).max()),
+            "center_offset_from_available_frames": selected_center - available_center,
         })
     audit = pd.DataFrame(rows)
     audit.to_csv(os.path.join(output_dir, "frame_sampling_audit.csv"), index=False)

@@ -23,7 +23,13 @@ from .config import (
     SEED,
     SPLIT_CANDIDATES,
     SPLIT_FRACTIONS,
+    SPLIT_KS_MAX,
     SPLIT_SCORE_BINS,
+    SPLIT_SIZE_FRACTION_MAX,
+    SPLIT_SMALL_KS_MAX,
+    SPLIT_SMALL_N,
+    SPLIT_SMALL_WASSERSTEIN_IQR_MAX,
+    SPLIT_WASSERSTEIN_IQR_MAX,
     TIMEZONE,
 )
 
@@ -302,101 +308,247 @@ def build_recovery_candidates(output_dir):
     return records, report
 
 
-def _candidate_split(records, rng):
+def _split_allocation(count):
+    if count < 3:
+        raise ValueError(f"At least three patients per stratum are required, got {count}")
+    train = max(1, int(round(count * SPLIT_FRACTIONS[0])))
+    validation = max(1, int(round(count * SPLIT_FRACTIONS[1])))
+    if train + validation > count - 1:
+        train = count - validation - 1
+    return train, validation, count - train - validation
+
+
+def _patient_strata(records):
     patients = records.groupby("hospital_id").agg(
         median_score=("recovery_score", "median"),
         video_count=("video_id", "size"),
-    ).reset_index()
+    ).reset_index().sort_values("hospital_id").reset_index(drop=True)
     quantiles = min(SPLIT_SCORE_BINS, max(3, len(patients) // 12))
     patients["stratum"] = pd.qcut(
         patients["median_score"].rank(method="first"), quantiles, labels=False
     )
-    assignment = {}
-    for _, group in patients.groupby("stratum"):
-        ids = group["hospital_id"].to_numpy().copy()
-        rng.shuffle(ids)
-        n = len(ids)
-        train_n = max(1, int(round(n * SPLIT_FRACTIONS[0])))
-        val_n = max(1, int(round(n * SPLIT_FRACTIONS[1])))
-        if train_n + val_n >= n:
-            train_n, val_n = n - 2, 1
-        for hospital_id in ids[:train_n]:
-            assignment[hospital_id] = "train"
-        for hospital_id in ids[train_n:train_n + val_n]:
-            assignment[hospital_id] = "val"
-        for hospital_id in ids[train_n + val_n:]:
-            assignment[hospital_id] = "test"
-    return records["hospital_id"].map(assignment)
+    if patients["stratum"].value_counts().min() < 3:
+        raise RuntimeError("Recovery-score stratum has fewer than three patients")
+    return patients
+
+
+def _candidate_assignment(patients, rng):
+    assignment = np.empty(len(patients), dtype=np.int8)
+    strata = patients["stratum"].to_numpy(np.int16)
+    for stratum in sorted(np.unique(strata)):
+        indices = rng.permutation(np.flatnonzero(strata == stratum))
+        train_count, validation_count, _ = _split_allocation(len(indices))
+        assignment[indices[:train_count]] = 0
+        assignment[indices[train_count:train_count + validation_count]] = 1
+        assignment[indices[train_count + validation_count:]] = 2
+    return assignment
+
+
+def _distribution_pair(values, split_codes, first, second):
+    first_values = values[split_codes == first]
+    second_values = values[split_codes == second]
+    global_iqr = max(
+        float(np.quantile(values, 0.75) - np.quantile(values, 0.25)), 1e-9
+    )
+    ks = float(ks_2samp(first_values, second_values).statistic)
+    wasserstein = float(wasserstein_distance(first_values, second_values))
+    wasserstein_iqr = wasserstein / global_iqr
+    quantiles = (0.10, 0.25, 0.50, 0.75, 0.90)
+    quantile_difference = float(
+        np.max(
+            np.abs(
+                np.quantile(first_values, quantiles)
+                - np.quantile(second_values, quantiles)
+            )
+        )
+        / global_iqr
+    )
+    small = min(len(first_values), len(second_values)) < SPLIT_SMALL_N
+    ks_limit = SPLIT_SMALL_KS_MAX if small else SPLIT_KS_MAX
+    wasserstein_limit = (
+        SPLIT_SMALL_WASSERSTEIN_IQR_MAX
+        if small
+        else SPLIT_WASSERSTEIN_IQR_MAX
+    )
+    return {
+        "n_first": int(len(first_values)),
+        "n_second": int(len(second_values)),
+        "ks": ks,
+        "wasserstein": wasserstein,
+        "global_iqr": global_iqr,
+        "wasserstein_iqr": wasserstein_iqr,
+        "max_quantile_difference_iqr": quantile_difference,
+        "small_sample_rule": bool(small),
+        "ks_limit": ks_limit,
+        "wasserstein_iqr_limit": wasserstein_limit,
+        "passed": bool(
+            ks <= ks_limit + 1e-12
+            and wasserstein_iqr <= wasserstein_limit + 1e-12
+        ),
+    }
+
+
+def _candidate_score(values, patient_assignment, patient_row_indices):
+    split_codes = patient_assignment[patient_row_indices]
+    pair_metrics = [
+        _distribution_pair(values, split_codes, first, second)
+        for first, second in ((0, 1), (0, 2), (1, 2))
+    ]
+    max_ks = max(row["ks"] for row in pair_metrics)
+    max_wasserstein = max(row["wasserstein_iqr"] for row in pair_metrics)
+    max_quantile = max(row["max_quantile_difference_iqr"] for row in pair_metrics)
+    video_fractions = np.asarray([
+        (split_codes == code).mean() for code in range(3)
+    ])
+    patient_fractions = np.asarray([
+        (patient_assignment == code).mean() for code in range(3)
+    ])
+    target_fractions = np.asarray(SPLIT_FRACTIONS)
+    size_error = float(max(
+        np.abs(video_fractions - target_fractions).max(),
+        np.abs(patient_fractions - target_fractions).max(),
+    ))
+    objective = (
+        2.0 * max_wasserstein
+        + max_ks
+        + 0.25 * max_quantile
+        + 0.25 * size_error
+    )
+    return {
+        "objective": float(objective),
+        "max_ks": float(max_ks),
+        "max_wasserstein_iqr": float(max_wasserstein),
+        "max_quantile_difference_iqr": float(max_quantile),
+        "size_fraction_error": size_error,
+        "passed": bool(
+            all(row["passed"] for row in pair_metrics)
+            and size_error <= SPLIT_SIZE_FRACTION_MAX + 1e-12
+        ),
+    }
+
+
+def _distribution_audit(records):
+    values = records["recovery_score"].to_numpy(np.float64)
+    split_codes = records["split"].map(
+        {"train": 0, "val": 1, "test": 2}
+    ).to_numpy(np.int8)
+    summary_rows = []
+    for split in ("train", "val", "test"):
+        selected = values[records["split"].eq(split)]
+        split_records = records.loc[records["split"].eq(split)]
+        summary_rows.append({
+            "variable": "recovery_score",
+            "split": split,
+            "videos": int(len(selected)),
+            "patients": int(split_records["hospital_id"].nunique()),
+            "mean": float(np.mean(selected)),
+            "std": float(np.std(selected, ddof=1)),
+            "minimum": float(np.min(selected)),
+            "q10": float(np.quantile(selected, 0.10)),
+            "q25": float(np.quantile(selected, 0.25)),
+            "median": float(np.quantile(selected, 0.50)),
+            "q75": float(np.quantile(selected, 0.75)),
+            "q90": float(np.quantile(selected, 0.90)),
+            "maximum": float(np.max(selected)),
+        })
+    pair_rows = []
+    for first, second in (("train", "val"), ("train", "test"), ("val", "test")):
+        pair_rows.append({
+            "variable": "recovery_score",
+            "split_first": first,
+            "split_second": second,
+            **_distribution_pair(
+                values,
+                split_codes,
+                {"train": 0, "val": 1, "test": 2}[first],
+                {"train": 0, "val": 1, "test": 2}[second],
+            ),
+        })
+    return summary_rows, pair_rows
 
 
 def add_balanced_patient_split(records, output_dir, seed=SEED):
-    values = records["recovery_score"].to_numpy(float)
-    global_iqr = max(float(np.quantile(values, 0.75) - np.quantile(values, 0.25)), 1e-9)
-    best = None
-    for candidate in range(SPLIT_CANDIDATES):
-        split = _candidate_split(records, np.random.default_rng(seed + candidate))
-        if split.isna().any() or set(split) != {"train", "val", "test"}:
-            continue
-        pair_stats = []
-        for first, second in (("train", "val"), ("train", "test"), ("val", "test")):
-            a = values[split.eq(first)]; b = values[split.eq(second)]
-            pair_stats.append((
-                float(ks_2samp(a, b).statistic),
-                float(wasserstein_distance(a, b) / global_iqr),
-            ))
-        video_fractions = np.array([split.eq(name).mean() for name in ("train", "val", "test")])
-        patient_table = records[["hospital_id"]].drop_duplicates().copy()
-        patient_table["split"] = patient_table["hospital_id"].map(
-            records.assign(split=split).drop_duplicates("hospital_id").set_index("hospital_id")["split"]
+    records = records.copy()
+    records["hospital_id"] = records["hospital_id"].astype(str)
+    patients = _patient_strata(records)
+    patient_lookup = {
+        hospital_id: index
+        for index, hospital_id in enumerate(patients["hospital_id"])
+    }
+    patient_row_indices = records["hospital_id"].map(patient_lookup).to_numpy(np.int64)
+    values = records["recovery_score"].to_numpy(np.float64)
+    rng = np.random.default_rng(seed)
+    best_passed, best_overall = None, None
+    for candidate_index in range(SPLIT_CANDIDATES):
+        assignment = _candidate_assignment(patients, rng)
+        score = _candidate_score(values, assignment, patient_row_indices)
+        key = (
+            score["objective"],
+            score["max_wasserstein_iqr"],
+            score["max_ks"],
+            candidate_index,
         )
-        patient_fractions = np.array([
-            patient_table["split"].eq(name).mean() for name in ("train", "val", "test")
-        ])
-        size_error = max(
-            np.abs(video_fractions - SPLIT_FRACTIONS).max(),
-            np.abs(patient_fractions - SPLIT_FRACTIONS).max(),
+        candidate = (key, assignment.copy(), score, candidate_index)
+        if best_overall is None or key < best_overall[0]:
+            best_overall = candidate
+        if score["passed"] and (best_passed is None or key < best_passed[0]):
+            best_passed = candidate
+    if best_passed is None:
+        score = best_overall[2]
+        raise RuntimeError(
+            f"No balanced split passed after {SPLIT_CANDIDATES} candidates; "
+            f"best max_KS={score['max_ks']:.4f}, "
+            f"max_Wasserstein/IQR={score['max_wasserstein_iqr']:.4f}, "
+            f"size_error={score['size_fraction_error']:.4f}"
         )
-        objective = 2 * max(row[1] for row in pair_stats) + max(row[0] for row in pair_stats) + size_error
-        if best is None or objective < best[0]:
-            best = (objective, candidate, split.copy(), pair_stats, size_error)
-    if best is None:
-        raise RuntimeError("Could not construct patient-disjoint split")
-    _, candidate, split, pair_stats, size_error = best
+    _, assignment, selected_score, candidate_index = best_passed
     result = records.copy()
-    result["split"] = split
-    if result.groupby("hospital_id")["split"].nunique().gt(1).any():
+    result["split"] = np.asarray(("train", "val", "test"))[
+        assignment[patient_row_indices]
+    ]
+    patient_sets = {
+        split: set(result.loc[result["split"].eq(split), "hospital_id"])
+        for split in ("train", "val", "test")
+    }
+    if any(patient_sets[first] & patient_sets[second] for first, second in (
+        ("train", "val"), ("train", "test"), ("val", "test")
+    )):
         raise AssertionError("Patient leakage in Exp4 split")
+    if len(result) != len(records) or result["video_id"].nunique() != len(records):
+        raise AssertionError("Video loss or duplication in Exp4 split")
+    summary_rows, pair_rows = _distribution_audit(result)
+    if not all(row["passed"] for row in pair_rows):
+        raise AssertionError("Selected Exp4 split failed pairwise distribution audit")
     output_dir = Path(output_dir)
     result.to_csv(output_dir / "records.csv", index=False)
-    rows = []
-    for name in ("train", "val", "test"):
-        selected = result.loc[result["split"].eq(name), "recovery_score"]
-        rows.append({
-            "split": name,
-            "videos": len(selected),
-            "patients": int(result.loc[result["split"].eq(name), "hospital_id"].nunique()),
-            "mean": selected.mean(),
-            "std": selected.std(),
-            "min": selected.min(),
-            "q25": selected.quantile(0.25),
-            "median": selected.median(),
-            "q75": selected.quantile(0.75),
-            "max": selected.max(),
-        })
-    pd.DataFrame(rows).to_csv(output_dir / "split_distribution.csv", index=False)
+    summary = pd.DataFrame(summary_rows)
+    pairs = pd.DataFrame(pair_rows)
+    summary.to_csv(output_dir / "split_distribution.csv", index=False)
+    summary.to_csv(output_dir / "split_distribution_audit.csv", index=False)
+    pairs.to_csv(output_dir / "split_distribution_pairwise.csv", index=False)
     manifest = {
-        "schema_version": 1,
-        "algorithm": "patient-level median-score stratification with candidate search",
+        "schema_version": 2,
+        "algorithm": "Exp2-style patient-disjoint stratified candidate search with hard video-distribution constraints",
         "seed": seed,
         "candidate_count": SPLIT_CANDIDATES,
-        "selected_candidate": candidate,
-        "target_fractions": dict(zip(("train", "val", "test"), SPLIT_FRACTIONS)),
-        "objective": best[0],
-        "maximum_size_fraction_error": size_error,
-        "pairwise_ks_wasserstein_iqr": {
-            pair: {"ks": stats[0], "wasserstein_iqr": stats[1]}
-            for pair, stats in zip(("train_val", "train_test", "val_test"), pair_stats)
+        "selected_candidate_index": int(candidate_index),
+        "score_stratification": {
+            "patient_statistic": "median recovery_score",
+            "quantile_bins": int(patients["stratum"].nunique()),
         },
+        "target_fractions": dict(zip(("train", "val", "test"), SPLIT_FRACTIONS)),
+        "hard_limits": {
+            "ks": SPLIT_KS_MAX,
+            "wasserstein_iqr": SPLIT_WASSERSTEIN_IQR_MAX,
+            "small_n": SPLIT_SMALL_N,
+            "small_ks": SPLIT_SMALL_KS_MAX,
+            "small_wasserstein_iqr": SPLIT_SMALL_WASSERSTEIN_IQR_MAX,
+            "size_fraction_error": SPLIT_SIZE_FRACTION_MAX,
+        },
+        "selection_score": selected_score,
+        "all_pairwise_distribution_checks_passed": bool(pairs["passed"].all()),
+        "patient_leakage": False,
+        "video_count_preserved": True,
     }
     with open(output_dir / "split_manifest.json", "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
@@ -405,7 +557,7 @@ def add_balanced_patient_split(records, output_dir, seed=SEED):
             f"{name}={int(result.split.eq(name).sum())}videos/"
             f"{result.loc[result.split.eq(name), 'hospital_id'].nunique()}patients"
             for name in ("train", "val", "test")
-        ),
+        ) + f" candidate={candidate_index} objective={selected_score['objective']:.5f}",
         flush=True,
     )
     return result, manifest

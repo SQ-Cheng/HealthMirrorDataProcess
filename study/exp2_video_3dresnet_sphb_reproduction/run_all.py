@@ -30,7 +30,13 @@ from .config import (
     SEED,
     TRAIN_MICRO_BATCH_SIZE,
 )
-from .data import prepare_records, sha256, validate_index, write_sampling_audit
+from .data import (
+    filter_records_for_complete_clips,
+    prepare_records,
+    sha256,
+    validate_index,
+    write_sampling_audit,
+)
 from .models import PaperResidual3DRegressor, parameter_count
 from .plot_results import main as plot_results
 from .train import train
@@ -70,13 +76,17 @@ def main():
     )
     build_or_reuse_frame_index(records, args.index_dir, frame_policy="allframes")
     index, index_path, index_manifest_path = validate_index(records, args.index_dir)
+    reference_video_count = len(records)
+    records, exclusions = filter_records_for_complete_clips(
+        records, index, args.output_dir
+    )
+    records.to_csv(records_path, index=False)
     audit = write_sampling_audit(records, index, args.output_dir)
     _model_smoke_test()
     split_counts = records.groupby("split").size().astype(int).to_dict()
     patient_counts = records.groupby("split")["hospital_id"].nunique().astype(int).to_dict()
-    repeated = audit.loc[audit["repeated_positions"].gt(0)]
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "experiment": "biosensors_2025_15_485_residual_3d_cnn_reproduction",
         "paper": {
             "doi": PAPER_DOI,
@@ -93,11 +103,12 @@ def main():
             "one_nearest_lab_per_video": True,
         },
         "split": {
-            "policy": "exact reuse of current patient-disjoint Exp2 split",
+            "policy": "retain the current patient-disjoint Exp2 assignments after video eligibility filtering",
             "reference_task_records": os.path.abspath(reference_path),
             "reference_sha256": sha256(reference_path),
             "materialized_sha256": sha256(records_path),
             "assignment_sha256": _split_hash(records),
+            "reference_videos": reference_video_count,
             "videos": split_counts,
             "patients": patient_counts,
             "patient_leakage": False,
@@ -105,11 +116,20 @@ def main():
         "video": {
             "input_layout": "B,C,T,H,W",
             "input_shape": [3, FRAMES_PER_CLIP, IMAGE_SIZE, IMAGE_SIZE],
-            "sampling": "deterministic uniform coverage of all decodable source frames",
+            "sampling": "source-frame-contiguous 224-frame window nearest the video midpoint",
             "temporal_interpolation": False,
-            "short_video_policy": "nearest-neighbor repeated positions to preserve exact sample set",
-            "videos_requiring_repeated_positions": int(len(repeated)),
-            "maximum_repeated_positions": int(audit["repeated_positions"].max()),
+            "frame_repetition": False,
+            "ineligible_video_policy": "exclude videos without a contiguous run of 224 decodable source frames",
+            "excluded_videos": int(len(exclusions)),
+            "exclusion_audit": os.path.abspath(
+                os.path.join(args.output_dir, "frame_sampling_exclusions.csv")
+            ),
+            "all_selected_source_spans_equal_224": bool(
+                audit["source_frame_span"].eq(FRAMES_PER_CLIP).all()
+            ),
+            "all_selected_maximum_source_gaps_equal_1": bool(
+                audit["maximum_source_frame_gap"].eq(1).all()
+            ),
             "spatial_resize": "bilinear with antialias, 128x128 to 224x224",
             "pixel_scaling": "uint8 / 255",
             "augmentation": None,
@@ -144,8 +164,8 @@ def main():
         },
         "declared_adaptations": [
             "Reuse the current Exp2 patient split instead of the paper's random 64/16/20 split.",
-            "Use deterministic full-duration uniform sampling because the paper does not specify its 224-frame sampler.",
-            "Repeat positions only for source videos shorter than 224 decodable frames to avoid changing the sample set.",
+            "Select the source-frame-contiguous 224-frame window nearest each video's midpoint.",
+            "Exclude videos without 224 consecutive decodable source frames; never repeat or interpolate frames.",
             "Use gradient accumulation to reproduce effective batch 4 on 16 GB GPUs.",
             "The available face crops are 128x128 and are spatially resized to the paper's 224x224 input.",
         ],
@@ -158,7 +178,8 @@ def main():
         json.dump(manifest, handle, ensure_ascii=False, indent=2)
     print(
         f"Prepared paper 3D CNN: videos={len(records)} split={split_counts} "
-        f"short_videos_repeated={len(repeated)} parameters={parameter_count():,}", flush=True
+        f"excluded_without_contiguous_224={len(exclusions)} "
+        f"parameters={parameter_count():,}", flush=True
     )
     if args.prepare_only:
         print("Preparation and model smoke test complete; training not started", flush=True)

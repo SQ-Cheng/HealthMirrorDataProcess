@@ -55,6 +55,18 @@ CONTRAST_LABELS = {
     "preop_to_predischarge": "Pre-op -> pre-discharge",
 }
 
+CABG_TRAJECTORY_PANELS = (
+    ("A008", "Lactate"),
+    ("A004", "Troponin"),
+    ("A035", "Blood-gas Hb"),
+    ("A007", "Lab Hb"),
+    ("A021", "PO2"),
+    ("A023", "O2Hb Frac"),
+    ("A006", "Glucose"),
+    ("A009", "PCO2"),
+    ("A034", "P/F ratio"),
+)
+
 PROCEDURE_ENGLISH = {
     "冠状动脉旁路移植术": "CABG",
     "单根导管冠状动脉造影": "Single-catheter coronary angiography",
@@ -928,13 +940,17 @@ def _plot_phase_heatmap(summary, output_dir):
 
 
 def _plot_top_phase_trajectories(summary, selected_ids, output_dir):
-    top_ids = selected_ids[:12]
-    figure, axes = plt.subplots(4, 3, figsize=(16, 14), squeeze=False)
-    for axis, variable_id in zip(axes.flat, top_ids):
+    del selected_ids
+    figure, axes = plt.subplots(3, 3, figsize=(16, 11), squeeze=False)
+    for axis, (variable_id, display_name) in zip(
+        axes.flat, CABG_TRAJECTORY_PANELS
+    ):
         values = summary[
             summary["cohort"].eq("cabg")
             & summary["variable_id"].eq(variable_id)
         ].sort_values("phase_order")
+        if values.empty:
+            raise ValueError(f"No CABG trajectory data for {variable_id}")
         x = values["phase_order"].to_numpy()
         axis.plot(x, values["median"], color="#2F6B8A", marker="o")
         axis.fill_between(
@@ -961,7 +977,7 @@ def _plot_top_phase_trajectories(summary, selected_ids, output_dir):
             )
         row = values.iloc[0]
         axis.set_title(
-            f"{variable_id} {row['item_name_en']}",
+            f"{display_name} ({variable_id})",
             fontsize=9,
         )
         axis.set_ylabel(row["unit"])
@@ -974,10 +990,8 @@ def _plot_top_phase_trajectories(summary, selected_ids, output_dir):
             fontsize=6,
         )
         axis.grid(alpha=0.2)
-    for axis in axes.flat[len(top_ids):]:
-        axis.axis("off")
     figure.suptitle(
-        "Largest CABG-aligned changes: patient-balanced median and IQR",
+        "Selected CABG-aligned trajectories: patient-balanced median and IQR",
         fontsize=14,
     )
     figure.tight_layout()

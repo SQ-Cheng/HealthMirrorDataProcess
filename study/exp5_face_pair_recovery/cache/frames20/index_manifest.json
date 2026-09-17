@@ -1,0 +1,4032 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "frames_per_video": 20,
+    "quantile_range": [
+      0.05,
+      0.9500000000000001
+    ],
+    "minimum_source_frame_gap": 2,
+    "source_image_size": 128
+  },
+  "requested_video_ids": [
+    "mirror1_patient_000315",
+    "mirror1_patient_000316",
+    "mirror1_patient_000317",
+    "mirror1_patient_000318",
+    "mirror1_patient_000319",
+    "mirror1_patient_000330",
+    "mirror1_patient_000331",
+    "mirror1_patient_000332",
+    "mirror1_patient_000333",
+    "mirror1_patient_000335",
+    "mirror1_patient_000336",
+    "mirror1_patient_000338",
+    "mirror1_patient_000344",
+    "mirror1_patient_000345",
+    "mirror1_patient_000353",
+    "mirror1_patient_000354",
+    "mirror1_patient_000355",
+    "mirror1_patient_000356",
+    "mirror1_patient_000359",
+    "mirror1_patient_000362",
+    "mirror1_patient_000363",
+    "mirror1_patient_000367",
+    "mirror1_patient_000372",
+    "mirror1_patient_000380",
+    "mirror1_patient_000381",
+    "mirror1_patient_000402",
+    "mirror1_patient_000403",
+    "mirror1_patient_000424",
+    "mirror1_patient_000427",
+    "mirror1_patient_000474",
+    "mirror1_patient_000481",
+    "mirror1_patient_000488",
+    "mirror1_patient_000497",
+    "mirror1_patient_000516",
+    "mirror1_patient_000517",
+    "mirror1_patient_000518",
+    "mirror2_patient_000006",
+    "mirror2_patient_000018",
+    "mirror2_patient_000020",
+    "mirror2_patient_000021",
+    "mirror2_patient_000022",
+    "mirror2_patient_000024",
+    "mirror2_patient_000025",
+    "mirror2_patient_000032",
+    "mirror2_patient_000033",
+    "mirror2_patient_000035",
+    "mirror2_patient_000040",
+    "mirror2_patient_000041",
+    "mirror2_patient_000042",
+    "mirror2_patient_000043",
+    "mirror2_patient_000045",
+    "mirror2_patient_000046",
+    "mirror2_patient_000053",
+    "mirror2_patient_000056",
+    "mirror2_patient_000057",
+    "mirror2_patient_000058",
+    "mirror2_patient_000059",
+    "mirror2_patient_000061",
+    "mirror2_patient_000062",
+    "mirror2_patient_000063",
+    "mirror2_patient_000066",
+    "mirror2_patient_000067",
+    "mirror2_patient_000069",
+    "mirror2_patient_000071",
+    "mirror2_patient_000072",
+    "mirror2_patient_000073",
+    "mirror2_patient_000074",
+    "mirror2_patient_000075",
+    "mirror2_patient_000076",
+    "mirror2_patient_000077",
+    "mirror2_patient_000078",
+    "mirror2_patient_000079",
+    "mirror2_patient_000080",
+    "mirror2_patient_000081",
+    "mirror2_patient_000082",
+    "mirror2_patient_000083",
+    "mirror2_patient_000085",
+    "mirror2_patient_000087",
+    "mirror2_patient_000088",
+    "mirror2_patient_000090",
+    "mirror2_patient_000091",
+    "mirror2_patient_000093",
+    "mirror2_patient_000094",
+    "mirror2_patient_000095",
+    "mirror2_patient_000096",
+    "mirror2_patient_000097",
+    "mirror2_patient_000098",
+    "mirror2_patient_000099",
+    "mirror2_patient_000100",
+    "mirror2_patient_000101",
+    "mirror2_patient_000102",
+    "mirror2_patient_000104",
+    "mirror2_patient_000107",
+    "mirror2_patient_000108",
+    "mirror2_patient_000109",
+    "mirror2_patient_000110",
+    "mirror2_patient_000111",
+    "mirror2_patient_000112",
+    "mirror2_patient_000113",
+    "mirror2_patient_000114",
+    "mirror2_patient_000115",
+    "mirror2_patient_000117",
+    "mirror2_patient_000118",
+    "mirror2_patient_000119",
+    "mirror2_patient_000121",
+    "mirror2_patient_000123",
+    "mirror2_patient_000129",
+    "mirror2_patient_000131",
+    "mirror2_patient_000132",
+    "mirror2_patient_000133",
+    "mirror2_patient_000134",
+    "mirror2_patient_000135",
+    "mirror2_patient_000136",
+    "mirror2_patient_000137",
+    "mirror2_patient_000138",
+    "mirror2_patient_000139",
+    "mirror2_patient_000140",
+    "mirror2_patient_000141",
+    "mirror2_patient_000142",
+    "mirror2_patient_000144",
+    "mirror2_patient_000147",
+    "mirror2_patient_000151",
+    "mirror2_patient_000152",
+    "mirror2_patient_000153",
+    "mirror2_patient_000154",
+    "mirror2_patient_000155",
+    "mirror2_patient_000156",
+    "mirror2_patient_000157",
+    "mirror2_patient_000158",
+    "mirror2_patient_000159",
+    "mirror2_patient_000160",
+    "mirror2_patient_000161",
+    "mirror2_patient_000162",
+    "mirror2_patient_000163",
+    "mirror2_patient_000164",
+    "mirror2_patient_000166",
+    "mirror2_patient_000167",
+    "mirror2_patient_000170",
+    "mirror2_patient_000171",
+    "mirror2_patient_000172",
+    "mirror2_patient_000173",
+    "mirror2_patient_000175",
+    "mirror2_patient_000176",
+    "mirror2_patient_000177",
+    "mirror2_patient_000179",
+    "mirror2_patient_000180",
+    "mirror2_patient_000183",
+    "mirror2_patient_000184",
+    "mirror2_patient_000186",
+    "mirror2_patient_000195",
+    "mirror2_patient_000199",
+    "mirror2_patient_000200",
+    "mirror2_patient_000201",
+    "mirror2_patient_000202",
+    "mirror2_patient_000203",
+    "mirror2_patient_000206",
+    "mirror2_patient_000207",
+    "mirror2_patient_000208",
+    "mirror2_patient_000219",
+    "mirror2_patient_000222",
+    "mirror2_patient_000223",
+    "mirror2_patient_000226",
+    "mirror2_patient_000227",
+    "mirror2_patient_000228",
+    "mirror2_patient_000231",
+    "mirror2_patient_000232",
+    "mirror2_patient_000234",
+    "mirror2_patient_000235",
+    "mirror2_patient_000243",
+    "mirror2_patient_000245",
+    "mirror2_patient_000246",
+    "mirror2_patient_000250",
+    "mirror2_patient_000259",
+    "mirror2_patient_000260",
+    "mirror2_patient_000263",
+    "mirror2_patient_000264",
+    "mirror2_patient_000265",
+    "mirror2_patient_000267",
+    "mirror2_patient_000268",
+    "mirror2_patient_000273",
+    "mirror2_patient_000274",
+    "mirror2_patient_000276",
+    "mirror2_patient_000277",
+    "mirror2_patient_000278",
+    "mirror2_patient_000280",
+    "mirror2_patient_000281",
+    "mirror2_patient_000282",
+    "mirror2_patient_000283",
+    "mirror2_patient_000284",
+    "mirror2_patient_000285",
+    "mirror2_patient_000286",
+    "mirror2_patient_000287",
+    "mirror2_patient_000290",
+    "mirror2_patient_000291",
+    "mirror2_patient_000292",
+    "mirror2_patient_000293",
+    "mirror2_patient_000296",
+    "mirror2_patient_000297",
+    "mirror2_patient_000298",
+    "mirror2_patient_000299",
+    "mirror2_patient_000300",
+    "mirror2_patient_000301",
+    "mirror2_patient_000302",
+    "mirror2_patient_000303",
+    "mirror2_patient_000304",
+    "mirror2_patient_000305",
+    "mirror2_patient_000306",
+    "mirror2_patient_000307",
+    "mirror2_patient_000309",
+    "mirror2_patient_000310",
+    "mirror2_patient_000311",
+    "mirror2_patient_000313",
+    "mirror2_patient_000314",
+    "mirror2_patient_000315",
+    "mirror2_patient_000317",
+    "mirror2_patient_000318",
+    "mirror2_patient_000319",
+    "mirror2_patient_000320",
+    "mirror2_patient_000321",
+    "mirror2_patient_000323",
+    "mirror2_patient_000324",
+    "mirror2_patient_000328",
+    "mirror2_patient_000329",
+    "mirror2_patient_000331",
+    "mirror2_patient_000332",
+    "mirror2_patient_000333",
+    "mirror2_patient_000334",
+    "mirror2_patient_000335",
+    "mirror2_patient_000336",
+    "mirror2_patient_000339",
+    "mirror2_patient_000341",
+    "mirror2_patient_000342",
+    "mirror2_patient_000343",
+    "mirror2_patient_000344",
+    "mirror2_patient_000345",
+    "mirror2_patient_000346",
+    "mirror2_patient_000350",
+    "mirror2_patient_000352",
+    "mirror2_patient_000355",
+    "mirror2_patient_000356",
+    "mirror2_patient_000357",
+    "mirror2_patient_000358",
+    "mirror2_patient_000359",
+    "mirror2_patient_000360",
+    "mirror2_patient_000361",
+    "mirror2_patient_000363",
+    "mirror2_patient_000364",
+    "mirror2_patient_000365",
+    "mirror2_patient_000366",
+    "mirror2_patient_000368",
+    "mirror2_patient_000369",
+    "mirror2_patient_000370",
+    "mirror2_patient_000371",
+    "mirror2_patient_000372",
+    "mirror2_patient_000373",
+    "mirror2_patient_000375",
+    "mirror2_patient_000377",
+    "mirror2_patient_000378",
+    "mirror2_patient_000379",
+    "mirror2_patient_000380",
+    "mirror2_patient_000382",
+    "mirror2_patient_000383",
+    "mirror2_patient_000384",
+    "mirror2_patient_000385",
+    "mirror2_patient_000386",
+    "mirror2_patient_000387",
+    "mirror2_patient_000388",
+    "mirror2_patient_000390",
+    "mirror2_patient_000394",
+    "mirror2_patient_000395",
+    "mirror2_patient_000396",
+    "mirror2_patient_000397",
+    "mirror2_patient_000398",
+    "mirror2_patient_000399",
+    "mirror2_patient_000400",
+    "mirror2_patient_000401",
+    "mirror2_patient_000406",
+    "mirror2_patient_000407",
+    "mirror2_patient_000408",
+    "mirror2_patient_000409",
+    "mirror2_patient_000410",
+    "mirror2_patient_000412",
+    "mirror2_patient_000413",
+    "mirror2_patient_000414",
+    "mirror2_patient_000415",
+    "mirror2_patient_000416",
+    "mirror2_patient_000417",
+    "mirror2_patient_000418",
+    "mirror2_patient_000424",
+    "mirror2_patient_000427",
+    "mirror2_patient_000428",
+    "mirror2_patient_000429",
+    "mirror2_patient_000430",
+    "mirror2_patient_000431",
+    "mirror2_patient_000433",
+    "mirror2_patient_000434",
+    "mirror2_patient_000440",
+    "mirror2_patient_000441",
+    "mirror2_patient_000442",
+    "mirror2_patient_000443",
+    "mirror2_patient_000444",
+    "mirror2_patient_000450",
+    "mirror2_patient_000452",
+    "mirror2_patient_000453",
+    "mirror2_patient_000454",
+    "mirror2_patient_000455",
+    "mirror2_patient_000456",
+    "mirror2_patient_000458",
+    "mirror2_patient_000459",
+    "mirror2_patient_000464",
+    "mirror2_patient_000469",
+    "mirror2_patient_000470",
+    "mirror2_patient_000471",
+    "mirror2_patient_000472",
+    "mirror2_patient_000475",
+    "mirror2_patient_000476",
+    "mirror2_patient_000481",
+    "mirror2_patient_000483",
+    "mirror2_patient_000486",
+    "mirror2_patient_000487",
+    "mirror2_patient_000488",
+    "mirror2_patient_000503",
+    "mirror2_patient_000504",
+    "mirror2_patient_000505",
+    "mirror2_patient_000511",
+    "mirror4_patient_000017",
+    "mirror4_patient_000019",
+    "mirror4_patient_000020",
+    "mirror4_patient_000021",
+    "mirror4_patient_000022",
+    "mirror4_patient_000023",
+    "mirror4_patient_000123",
+    "mirror4_patient_000125",
+    "mirror4_patient_000136",
+    "mirror4_patient_000140",
+    "mirror4_patient_000143",
+    "mirror4_patient_000146",
+    "mirror4_patient_000156",
+    "mirror4_patient_000172",
+    "mirror4_patient_000173",
+    "mirror4_patient_000175",
+    "mirror4_patient_000176",
+    "mirror4_patient_000184",
+    "mirror4_patient_000190",
+    "mirror4_patient_000193",
+    "mirror4_patient_000197",
+    "mirror4_patient_000200",
+    "mirror4_patient_000202",
+    "mirror4_patient_000208",
+    "mirror4_patient_000209",
+    "mirror4_patient_000210",
+    "mirror4_patient_000211",
+    "mirror4_patient_000212",
+    "mirror4_patient_000213",
+    "mirror4_patient_000214",
+    "mirror4_patient_000217",
+    "mirror4_patient_000219",
+    "mirror4_patient_000220",
+    "mirror4_patient_000221",
+    "mirror4_patient_000229",
+    "mirror4_patient_000233",
+    "mirror4_patient_000234",
+    "mirror4_patient_000235",
+    "mirror4_patient_000241",
+    "mirror4_patient_000242",
+    "mirror4_patient_000245",
+    "mirror4_patient_000246",
+    "mirror4_patient_000248",
+    "mirror4_patient_000249",
+    "mirror4_patient_000250",
+    "mirror4_patient_000260",
+    "mirror4_patient_000264",
+    "mirror4_patient_000268",
+    "mirror4_patient_000273",
+    "mirror4_patient_000280",
+    "mirror4_patient_000290",
+    "mirror4_patient_000298",
+    "mirror4_patient_000300",
+    "mirror4_patient_000302",
+    "mirror4_patient_000309",
+    "mirror4_patient_000314",
+    "mirror4_patient_000320",
+    "mirror4_patient_000335",
+    "mirror4_patient_000351",
+    "mirror4_patient_000352",
+    "mirror4_patient_000354",
+    "mirror4_patient_000355",
+    "mirror4_patient_000367",
+    "mirror4_patient_000372",
+    "mirror4_patient_000373",
+    "mirror5_patient_000011",
+    "mirror5_patient_000020",
+    "mirror5_patient_000022",
+    "mirror5_patient_000023",
+    "mirror5_patient_000025",
+    "mirror5_patient_000027",
+    "mirror5_patient_000030",
+    "mirror5_patient_000034",
+    "mirror5_patient_000035",
+    "mirror5_patient_000036",
+    "mirror5_patient_000037",
+    "mirror5_patient_000041",
+    "mirror5_patient_000043",
+    "mirror5_patient_000044",
+    "mirror5_patient_000048",
+    "mirror5_patient_000050",
+    "mirror5_patient_000052",
+    "mirror5_patient_000056",
+    "mirror5_patient_000064",
+    "mirror5_patient_000069",
+    "mirror5_patient_000076",
+    "mirror5_patient_000077",
+    "mirror5_patient_000078",
+    "mirror5_patient_000084",
+    "mirror5_patient_000085",
+    "mirror5_patient_000086",
+    "mirror5_patient_000089",
+    "mirror5_patient_000093",
+    "mirror5_patient_000094",
+    "mirror5_patient_000098",
+    "mirror5_patient_000103",
+    "mirror5_patient_000109",
+    "mirror5_patient_000111",
+    "mirror5_patient_000113",
+    "mirror5_patient_000117",
+    "mirror5_patient_000130",
+    "mirror5_patient_000160",
+    "mirror5_patient_000178",
+    "mirror5_patient_000241",
+    "mirror5_patient_000276",
+    "mirror5_patient_000293",
+    "mirror5_patient_000303",
+    "mirror5_patient_000308",
+    "mirror5_patient_000309",
+    "mirror5_patient_000310",
+    "mirror5_patient_000321",
+    "mirror5_patient_000322",
+    "mirror5_patient_000323",
+    "mirror5_patient_000324",
+    "mirror5_patient_000325",
+    "mirror5_patient_000334",
+    "mirror5_patient_000335",
+    "mirror5_patient_000336",
+    "mirror5_patient_000347",
+    "mirror5_patient_000350",
+    "mirror5_patient_000354",
+    "mirror5_patient_000355",
+    "mirror5_patient_000356",
+    "mirror5_patient_000358",
+    "mirror5_patient_000359",
+    "mirror5_patient_000362",
+    "mirror5_patient_000363",
+    "mirror5_patient_000364",
+    "mirror5_patient_000365",
+    "mirror5_patient_000368",
+    "mirror5_patient_000369",
+    "mirror5_patient_000370",
+    "mirror5_patient_000371",
+    "mirror5_patient_000374",
+    "mirror5_patient_000375",
+    "mirror5_patient_000384",
+    "mirror5_patient_000385",
+    "mirror5_patient_000386",
+    "mirror5_patient_000389",
+    "mirror5_patient_000393",
+    "mirror6_patient_000002",
+    "mirror6_patient_000003",
+    "mirror6_patient_000005",
+    "mirror6_patient_000007",
+    "mirror6_patient_000010",
+    "mirror6_patient_000011",
+    "mirror6_patient_000017",
+    "mirror6_patient_000018",
+    "mirror6_patient_000019",
+    "mirror6_patient_000022",
+    "mirror6_patient_000023",
+    "mirror6_patient_000024",
+    "mirror6_patient_000025",
+    "mirror6_patient_000026",
+    "mirror6_patient_000027",
+    "mirror6_patient_000028",
+    "mirror6_patient_000031",
+    "mirror6_patient_000032",
+    "mirror6_patient_000036",
+    "mirror6_patient_000037",
+    "mirror6_patient_000038",
+    "mirror6_patient_000041",
+    "mirror6_patient_000046",
+    "mirror6_patient_000049",
+    "mirror6_patient_000050",
+    "mirror6_patient_000053",
+    "mirror6_patient_000057",
+    "mirror6_patient_000058",
+    "mirror6_patient_000059",
+    "mirror6_patient_000060",
+    "mirror6_patient_000064",
+    "mirror6_patient_000065",
+    "mirror6_patient_000066",
+    "mirror6_patient_000067",
+    "mirror6_patient_000071",
+    "mirror6_patient_000072",
+    "mirror6_patient_000075",
+    "mirror6_patient_000076",
+    "mirror6_patient_000082",
+    "mirror6_patient_000085",
+    "mirror6_patient_000087",
+    "mirror6_patient_000088",
+    "mirror6_patient_000089",
+    "mirror6_patient_000091",
+    "mirror6_patient_000092",
+    "mirror6_patient_000093",
+    "mirror6_patient_000094",
+    "mirror6_patient_000096",
+    "mirror6_patient_000097",
+    "mirror6_patient_000099",
+    "mirror6_patient_000102",
+    "mirror6_patient_000103",
+    "mirror6_patient_000106",
+    "mirror6_patient_000107",
+    "mirror6_patient_000108",
+    "mirror6_patient_000112",
+    "mirror6_patient_000114",
+    "mirror6_patient_000115",
+    "mirror6_patient_000116",
+    "mirror6_patient_000118",
+    "mirror6_patient_000119",
+    "mirror6_patient_000121",
+    "mirror6_patient_000124",
+    "mirror6_patient_000125",
+    "mirror6_patient_000127",
+    "mirror6_patient_000130",
+    "mirror6_patient_000132",
+    "mirror6_patient_000133",
+    "mirror6_patient_000135",
+    "mirror6_patient_000136",
+    "mirror6_patient_000137",
+    "mirror6_patient_000138",
+    "mirror6_patient_000139",
+    "mirror6_patient_000144",
+    "mirror6_patient_000145",
+    "mirror6_patient_000147",
+    "mirror6_patient_000150",
+    "mirror6_patient_000151",
+    "mirror6_patient_000156",
+    "mirror6_patient_000158",
+    "mirror6_patient_000159",
+    "mirror6_patient_000160",
+    "mirror6_patient_000162",
+    "mirror6_patient_000164",
+    "mirror6_patient_000165",
+    "mirror6_patient_000170",
+    "mirror6_patient_000172",
+    "mirror6_patient_000178",
+    "mirror6_patient_000180",
+    "mirror6_patient_000182",
+    "mirror6_patient_000188",
+    "mirror6_patient_000196",
+    "mirror6_patient_000198",
+    "mirror6_patient_000199",
+    "mirror6_patient_000200",
+    "mirror6_patient_000202"
+  ],
+  "usable_video_count": 544,
+  "failed_video_count": 17,
+  "failures": [
+    {
+      "video_id": "mirror1_patient_000380",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000380/video.avi",
+      "reason": "too_few_complete_jpeg_frames=8"
+    },
+    {
+      "video_id": "mirror1_patient_000518",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000518/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror2_patient_000097",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000097/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror2_patient_000111",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000111/video.avi",
+      "reason": "cannot_select_20_nonadjacent_frames"
+    },
+    {
+      "video_id": "mirror2_patient_000161",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000161/video.avi",
+      "reason": "too_few_complete_jpeg_frames=9"
+    },
+    {
+      "video_id": "mirror2_patient_000273",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000273/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror2_patient_000365",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000365/video.avi",
+      "reason": "too_few_complete_jpeg_frames=4"
+    },
+    {
+      "video_id": "mirror2_patient_000504",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000504/video.avi",
+      "reason": "cannot_select_20_nonadjacent_frames"
+    },
+    {
+      "video_id": "mirror4_patient_000125",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000125/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror4_patient_000143",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000143/video.avi",
+      "reason": "too_few_complete_jpeg_frames=2"
+    },
+    {
+      "video_id": "mirror4_patient_000200",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000200/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror4_patient_000210",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000210/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror4_patient_000221",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000221/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror4_patient_000273",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000273/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror5_patient_000048",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000048/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror5_patient_000052",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000052/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    },
+    {
+      "video_id": "mirror6_patient_000091",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000091/video.avi",
+      "reason": "too_few_complete_jpeg_frames=0"
+    }
+  ],
+  "source_files": [
+    {
+      "video_id": "mirror1_patient_000315",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000315/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1760006180000000000
+    },
+    {
+      "video_id": "mirror1_patient_000316",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000316/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1760108484000000000
+    },
+    {
+      "video_id": "mirror1_patient_000317",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000317/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1760272788000000000
+    },
+    {
+      "video_id": "mirror1_patient_000318",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000318/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1760272792000000000
+    },
+    {
+      "video_id": "mirror1_patient_000319",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000319/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1760272792000000000
+    },
+    {
+      "video_id": "mirror1_patient_000330",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000330/video.avi",
+      "size_bytes": 327692,
+      "mtime_ns": 1760449212000000000
+    },
+    {
+      "video_id": "mirror1_patient_000331",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000331/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1760449212000000000
+    },
+    {
+      "video_id": "mirror1_patient_000332",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000332/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1760449212000000000
+    },
+    {
+      "video_id": "mirror1_patient_000333",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000333/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1760449212000000000
+    },
+    {
+      "video_id": "mirror1_patient_000335",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000335/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1760542738000000000
+    },
+    {
+      "video_id": "mirror1_patient_000336",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000336/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1760542738000000000
+    },
+    {
+      "video_id": "mirror1_patient_000338",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000338/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1760542740000000000
+    },
+    {
+      "video_id": "mirror1_patient_000344",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000344/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1760631364000000000
+    },
+    {
+      "video_id": "mirror1_patient_000345",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000345/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1760631366000000000
+    },
+    {
+      "video_id": "mirror1_patient_000353",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000353/video.avi",
+      "size_bytes": 2516408,
+      "mtime_ns": 1760708010000000000
+    },
+    {
+      "video_id": "mirror1_patient_000354",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000354/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1760708012000000000
+    },
+    {
+      "video_id": "mirror1_patient_000355",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000355/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1760708012000000000
+    },
+    {
+      "video_id": "mirror1_patient_000356",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000356/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1760708016000000000
+    },
+    {
+      "video_id": "mirror1_patient_000359",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000359/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1760708018000000000
+    },
+    {
+      "video_id": "mirror1_patient_000362",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000362/video.avi",
+      "size_bytes": 262144,
+      "mtime_ns": 1760770678000000000
+    },
+    {
+      "video_id": "mirror1_patient_000363",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000363/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1760770678000000000
+    },
+    {
+      "video_id": "mirror1_patient_000367",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000367/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1760770680000000000
+    },
+    {
+      "video_id": "mirror1_patient_000372",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000372/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1760770682000000000
+    },
+    {
+      "video_id": "mirror1_patient_000380",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000380/video.avi",
+      "size_bytes": 36130,
+      "mtime_ns": 1761027742000000000
+    },
+    {
+      "video_id": "mirror1_patient_000381",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000381/video.avi",
+      "size_bytes": 262144,
+      "mtime_ns": 1761027742000000000
+    },
+    {
+      "video_id": "mirror1_patient_000402",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000402/video.avi",
+      "size_bytes": 1513512,
+      "mtime_ns": 1761055742000000000
+    },
+    {
+      "video_id": "mirror1_patient_000403",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000403/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1761055744000000000
+    },
+    {
+      "video_id": "mirror1_patient_000424",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000424/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1761134306000000000
+    },
+    {
+      "video_id": "mirror1_patient_000427",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000427/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1761321872000000000
+    },
+    {
+      "video_id": "mirror1_patient_000474",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000474/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1761490730000000000
+    },
+    {
+      "video_id": "mirror1_patient_000481",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000481/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1761490734000000000
+    },
+    {
+      "video_id": "mirror1_patient_000488",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000488/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1761490736000000000
+    },
+    {
+      "video_id": "mirror1_patient_000497",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000497/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1761665224000000000
+    },
+    {
+      "video_id": "mirror1_patient_000516",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000516/video.avi",
+      "size_bytes": 1689292,
+      "mtime_ns": 1761748642000000000
+    },
+    {
+      "video_id": "mirror1_patient_000517",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000517/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1761748644000000000
+    },
+    {
+      "video_id": "mirror1_patient_000518",
+      "path": "/root/shared/HealthMirrorDataset/mirror1_data/patient_000518/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1761748644000000000
+    },
+    {
+      "video_id": "mirror2_patient_000006",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000006/video.avi",
+      "size_bytes": 786432,
+      "mtime_ns": 1762266506000000000
+    },
+    {
+      "video_id": "mirror2_patient_000018",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000018/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1762266526000000000
+    },
+    {
+      "video_id": "mirror2_patient_000020",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000020/video.avi",
+      "size_bytes": 2883584,
+      "mtime_ns": 1762266528000000000
+    },
+    {
+      "video_id": "mirror2_patient_000021",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000021/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1762266530000000000
+    },
+    {
+      "video_id": "mirror2_patient_000022",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000022/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1762266532000000000
+    },
+    {
+      "video_id": "mirror2_patient_000024",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000024/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1762267394000000000
+    },
+    {
+      "video_id": "mirror2_patient_000025",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000025/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1762267394000000000
+    },
+    {
+      "video_id": "mirror2_patient_000032",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000032/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1762406552000000000
+    },
+    {
+      "video_id": "mirror2_patient_000033",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000033/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1762406554000000000
+    },
+    {
+      "video_id": "mirror2_patient_000035",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000035/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1762531124000000000
+    },
+    {
+      "video_id": "mirror2_patient_000040",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000040/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1762531156000000000
+    },
+    {
+      "video_id": "mirror2_patient_000041",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000041/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1762531162000000000
+    },
+    {
+      "video_id": "mirror2_patient_000042",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000042/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1762531168000000000
+    },
+    {
+      "video_id": "mirror2_patient_000043",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000043/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1762531174000000000
+    },
+    {
+      "video_id": "mirror2_patient_000045",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000045/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1762531186000000000
+    },
+    {
+      "video_id": "mirror2_patient_000046",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000046/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1762531190000000000
+    },
+    {
+      "video_id": "mirror2_patient_000053",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000053/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1762531226000000000
+    },
+    {
+      "video_id": "mirror2_patient_000056",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000056/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1762531240000000000
+    },
+    {
+      "video_id": "mirror2_patient_000057",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000057/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1762531248000000000
+    },
+    {
+      "video_id": "mirror2_patient_000058",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000058/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1762785304000000000
+    },
+    {
+      "video_id": "mirror2_patient_000059",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000059/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1762785304000000000
+    },
+    {
+      "video_id": "mirror2_patient_000061",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000061/video.avi",
+      "size_bytes": 1010970,
+      "mtime_ns": 1762785304000000000
+    },
+    {
+      "video_id": "mirror2_patient_000062",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000062/video.avi",
+      "size_bytes": 1460800,
+      "mtime_ns": 1762785304000000000
+    },
+    {
+      "video_id": "mirror2_patient_000063",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000063/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1762785306000000000
+    },
+    {
+      "video_id": "mirror2_patient_000066",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000066/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1762785306000000000
+    },
+    {
+      "video_id": "mirror2_patient_000067",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000067/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1762785306000000000
+    },
+    {
+      "video_id": "mirror2_patient_000069",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000069/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1762785308000000000
+    },
+    {
+      "video_id": "mirror2_patient_000071",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000071/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1762785308000000000
+    },
+    {
+      "video_id": "mirror2_patient_000072",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000072/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1762785308000000000
+    },
+    {
+      "video_id": "mirror2_patient_000073",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000073/video.avi",
+      "size_bytes": 2300710,
+      "mtime_ns": 1762785310000000000
+    },
+    {
+      "video_id": "mirror2_patient_000074",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000074/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1762785310000000000
+    },
+    {
+      "video_id": "mirror2_patient_000075",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000075/video.avi",
+      "size_bytes": 676628,
+      "mtime_ns": 1762785310000000000
+    },
+    {
+      "video_id": "mirror2_patient_000076",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000076/video.avi",
+      "size_bytes": 675876,
+      "mtime_ns": 1762785310000000000
+    },
+    {
+      "video_id": "mirror2_patient_000077",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000077/video.avi",
+      "size_bytes": 262144,
+      "mtime_ns": 1762785310000000000
+    },
+    {
+      "video_id": "mirror2_patient_000078",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000078/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1762785310000000000
+    },
+    {
+      "video_id": "mirror2_patient_000079",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000079/video.avi",
+      "size_bytes": 1231078,
+      "mtime_ns": 1762785312000000000
+    },
+    {
+      "video_id": "mirror2_patient_000080",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000080/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1762785312000000000
+    },
+    {
+      "video_id": "mirror2_patient_000081",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000081/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1762785312000000000
+    },
+    {
+      "video_id": "mirror2_patient_000082",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000082/video.avi",
+      "size_bytes": 3910274,
+      "mtime_ns": 1762785312000000000
+    },
+    {
+      "video_id": "mirror2_patient_000083",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000083/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1762785312000000000
+    },
+    {
+      "video_id": "mirror2_patient_000085",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000085/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1762785314000000000
+    },
+    {
+      "video_id": "mirror2_patient_000087",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000087/video.avi",
+      "size_bytes": 8650752,
+      "mtime_ns": 1762785314000000000
+    },
+    {
+      "video_id": "mirror2_patient_000088",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000088/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1762785314000000000
+    },
+    {
+      "video_id": "mirror2_patient_000090",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000090/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1762958866000000000
+    },
+    {
+      "video_id": "mirror2_patient_000091",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000091/video.avi",
+      "size_bytes": 262144,
+      "mtime_ns": 1762958866000000000
+    },
+    {
+      "video_id": "mirror2_patient_000093",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000093/video.avi",
+      "size_bytes": 532096,
+      "mtime_ns": 1762958870000000000
+    },
+    {
+      "video_id": "mirror2_patient_000094",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000094/video.avi",
+      "size_bytes": 149976,
+      "mtime_ns": 1762958870000000000
+    },
+    {
+      "video_id": "mirror2_patient_000095",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000095/video.avi",
+      "size_bytes": 225720,
+      "mtime_ns": 1762958872000000000
+    },
+    {
+      "video_id": "mirror2_patient_000096",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000096/video.avi",
+      "size_bytes": 218534,
+      "mtime_ns": 1762958872000000000
+    },
+    {
+      "video_id": "mirror2_patient_000097",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000097/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1762958872000000000
+    },
+    {
+      "video_id": "mirror2_patient_000098",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000098/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1762958874000000000
+    },
+    {
+      "video_id": "mirror2_patient_000099",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000099/video.avi",
+      "size_bytes": 9175040,
+      "mtime_ns": 1762958878000000000
+    },
+    {
+      "video_id": "mirror2_patient_000100",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000100/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1762958880000000000
+    },
+    {
+      "video_id": "mirror2_patient_000101",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000101/video.avi",
+      "size_bytes": 2883584,
+      "mtime_ns": 1762958882000000000
+    },
+    {
+      "video_id": "mirror2_patient_000102",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000102/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1762958886000000000
+    },
+    {
+      "video_id": "mirror2_patient_000104",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000104/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1762958892000000000
+    },
+    {
+      "video_id": "mirror2_patient_000107",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000107/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1762958898000000000
+    },
+    {
+      "video_id": "mirror2_patient_000108",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000108/video.avi",
+      "size_bytes": 1051836,
+      "mtime_ns": 1762958898000000000
+    },
+    {
+      "video_id": "mirror2_patient_000109",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000109/video.avi",
+      "size_bytes": 2840988,
+      "mtime_ns": 1762958900000000000
+    },
+    {
+      "video_id": "mirror2_patient_000110",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000110/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1762958902000000000
+    },
+    {
+      "video_id": "mirror2_patient_000111",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000111/video.avi",
+      "size_bytes": 103832,
+      "mtime_ns": 1762958904000000000
+    },
+    {
+      "video_id": "mirror2_patient_000112",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000112/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1762958906000000000
+    },
+    {
+      "video_id": "mirror2_patient_000113",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000113/video.avi",
+      "size_bytes": 1441086,
+      "mtime_ns": 1762958906000000000
+    },
+    {
+      "video_id": "mirror2_patient_000114",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000114/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1762958910000000000
+    },
+    {
+      "video_id": "mirror2_patient_000115",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000115/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1762958912000000000
+    },
+    {
+      "video_id": "mirror2_patient_000117",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000117/video.avi",
+      "size_bytes": 8388608,
+      "mtime_ns": 1762958920000000000
+    },
+    {
+      "video_id": "mirror2_patient_000118",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000118/video.avi",
+      "size_bytes": 656316,
+      "mtime_ns": 1762958920000000000
+    },
+    {
+      "video_id": "mirror2_patient_000119",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000119/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1762958922000000000
+    },
+    {
+      "video_id": "mirror2_patient_000121",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000121/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1762958928000000000
+    },
+    {
+      "video_id": "mirror2_patient_000123",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000123/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1763222066000000000
+    },
+    {
+      "video_id": "mirror2_patient_000129",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000129/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1763222068000000000
+    },
+    {
+      "video_id": "mirror2_patient_000131",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000131/video.avi",
+      "size_bytes": 2183506,
+      "mtime_ns": 1763222070000000000
+    },
+    {
+      "video_id": "mirror2_patient_000132",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000132/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1763222070000000000
+    },
+    {
+      "video_id": "mirror2_patient_000133",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000133/video.avi",
+      "size_bytes": 2188260,
+      "mtime_ns": 1763222070000000000
+    },
+    {
+      "video_id": "mirror2_patient_000134",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000134/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1763222070000000000
+    },
+    {
+      "video_id": "mirror2_patient_000135",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000135/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1763222070000000000
+    },
+    {
+      "video_id": "mirror2_patient_000136",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000136/video.avi",
+      "size_bytes": 606230,
+      "mtime_ns": 1763222072000000000
+    },
+    {
+      "video_id": "mirror2_patient_000137",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000137/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1763222072000000000
+    },
+    {
+      "video_id": "mirror2_patient_000138",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000138/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1763222072000000000
+    },
+    {
+      "video_id": "mirror2_patient_000139",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000139/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1763222072000000000
+    },
+    {
+      "video_id": "mirror2_patient_000140",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000140/video.avi",
+      "size_bytes": 2218142,
+      "mtime_ns": 1763222074000000000
+    },
+    {
+      "video_id": "mirror2_patient_000141",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000141/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1763222074000000000
+    },
+    {
+      "video_id": "mirror2_patient_000142",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000142/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1763222074000000000
+    },
+    {
+      "video_id": "mirror2_patient_000144",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000144/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1763222074000000000
+    },
+    {
+      "video_id": "mirror2_patient_000147",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000147/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1763222076000000000
+    },
+    {
+      "video_id": "mirror2_patient_000151",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000151/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1763222078000000000
+    },
+    {
+      "video_id": "mirror2_patient_000152",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000152/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1763222078000000000
+    },
+    {
+      "video_id": "mirror2_patient_000153",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000153/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1763222080000000000
+    },
+    {
+      "video_id": "mirror2_patient_000154",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000154/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1763222080000000000
+    },
+    {
+      "video_id": "mirror2_patient_000155",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000155/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1763222080000000000
+    },
+    {
+      "video_id": "mirror2_patient_000156",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000156/video.avi",
+      "size_bytes": 4706344,
+      "mtime_ns": 1763222080000000000
+    },
+    {
+      "video_id": "mirror2_patient_000157",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000157/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1763222082000000000
+    },
+    {
+      "video_id": "mirror2_patient_000158",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000158/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1763222082000000000
+    },
+    {
+      "video_id": "mirror2_patient_000159",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000159/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1763222082000000000
+    },
+    {
+      "video_id": "mirror2_patient_000160",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000160/video.avi",
+      "size_bytes": 2438588,
+      "mtime_ns": 1763222082000000000
+    },
+    {
+      "video_id": "mirror2_patient_000161",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000161/video.avi",
+      "size_bytes": 44816,
+      "mtime_ns": 1763222084000000000
+    },
+    {
+      "video_id": "mirror2_patient_000162",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000162/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1763222084000000000
+    },
+    {
+      "video_id": "mirror2_patient_000163",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000163/video.avi",
+      "size_bytes": 8650752,
+      "mtime_ns": 1763222084000000000
+    },
+    {
+      "video_id": "mirror2_patient_000164",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000164/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1763222084000000000
+    },
+    {
+      "video_id": "mirror2_patient_000166",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000166/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1763222086000000000
+    },
+    {
+      "video_id": "mirror2_patient_000167",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000167/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1763222086000000000
+    },
+    {
+      "video_id": "mirror2_patient_000170",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000170/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1763748760000000000
+    },
+    {
+      "video_id": "mirror2_patient_000171",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000171/video.avi",
+      "size_bytes": 2475602,
+      "mtime_ns": 1763748760000000000
+    },
+    {
+      "video_id": "mirror2_patient_000172",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000172/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1763748758000000000
+    },
+    {
+      "video_id": "mirror2_patient_000173",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000173/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1763748758000000000
+    },
+    {
+      "video_id": "mirror2_patient_000175",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000175/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1763748758000000000
+    },
+    {
+      "video_id": "mirror2_patient_000176",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000176/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1763748756000000000
+    },
+    {
+      "video_id": "mirror2_patient_000177",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000177/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1763748756000000000
+    },
+    {
+      "video_id": "mirror2_patient_000179",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000179/video.avi",
+      "size_bytes": 734746,
+      "mtime_ns": 1763748756000000000
+    },
+    {
+      "video_id": "mirror2_patient_000180",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000180/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1763748754000000000
+    },
+    {
+      "video_id": "mirror2_patient_000183",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000183/video.avi",
+      "size_bytes": 234952,
+      "mtime_ns": 1763748754000000000
+    },
+    {
+      "video_id": "mirror2_patient_000184",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000184/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1763748754000000000
+    },
+    {
+      "video_id": "mirror2_patient_000186",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000186/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1763748752000000000
+    },
+    {
+      "video_id": "mirror2_patient_000195",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000195/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1763748750000000000
+    },
+    {
+      "video_id": "mirror2_patient_000199",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000199/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1763748748000000000
+    },
+    {
+      "video_id": "mirror2_patient_000200",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000200/video.avi",
+      "size_bytes": 571450,
+      "mtime_ns": 1763748748000000000
+    },
+    {
+      "video_id": "mirror2_patient_000201",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000201/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1763748748000000000
+    },
+    {
+      "video_id": "mirror2_patient_000202",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000202/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1763748748000000000
+    },
+    {
+      "video_id": "mirror2_patient_000203",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000203/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1763748746000000000
+    },
+    {
+      "video_id": "mirror2_patient_000206",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000206/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1763748746000000000
+    },
+    {
+      "video_id": "mirror2_patient_000207",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000207/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1763748746000000000
+    },
+    {
+      "video_id": "mirror2_patient_000208",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000208/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1763748744000000000
+    },
+    {
+      "video_id": "mirror2_patient_000219",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000219/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1763748740000000000
+    },
+    {
+      "video_id": "mirror2_patient_000222",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000222/video.avi",
+      "size_bytes": 3685570,
+      "mtime_ns": 1763748738000000000
+    },
+    {
+      "video_id": "mirror2_patient_000223",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000223/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1763748738000000000
+    },
+    {
+      "video_id": "mirror2_patient_000226",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000226/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1763748736000000000
+    },
+    {
+      "video_id": "mirror2_patient_000227",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000227/video.avi",
+      "size_bytes": 8388608,
+      "mtime_ns": 1763748736000000000
+    },
+    {
+      "video_id": "mirror2_patient_000228",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000228/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1763748736000000000
+    },
+    {
+      "video_id": "mirror2_patient_000231",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000231/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1763748734000000000
+    },
+    {
+      "video_id": "mirror2_patient_000232",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000232/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1763748734000000000
+    },
+    {
+      "video_id": "mirror2_patient_000234",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000234/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1763748732000000000
+    },
+    {
+      "video_id": "mirror2_patient_000235",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000235/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1764665312000000000
+    },
+    {
+      "video_id": "mirror2_patient_000243",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000243/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1764665332000000000
+    },
+    {
+      "video_id": "mirror2_patient_000245",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000245/video.avi",
+      "size_bytes": 4476430,
+      "mtime_ns": 1764665336000000000
+    },
+    {
+      "video_id": "mirror2_patient_000246",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000246/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1764665338000000000
+    },
+    {
+      "video_id": "mirror2_patient_000250",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000250/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764665342000000000
+    },
+    {
+      "video_id": "mirror2_patient_000259",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000259/video.avi",
+      "size_bytes": 915170,
+      "mtime_ns": 1764665360000000000
+    },
+    {
+      "video_id": "mirror2_patient_000260",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000260/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1764665362000000000
+    },
+    {
+      "video_id": "mirror2_patient_000263",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000263/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1764665370000000000
+    },
+    {
+      "video_id": "mirror2_patient_000264",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000264/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1764665372000000000
+    },
+    {
+      "video_id": "mirror2_patient_000265",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000265/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764665374000000000
+    },
+    {
+      "video_id": "mirror2_patient_000267",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000267/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1764665378000000000
+    },
+    {
+      "video_id": "mirror2_patient_000268",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000268/video.avi",
+      "size_bytes": 3407872,
+      "mtime_ns": 1764665380000000000
+    },
+    {
+      "video_id": "mirror2_patient_000273",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000273/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1764665392000000000
+    },
+    {
+      "video_id": "mirror2_patient_000274",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000274/video.avi",
+      "size_bytes": 8388608,
+      "mtime_ns": 1764665394000000000
+    },
+    {
+      "video_id": "mirror2_patient_000276",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000276/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1764665400000000000
+    },
+    {
+      "video_id": "mirror2_patient_000277",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000277/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1764665404000000000
+    },
+    {
+      "video_id": "mirror2_patient_000278",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000278/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1764665406000000000
+    },
+    {
+      "video_id": "mirror2_patient_000280",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000280/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764665412000000000
+    },
+    {
+      "video_id": "mirror2_patient_000281",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000281/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1764665414000000000
+    },
+    {
+      "video_id": "mirror2_patient_000282",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000282/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1764665416000000000
+    },
+    {
+      "video_id": "mirror2_patient_000283",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000283/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1764665420000000000
+    },
+    {
+      "video_id": "mirror2_patient_000284",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000284/video.avi",
+      "size_bytes": 8388608,
+      "mtime_ns": 1764665422000000000
+    },
+    {
+      "video_id": "mirror2_patient_000285",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000285/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1764665424000000000
+    },
+    {
+      "video_id": "mirror2_patient_000286",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000286/video.avi",
+      "size_bytes": 8388608,
+      "mtime_ns": 1764665426000000000
+    },
+    {
+      "video_id": "mirror2_patient_000287",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000287/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1764665430000000000
+    },
+    {
+      "video_id": "mirror2_patient_000290",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000290/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1764665434000000000
+    },
+    {
+      "video_id": "mirror2_patient_000291",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000291/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1764665436000000000
+    },
+    {
+      "video_id": "mirror2_patient_000292",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000292/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1764665440000000000
+    },
+    {
+      "video_id": "mirror2_patient_000293",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000293/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1764665442000000000
+    },
+    {
+      "video_id": "mirror2_patient_000296",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000296/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1764665448000000000
+    },
+    {
+      "video_id": "mirror2_patient_000297",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000297/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1764665450000000000
+    },
+    {
+      "video_id": "mirror2_patient_000298",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000298/video.avi",
+      "size_bytes": 2097152,
+      "mtime_ns": 1764665450000000000
+    },
+    {
+      "video_id": "mirror2_patient_000299",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000299/video.avi",
+      "size_bytes": 395476,
+      "mtime_ns": 1764665452000000000
+    },
+    {
+      "video_id": "mirror2_patient_000300",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000300/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1764665454000000000
+    },
+    {
+      "video_id": "mirror2_patient_000301",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000301/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1764665456000000000
+    },
+    {
+      "video_id": "mirror2_patient_000302",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000302/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1764665458000000000
+    },
+    {
+      "video_id": "mirror2_patient_000303",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000303/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1764665460000000000
+    },
+    {
+      "video_id": "mirror2_patient_000304",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000304/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1764665464000000000
+    },
+    {
+      "video_id": "mirror2_patient_000305",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000305/video.avi",
+      "size_bytes": 1319286,
+      "mtime_ns": 1764665464000000000
+    },
+    {
+      "video_id": "mirror2_patient_000306",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000306/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1764665468000000000
+    },
+    {
+      "video_id": "mirror2_patient_000307",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000307/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1764665470000000000
+    },
+    {
+      "video_id": "mirror2_patient_000309",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000309/video.avi",
+      "size_bytes": 412434,
+      "mtime_ns": 1764665474000000000
+    },
+    {
+      "video_id": "mirror2_patient_000310",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000310/video.avi",
+      "size_bytes": 1152892,
+      "mtime_ns": 1764665476000000000
+    },
+    {
+      "video_id": "mirror2_patient_000311",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000311/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1764665480000000000
+    },
+    {
+      "video_id": "mirror2_patient_000313",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000313/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1764665486000000000
+    },
+    {
+      "video_id": "mirror2_patient_000314",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000314/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1764665488000000000
+    },
+    {
+      "video_id": "mirror2_patient_000315",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000315/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1764665490000000000
+    },
+    {
+      "video_id": "mirror2_patient_000317",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000317/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1764665496000000000
+    },
+    {
+      "video_id": "mirror2_patient_000318",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000318/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1764665500000000000
+    },
+    {
+      "video_id": "mirror2_patient_000319",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000319/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764665502000000000
+    },
+    {
+      "video_id": "mirror2_patient_000320",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000320/video.avi",
+      "size_bytes": 1310720,
+      "mtime_ns": 1764665504000000000
+    },
+    {
+      "video_id": "mirror2_patient_000321",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000321/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1764665508000000000
+    },
+    {
+      "video_id": "mirror2_patient_000323",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000323/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1764665512000000000
+    },
+    {
+      "video_id": "mirror2_patient_000324",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000324/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764665514000000000
+    },
+    {
+      "video_id": "mirror2_patient_000328",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000328/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1764665522000000000
+    },
+    {
+      "video_id": "mirror2_patient_000329",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000329/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1764665526000000000
+    },
+    {
+      "video_id": "mirror2_patient_000331",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000331/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1764665530000000000
+    },
+    {
+      "video_id": "mirror2_patient_000332",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000332/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1764665534000000000
+    },
+    {
+      "video_id": "mirror2_patient_000333",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000333/video.avi",
+      "size_bytes": 700810,
+      "mtime_ns": 1764665534000000000
+    },
+    {
+      "video_id": "mirror2_patient_000334",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000334/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764665538000000000
+    },
+    {
+      "video_id": "mirror2_patient_000335",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000335/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1764665540000000000
+    },
+    {
+      "video_id": "mirror2_patient_000336",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000336/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1764665542000000000
+    },
+    {
+      "video_id": "mirror2_patient_000339",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000339/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1764665548000000000
+    },
+    {
+      "video_id": "mirror2_patient_000341",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000341/video.avi",
+      "size_bytes": 170098,
+      "mtime_ns": 1764665552000000000
+    },
+    {
+      "video_id": "mirror2_patient_000342",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000342/video.avi",
+      "size_bytes": 262144,
+      "mtime_ns": 1764665552000000000
+    },
+    {
+      "video_id": "mirror2_patient_000343",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000343/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1764665554000000000
+    },
+    {
+      "video_id": "mirror2_patient_000344",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000344/video.avi",
+      "size_bytes": 4487796,
+      "mtime_ns": 1764665556000000000
+    },
+    {
+      "video_id": "mirror2_patient_000345",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000345/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764665558000000000
+    },
+    {
+      "video_id": "mirror2_patient_000346",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000346/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1764665560000000000
+    },
+    {
+      "video_id": "mirror2_patient_000350",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000350/video.avi",
+      "size_bytes": 7395694,
+      "mtime_ns": 1778671420060543387
+    },
+    {
+      "video_id": "mirror2_patient_000352",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000352/video.avi",
+      "size_bytes": 8388780,
+      "mtime_ns": 1778671430146590888
+    },
+    {
+      "video_id": "mirror2_patient_000355",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000355/video.avi",
+      "size_bytes": 233200,
+      "mtime_ns": 1778671443362653152
+    },
+    {
+      "video_id": "mirror2_patient_000356",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000356/video.avi",
+      "size_bytes": 678650,
+      "mtime_ns": 1778671447380672086
+    },
+    {
+      "video_id": "mirror2_patient_000357",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000357/video.avi",
+      "size_bytes": 7907878,
+      "mtime_ns": 1778671452872697969
+    },
+    {
+      "video_id": "mirror2_patient_000358",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000358/video.avi",
+      "size_bytes": 7607464,
+      "mtime_ns": 1778671458269723409
+    },
+    {
+      "video_id": "mirror2_patient_000359",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000359/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1778671463311747179
+    },
+    {
+      "video_id": "mirror2_patient_000360",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000360/video.avi",
+      "size_bytes": 8648868,
+      "mtime_ns": 1778671468559771923
+    },
+    {
+      "video_id": "mirror2_patient_000361",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000361/video.avi",
+      "size_bytes": 4610244,
+      "mtime_ns": 1778671473419794840
+    },
+    {
+      "video_id": "mirror2_patient_000363",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000363/video.avi",
+      "size_bytes": 7601472,
+      "mtime_ns": 1778671483681843241
+    },
+    {
+      "video_id": "mirror2_patient_000364",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000364/video.avi",
+      "size_bytes": 7555412,
+      "mtime_ns": 1778671488642866645
+    },
+    {
+      "video_id": "mirror2_patient_000365",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000365/video.avi",
+      "size_bytes": 14268,
+      "mtime_ns": 1778671492367884219
+    },
+    {
+      "video_id": "mirror2_patient_000366",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000366/video.avi",
+      "size_bytes": 5697158,
+      "mtime_ns": 1778671496915905679
+    },
+    {
+      "video_id": "mirror2_patient_000368",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000368/video.avi",
+      "size_bytes": 3942448,
+      "mtime_ns": 1764753895633221419
+    },
+    {
+      "video_id": "mirror2_patient_000369",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000369/video.avi",
+      "size_bytes": 5933458,
+      "mtime_ns": 1764753838525851057
+    },
+    {
+      "video_id": "mirror2_patient_000370",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000370/video.avi",
+      "size_bytes": 6479912,
+      "mtime_ns": 1764753696803968584
+    },
+    {
+      "video_id": "mirror2_patient_000371",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000371/video.avi",
+      "size_bytes": 5855234,
+      "mtime_ns": 1764753667328745153
+    },
+    {
+      "video_id": "mirror2_patient_000372",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000372/video.avi",
+      "size_bytes": 5553654,
+      "mtime_ns": 1764753763962756149
+    },
+    {
+      "video_id": "mirror2_patient_000373",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000373/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1764753654917229980
+    },
+    {
+      "video_id": "mirror2_patient_000375",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000375/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764754392093826179
+    },
+    {
+      "video_id": "mirror2_patient_000377",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000377/video.avi",
+      "size_bytes": 267416,
+      "mtime_ns": 1764754836932287825
+    },
+    {
+      "video_id": "mirror2_patient_000378",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000378/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1764754907311208683
+    },
+    {
+      "video_id": "mirror2_patient_000379",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000379/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764755080368390989
+    },
+    {
+      "video_id": "mirror2_patient_000380",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000380/video.avi",
+      "size_bytes": 3407872,
+      "mtime_ns": 1764755270367277362
+    },
+    {
+      "video_id": "mirror2_patient_000382",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000382/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1764837410469314433
+    },
+    {
+      "video_id": "mirror2_patient_000383",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000383/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1764837708837713543
+    },
+    {
+      "video_id": "mirror2_patient_000384",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000384/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1764837927762812039
+    },
+    {
+      "video_id": "mirror2_patient_000385",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000385/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764838233492519553
+    },
+    {
+      "video_id": "mirror2_patient_000386",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000386/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1764838412022940098
+    },
+    {
+      "video_id": "mirror2_patient_000387",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000387/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1764838583587071090
+    },
+    {
+      "video_id": "mirror2_patient_000388",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000388/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764838810247492144
+    },
+    {
+      "video_id": "mirror2_patient_000390",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000390/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1764925360650145435
+    },
+    {
+      "video_id": "mirror2_patient_000394",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000394/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1764928888577560963
+    },
+    {
+      "video_id": "mirror2_patient_000395",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000395/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764929116349015417
+    },
+    {
+      "video_id": "mirror2_patient_000396",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000396/video.avi",
+      "size_bytes": 240326,
+      "mtime_ns": 1764929240458167002
+    },
+    {
+      "video_id": "mirror2_patient_000397",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000397/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1764929314413236764
+    },
+    {
+      "video_id": "mirror2_patient_000398",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000398/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1764929450801898050
+    },
+    {
+      "video_id": "mirror2_patient_000399",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000399/video.avi",
+      "size_bytes": 1835008,
+      "mtime_ns": 1764929587132556925
+    },
+    {
+      "video_id": "mirror2_patient_000400",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000400/video.avi",
+      "size_bytes": 703190,
+      "mtime_ns": 1764929716281917715
+    },
+    {
+      "video_id": "mirror2_patient_000401",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000401/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1764929787303865733
+    },
+    {
+      "video_id": "mirror2_patient_000406",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000406/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1764930155397146281
+    },
+    {
+      "video_id": "mirror2_patient_000407",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000407/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1764930499721440755
+    },
+    {
+      "video_id": "mirror2_patient_000408",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000408/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1764981296881369049
+    },
+    {
+      "video_id": "mirror2_patient_000409",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000409/video.avi",
+      "size_bytes": 752016,
+      "mtime_ns": 1764981371977491429
+    },
+    {
+      "video_id": "mirror2_patient_000410",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000410/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1764981442132408358
+    },
+    {
+      "video_id": "mirror2_patient_000412",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000412/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1764981827358425217
+    },
+    {
+      "video_id": "mirror2_patient_000413",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000413/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1764981969536336561
+    },
+    {
+      "video_id": "mirror2_patient_000414",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000414/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1764982126013842430
+    },
+    {
+      "video_id": "mirror2_patient_000415",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000415/video.avi",
+      "size_bytes": 1310720,
+      "mtime_ns": 1764982232678277228
+    },
+    {
+      "video_id": "mirror2_patient_000416",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000416/video.avi",
+      "size_bytes": 1078456,
+      "mtime_ns": 1764982359428547135
+    },
+    {
+      "video_id": "mirror2_patient_000417",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000417/video.avi",
+      "size_bytes": 1048576,
+      "mtime_ns": 1764982393306955699
+    },
+    {
+      "video_id": "mirror2_patient_000418",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000418/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1764982720363553650
+    },
+    {
+      "video_id": "mirror2_patient_000424",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000424/video.avi",
+      "size_bytes": 7642314,
+      "mtime_ns": 1765358613426308625
+    },
+    {
+      "video_id": "mirror2_patient_000427",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000427/video.avi",
+      "size_bytes": 5451076,
+      "mtime_ns": 1765358526290678219
+    },
+    {
+      "video_id": "mirror2_patient_000428",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000428/video.avi",
+      "size_bytes": 6283832,
+      "mtime_ns": 1765358540511270697
+    },
+    {
+      "video_id": "mirror2_patient_000429",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000429/video.avi",
+      "size_bytes": 7469378,
+      "mtime_ns": 1765358559877077552
+    },
+    {
+      "video_id": "mirror2_patient_000430",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000430/video.avi",
+      "size_bytes": 512054,
+      "mtime_ns": 1765358590177339982
+    },
+    {
+      "video_id": "mirror2_patient_000431",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000431/video.avi",
+      "size_bytes": 7480248,
+      "mtime_ns": 1765358713012457779
+    },
+    {
+      "video_id": "mirror2_patient_000433",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000433/video.avi",
+      "size_bytes": 8071448,
+      "mtime_ns": 1765358742921703912
+    },
+    {
+      "video_id": "mirror2_patient_000434",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000434/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1765358578792865662
+    },
+    {
+      "video_id": "mirror2_patient_000440",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000440/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1765359340421597019
+    },
+    {
+      "video_id": "mirror2_patient_000441",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000441/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1765359499197211287
+    },
+    {
+      "video_id": "mirror2_patient_000442",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000442/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1765359704711772592
+    },
+    {
+      "video_id": "mirror2_patient_000443",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000443/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1765359814728355657
+    },
+    {
+      "video_id": "mirror2_patient_000444",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000444/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1765359925022950309
+    },
+    {
+      "video_id": "mirror2_patient_000450",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000450/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1765360657297448973
+    },
+    {
+      "video_id": "mirror2_patient_000452",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000452/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1765361110832336081
+    },
+    {
+      "video_id": "mirror2_patient_000453",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000453/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1765361310511650443
+    },
+    {
+      "video_id": "mirror2_patient_000454",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000454/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1765361566618312495
+    },
+    {
+      "video_id": "mirror2_patient_000455",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000455/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1765443466517163360
+    },
+    {
+      "video_id": "mirror2_patient_000456",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000456/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1765443677247927845
+    },
+    {
+      "video_id": "mirror2_patient_000458",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000458/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1765443925383247959
+    },
+    {
+      "video_id": "mirror2_patient_000459",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000459/video.avi",
+      "size_bytes": 8912896,
+      "mtime_ns": 1765444106857787992
+    },
+    {
+      "video_id": "mirror2_patient_000464",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000464/video.avi",
+      "size_bytes": 8388608,
+      "mtime_ns": 1765444683063728632
+    },
+    {
+      "video_id": "mirror2_patient_000469",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000469/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1765704653777701554
+    },
+    {
+      "video_id": "mirror2_patient_000470",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000470/video.avi",
+      "size_bytes": 8388608,
+      "mtime_ns": 1765704810668226802
+    },
+    {
+      "video_id": "mirror2_patient_000471",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000471/video.avi",
+      "size_bytes": 2621440,
+      "mtime_ns": 1765704984278447441
+    },
+    {
+      "video_id": "mirror2_patient_000472",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000472/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1765705183038714104
+    },
+    {
+      "video_id": "mirror2_patient_000475",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000475/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1765705825572431803
+    },
+    {
+      "video_id": "mirror2_patient_000476",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000476/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1765705990818300315
+    },
+    {
+      "video_id": "mirror2_patient_000481",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000481/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1765789470917738214
+    },
+    {
+      "video_id": "mirror2_patient_000483",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000483/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1765789709621676110
+    },
+    {
+      "video_id": "mirror2_patient_000486",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000486/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1765790100317941859
+    },
+    {
+      "video_id": "mirror2_patient_000487",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000487/video.avi",
+      "size_bytes": 214708,
+      "mtime_ns": 1765790159212393799
+    },
+    {
+      "video_id": "mirror2_patient_000488",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000488/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1765790233591490408
+    },
+    {
+      "video_id": "mirror2_patient_000503",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000503/video.avi",
+      "size_bytes": 262144,
+      "mtime_ns": 1765960512436122845
+    },
+    {
+      "video_id": "mirror2_patient_000504",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000504/video.avi",
+      "size_bytes": 122898,
+      "mtime_ns": 1765960704082113240
+    },
+    {
+      "video_id": "mirror2_patient_000505",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000505/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1765960779922275277
+    },
+    {
+      "video_id": "mirror2_patient_000511",
+      "path": "/root/shared/HealthMirrorDataset/mirror2_data/patient_000511/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1766050072692503585
+    },
+    {
+      "video_id": "mirror4_patient_000017",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000017/video.avi",
+      "size_bytes": 3145728,
+      "mtime_ns": 1763622080000000000
+    },
+    {
+      "video_id": "mirror4_patient_000019",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000019/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1763622074000000000
+    },
+    {
+      "video_id": "mirror4_patient_000020",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000020/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1763622072000000000
+    },
+    {
+      "video_id": "mirror4_patient_000021",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000021/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1763622070000000000
+    },
+    {
+      "video_id": "mirror4_patient_000022",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000022/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1763622066000000000
+    },
+    {
+      "video_id": "mirror4_patient_000023",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000023/video.avi",
+      "size_bytes": 2359296,
+      "mtime_ns": 1763622064000000000
+    },
+    {
+      "video_id": "mirror4_patient_000123",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000123/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1772243700000000000
+    },
+    {
+      "video_id": "mirror4_patient_000125",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000125/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1772243702000000000
+    },
+    {
+      "video_id": "mirror4_patient_000136",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000136/video.avi",
+      "size_bytes": 1310720,
+      "mtime_ns": 1772243708000000000
+    },
+    {
+      "video_id": "mirror4_patient_000140",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000140/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772243708000000000
+    },
+    {
+      "video_id": "mirror4_patient_000143",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000143/video.avi",
+      "size_bytes": 12964,
+      "mtime_ns": 1772243710000000000
+    },
+    {
+      "video_id": "mirror4_patient_000146",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000146/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772243712000000000
+    },
+    {
+      "video_id": "mirror4_patient_000156",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000156/video.avi",
+      "size_bytes": 2771196,
+      "mtime_ns": 1772243716000000000
+    },
+    {
+      "video_id": "mirror4_patient_000172",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000172/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772243724000000000
+    },
+    {
+      "video_id": "mirror4_patient_000173",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000173/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772243726000000000
+    },
+    {
+      "video_id": "mirror4_patient_000175",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000175/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1772243726000000000
+    },
+    {
+      "video_id": "mirror4_patient_000176",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000176/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772243728000000000
+    },
+    {
+      "video_id": "mirror4_patient_000184",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000184/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772243732000000000
+    },
+    {
+      "video_id": "mirror4_patient_000190",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000190/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772243736000000000
+    },
+    {
+      "video_id": "mirror4_patient_000193",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000193/video.avi",
+      "size_bytes": 6289290,
+      "mtime_ns": 1772243736000000000
+    },
+    {
+      "video_id": "mirror4_patient_000197",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000197/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772243740000000000
+    },
+    {
+      "video_id": "mirror4_patient_000200",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000200/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1772243740000000000
+    },
+    {
+      "video_id": "mirror4_patient_000202",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000202/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1772243742000000000
+    },
+    {
+      "video_id": "mirror4_patient_000208",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000208/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1772243744000000000
+    },
+    {
+      "video_id": "mirror4_patient_000209",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000209/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1772243746000000000
+    },
+    {
+      "video_id": "mirror4_patient_000210",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000210/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1772243746000000000
+    },
+    {
+      "video_id": "mirror4_patient_000211",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000211/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243746000000000
+    },
+    {
+      "video_id": "mirror4_patient_000212",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000212/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772243746000000000
+    },
+    {
+      "video_id": "mirror4_patient_000213",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000213/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772243746000000000
+    },
+    {
+      "video_id": "mirror4_patient_000214",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000214/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772243748000000000
+    },
+    {
+      "video_id": "mirror4_patient_000217",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000217/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772243750000000000
+    },
+    {
+      "video_id": "mirror4_patient_000219",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000219/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243750000000000
+    },
+    {
+      "video_id": "mirror4_patient_000220",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000220/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243752000000000
+    },
+    {
+      "video_id": "mirror4_patient_000221",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000221/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1772243752000000000
+    },
+    {
+      "video_id": "mirror4_patient_000229",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000229/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772243754000000000
+    },
+    {
+      "video_id": "mirror4_patient_000233",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000233/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1772243758000000000
+    },
+    {
+      "video_id": "mirror4_patient_000234",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000234/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243758000000000
+    },
+    {
+      "video_id": "mirror4_patient_000235",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000235/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1772243758000000000
+    },
+    {
+      "video_id": "mirror4_patient_000241",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000241/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772243762000000000
+    },
+    {
+      "video_id": "mirror4_patient_000242",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000242/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772243762000000000
+    },
+    {
+      "video_id": "mirror4_patient_000245",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000245/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1772243764000000000
+    },
+    {
+      "video_id": "mirror4_patient_000246",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000246/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772243764000000000
+    },
+    {
+      "video_id": "mirror4_patient_000248",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000248/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243766000000000
+    },
+    {
+      "video_id": "mirror4_patient_000249",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000249/video.avi",
+      "size_bytes": 524288,
+      "mtime_ns": 1772243766000000000
+    },
+    {
+      "video_id": "mirror4_patient_000250",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000250/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243766000000000
+    },
+    {
+      "video_id": "mirror4_patient_000260",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000260/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243770000000000
+    },
+    {
+      "video_id": "mirror4_patient_000264",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000264/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243772000000000
+    },
+    {
+      "video_id": "mirror4_patient_000268",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000268/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1772243774000000000
+    },
+    {
+      "video_id": "mirror4_patient_000273",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000273/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1772243776000000000
+    },
+    {
+      "video_id": "mirror4_patient_000280",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000280/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772243780000000000
+    },
+    {
+      "video_id": "mirror4_patient_000290",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000290/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772589836007175633
+    },
+    {
+      "video_id": "mirror4_patient_000298",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000298/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772591224248066457
+    },
+    {
+      "video_id": "mirror4_patient_000300",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000300/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1772591492668259948
+    },
+    {
+      "video_id": "mirror4_patient_000302",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000302/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772592229848001535
+    },
+    {
+      "video_id": "mirror4_patient_000309",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000309/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1772692736132942798
+    },
+    {
+      "video_id": "mirror4_patient_000314",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000314/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1772762858036185980
+    },
+    {
+      "video_id": "mirror4_patient_000320",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000320/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772763783507752491
+    },
+    {
+      "video_id": "mirror4_patient_000335",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000335/video.avi",
+      "size_bytes": 1048576,
+      "mtime_ns": 1773027085631062529
+    },
+    {
+      "video_id": "mirror4_patient_000351",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000351/video.avi",
+      "size_bytes": 1048576,
+      "mtime_ns": 1773109948807031086
+    },
+    {
+      "video_id": "mirror4_patient_000352",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000352/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1773110093961084230
+    },
+    {
+      "video_id": "mirror4_patient_000354",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000354/video.avi",
+      "size_bytes": 416704,
+      "mtime_ns": 1773110331947008601
+    },
+    {
+      "video_id": "mirror4_patient_000355",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000355/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1773110401601913257
+    },
+    {
+      "video_id": "mirror4_patient_000367",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000367/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1773286920521756269
+    },
+    {
+      "video_id": "mirror4_patient_000372",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000372/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1773287571536909342
+    },
+    {
+      "video_id": "mirror4_patient_000373",
+      "path": "/root/shared/HealthMirrorDataset/mirror4_data/patient_000373/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1773287775300407945
+    },
+    {
+      "video_id": "mirror5_patient_000011",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000011/video.avi",
+      "size_bytes": 3407872,
+      "mtime_ns": 1772243810000000000
+    },
+    {
+      "video_id": "mirror5_patient_000020",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000020/video.avi",
+      "size_bytes": 3407872,
+      "mtime_ns": 1772243814000000000
+    },
+    {
+      "video_id": "mirror5_patient_000022",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000022/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1772243816000000000
+    },
+    {
+      "video_id": "mirror5_patient_000023",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000023/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772243816000000000
+    },
+    {
+      "video_id": "mirror5_patient_000025",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000025/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243816000000000
+    },
+    {
+      "video_id": "mirror5_patient_000027",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000027/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772243818000000000
+    },
+    {
+      "video_id": "mirror5_patient_000030",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000030/video.avi",
+      "size_bytes": 2359296,
+      "mtime_ns": 1772243820000000000
+    },
+    {
+      "video_id": "mirror5_patient_000034",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000034/video.avi",
+      "size_bytes": 538580,
+      "mtime_ns": 1772243822000000000
+    },
+    {
+      "video_id": "mirror5_patient_000035",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000035/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772243822000000000
+    },
+    {
+      "video_id": "mirror5_patient_000036",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000036/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1772243822000000000
+    },
+    {
+      "video_id": "mirror5_patient_000037",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000037/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1772243822000000000
+    },
+    {
+      "video_id": "mirror5_patient_000041",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000041/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772243826000000000
+    },
+    {
+      "video_id": "mirror5_patient_000043",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000043/video.avi",
+      "size_bytes": 2097152,
+      "mtime_ns": 1772243826000000000
+    },
+    {
+      "video_id": "mirror5_patient_000044",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000044/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772243826000000000
+    },
+    {
+      "video_id": "mirror5_patient_000048",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000048/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1772243828000000000
+    },
+    {
+      "video_id": "mirror5_patient_000050",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000050/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1772243830000000000
+    },
+    {
+      "video_id": "mirror5_patient_000052",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000052/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1772243830000000000
+    },
+    {
+      "video_id": "mirror5_patient_000056",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000056/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1772243832000000000
+    },
+    {
+      "video_id": "mirror5_patient_000064",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000064/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772243838000000000
+    },
+    {
+      "video_id": "mirror5_patient_000069",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000069/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243840000000000
+    },
+    {
+      "video_id": "mirror5_patient_000076",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000076/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1772243844000000000
+    },
+    {
+      "video_id": "mirror5_patient_000077",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000077/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772243844000000000
+    },
+    {
+      "video_id": "mirror5_patient_000078",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000078/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1772243846000000000
+    },
+    {
+      "video_id": "mirror5_patient_000084",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000084/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772243848000000000
+    },
+    {
+      "video_id": "mirror5_patient_000085",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000085/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772243850000000000
+    },
+    {
+      "video_id": "mirror5_patient_000086",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000086/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772243850000000000
+    },
+    {
+      "video_id": "mirror5_patient_000089",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000089/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1772243852000000000
+    },
+    {
+      "video_id": "mirror5_patient_000093",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000093/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772243854000000000
+    },
+    {
+      "video_id": "mirror5_patient_000094",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000094/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243854000000000
+    },
+    {
+      "video_id": "mirror5_patient_000098",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000098/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772243856000000000
+    },
+    {
+      "video_id": "mirror5_patient_000103",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000103/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772243860000000000
+    },
+    {
+      "video_id": "mirror5_patient_000109",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000109/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772243862000000000
+    },
+    {
+      "video_id": "mirror5_patient_000111",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000111/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772243864000000000
+    },
+    {
+      "video_id": "mirror5_patient_000113",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000113/video.avi",
+      "size_bytes": 1310720,
+      "mtime_ns": 1772243866000000000
+    },
+    {
+      "video_id": "mirror5_patient_000117",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000117/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772243868000000000
+    },
+    {
+      "video_id": "mirror5_patient_000130",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000130/video.avi",
+      "size_bytes": 3407872,
+      "mtime_ns": 1772243874000000000
+    },
+    {
+      "video_id": "mirror5_patient_000160",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000160/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1772243890000000000
+    },
+    {
+      "video_id": "mirror5_patient_000178",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000178/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1772243900000000000
+    },
+    {
+      "video_id": "mirror5_patient_000241",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000241/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772243936000000000
+    },
+    {
+      "video_id": "mirror5_patient_000276",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000276/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772243956000000000
+    },
+    {
+      "video_id": "mirror5_patient_000293",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000293/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772243966000000000
+    },
+    {
+      "video_id": "mirror5_patient_000303",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000303/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1772243972000000000
+    },
+    {
+      "video_id": "mirror5_patient_000308",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000308/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1772243974000000000
+    },
+    {
+      "video_id": "mirror5_patient_000309",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000309/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1772243974000000000
+    },
+    {
+      "video_id": "mirror5_patient_000310",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000310/video.avi",
+      "size_bytes": 1048576,
+      "mtime_ns": 1772243976000000000
+    },
+    {
+      "video_id": "mirror5_patient_000321",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000321/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1772243982000000000
+    },
+    {
+      "video_id": "mirror5_patient_000322",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000322/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1772243982000000000
+    },
+    {
+      "video_id": "mirror5_patient_000323",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000323/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1772243984000000000
+    },
+    {
+      "video_id": "mirror5_patient_000324",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000324/video.avi",
+      "size_bytes": 2621440,
+      "mtime_ns": 1772243984000000000
+    },
+    {
+      "video_id": "mirror5_patient_000325",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000325/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772243984000000000
+    },
+    {
+      "video_id": "mirror5_patient_000334",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000334/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772243990000000000
+    },
+    {
+      "video_id": "mirror5_patient_000335",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000335/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772243990000000000
+    },
+    {
+      "video_id": "mirror5_patient_000336",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000336/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1772243990000000000
+    },
+    {
+      "video_id": "mirror5_patient_000347",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000347/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772243996000000000
+    },
+    {
+      "video_id": "mirror5_patient_000350",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000350/video.avi",
+      "size_bytes": 4456448,
+      "mtime_ns": 1772243998000000000
+    },
+    {
+      "video_id": "mirror5_patient_000354",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000354/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772244000000000000
+    },
+    {
+      "video_id": "mirror5_patient_000355",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000355/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772244002000000000
+    },
+    {
+      "video_id": "mirror5_patient_000356",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000356/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244002000000000
+    },
+    {
+      "video_id": "mirror5_patient_000358",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000358/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772244004000000000
+    },
+    {
+      "video_id": "mirror5_patient_000359",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000359/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772244004000000000
+    },
+    {
+      "video_id": "mirror5_patient_000362",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000362/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244006000000000
+    },
+    {
+      "video_id": "mirror5_patient_000363",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000363/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244006000000000
+    },
+    {
+      "video_id": "mirror5_patient_000364",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000364/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772244006000000000
+    },
+    {
+      "video_id": "mirror5_patient_000365",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000365/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244008000000000
+    },
+    {
+      "video_id": "mirror5_patient_000368",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000368/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772244008000000000
+    },
+    {
+      "video_id": "mirror5_patient_000369",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000369/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1772244010000000000
+    },
+    {
+      "video_id": "mirror5_patient_000370",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000370/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772244010000000000
+    },
+    {
+      "video_id": "mirror5_patient_000371",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000371/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772244010000000000
+    },
+    {
+      "video_id": "mirror5_patient_000374",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000374/video.avi",
+      "size_bytes": 2883584,
+      "mtime_ns": 1772244012000000000
+    },
+    {
+      "video_id": "mirror5_patient_000375",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000375/video.avi",
+      "size_bytes": 3407872,
+      "mtime_ns": 1772244014000000000
+    },
+    {
+      "video_id": "mirror5_patient_000384",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000384/video.avi",
+      "size_bytes": 5767168,
+      "mtime_ns": 1772244018000000000
+    },
+    {
+      "video_id": "mirror5_patient_000385",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000385/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1772244018000000000
+    },
+    {
+      "video_id": "mirror5_patient_000386",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000386/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1772244020000000000
+    },
+    {
+      "video_id": "mirror5_patient_000389",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000389/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244020000000000
+    },
+    {
+      "video_id": "mirror5_patient_000393",
+      "path": "/root/shared/HealthMirrorDataset/mirror5_data/patient_000393/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1772244024000000000
+    },
+    {
+      "video_id": "mirror6_patient_000002",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000002/video.avi",
+      "size_bytes": 2359296,
+      "mtime_ns": 1772244052000000000
+    },
+    {
+      "video_id": "mirror6_patient_000003",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000003/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1772244052000000000
+    },
+    {
+      "video_id": "mirror6_patient_000005",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000005/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1772244052000000000
+    },
+    {
+      "video_id": "mirror6_patient_000007",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000007/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772244054000000000
+    },
+    {
+      "video_id": "mirror6_patient_000010",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000010/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244054000000000
+    },
+    {
+      "video_id": "mirror6_patient_000011",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000011/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244056000000000
+    },
+    {
+      "video_id": "mirror6_patient_000017",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000017/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772244058000000000
+    },
+    {
+      "video_id": "mirror6_patient_000018",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000018/video.avi",
+      "size_bytes": 3932160,
+      "mtime_ns": 1772244058000000000
+    },
+    {
+      "video_id": "mirror6_patient_000019",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000019/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244058000000000
+    },
+    {
+      "video_id": "mirror6_patient_000022",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000022/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244058000000000
+    },
+    {
+      "video_id": "mirror6_patient_000023",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000023/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772244060000000000
+    },
+    {
+      "video_id": "mirror6_patient_000024",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000024/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1772244060000000000
+    },
+    {
+      "video_id": "mirror6_patient_000025",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000025/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772244060000000000
+    },
+    {
+      "video_id": "mirror6_patient_000026",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000026/video.avi",
+      "size_bytes": 2492880,
+      "mtime_ns": 1772244060000000000
+    },
+    {
+      "video_id": "mirror6_patient_000027",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000027/video.avi",
+      "size_bytes": 1048576,
+      "mtime_ns": 1772244060000000000
+    },
+    {
+      "video_id": "mirror6_patient_000028",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000028/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244060000000000
+    },
+    {
+      "video_id": "mirror6_patient_000031",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000031/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244062000000000
+    },
+    {
+      "video_id": "mirror6_patient_000032",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000032/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1772244062000000000
+    },
+    {
+      "video_id": "mirror6_patient_000036",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000036/video.avi",
+      "size_bytes": 9175040,
+      "mtime_ns": 1772244064000000000
+    },
+    {
+      "video_id": "mirror6_patient_000037",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000037/video.avi",
+      "size_bytes": 2359296,
+      "mtime_ns": 1772244064000000000
+    },
+    {
+      "video_id": "mirror6_patient_000038",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000038/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244064000000000
+    },
+    {
+      "video_id": "mirror6_patient_000041",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000041/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772244066000000000
+    },
+    {
+      "video_id": "mirror6_patient_000046",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000046/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1772244070000000000
+    },
+    {
+      "video_id": "mirror6_patient_000049",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000049/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244070000000000
+    },
+    {
+      "video_id": "mirror6_patient_000050",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000050/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244070000000000
+    },
+    {
+      "video_id": "mirror6_patient_000053",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000053/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244072000000000
+    },
+    {
+      "video_id": "mirror6_patient_000057",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000057/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1772244074000000000
+    },
+    {
+      "video_id": "mirror6_patient_000058",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000058/video.avi",
+      "size_bytes": 517658,
+      "mtime_ns": 1772244074000000000
+    },
+    {
+      "video_id": "mirror6_patient_000059",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000059/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244074000000000
+    },
+    {
+      "video_id": "mirror6_patient_000060",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000060/video.avi",
+      "size_bytes": 3407872,
+      "mtime_ns": 1772244074000000000
+    },
+    {
+      "video_id": "mirror6_patient_000064",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000064/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244076000000000
+    },
+    {
+      "video_id": "mirror6_patient_000065",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000065/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772244078000000000
+    },
+    {
+      "video_id": "mirror6_patient_000066",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000066/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772244078000000000
+    },
+    {
+      "video_id": "mirror6_patient_000067",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000067/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244078000000000
+    },
+    {
+      "video_id": "mirror6_patient_000071",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000071/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772244080000000000
+    },
+    {
+      "video_id": "mirror6_patient_000072",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000072/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244080000000000
+    },
+    {
+      "video_id": "mirror6_patient_000075",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000075/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772244082000000000
+    },
+    {
+      "video_id": "mirror6_patient_000076",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000076/video.avi",
+      "size_bytes": 8650752,
+      "mtime_ns": 1772244082000000000
+    },
+    {
+      "video_id": "mirror6_patient_000082",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000082/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1772244084000000000
+    },
+    {
+      "video_id": "mirror6_patient_000085",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000085/video.avi",
+      "size_bytes": 8126464,
+      "mtime_ns": 1772244086000000000
+    },
+    {
+      "video_id": "mirror6_patient_000087",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000087/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1772244086000000000
+    },
+    {
+      "video_id": "mirror6_patient_000088",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000088/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1772244088000000000
+    },
+    {
+      "video_id": "mirror6_patient_000089",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000089/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1772244088000000000
+    },
+    {
+      "video_id": "mirror6_patient_000091",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000091/video.avi",
+      "size_bytes": 0,
+      "mtime_ns": 1772244088000000000
+    },
+    {
+      "video_id": "mirror6_patient_000092",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000092/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244088000000000
+    },
+    {
+      "video_id": "mirror6_patient_000093",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000093/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244090000000000
+    },
+    {
+      "video_id": "mirror6_patient_000094",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000094/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1772244090000000000
+    },
+    {
+      "video_id": "mirror6_patient_000096",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000096/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772244090000000000
+    },
+    {
+      "video_id": "mirror6_patient_000097",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000097/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772244090000000000
+    },
+    {
+      "video_id": "mirror6_patient_000099",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000099/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1772244092000000000
+    },
+    {
+      "video_id": "mirror6_patient_000102",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000102/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244094000000000
+    },
+    {
+      "video_id": "mirror6_patient_000103",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000103/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244094000000000
+    },
+    {
+      "video_id": "mirror6_patient_000106",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000106/video.avi",
+      "size_bytes": 5505024,
+      "mtime_ns": 1772244094000000000
+    },
+    {
+      "video_id": "mirror6_patient_000107",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000107/video.avi",
+      "size_bytes": 4718592,
+      "mtime_ns": 1772244096000000000
+    },
+    {
+      "video_id": "mirror6_patient_000108",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000108/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1772244096000000000
+    },
+    {
+      "video_id": "mirror6_patient_000112",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000112/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772244098000000000
+    },
+    {
+      "video_id": "mirror6_patient_000114",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000114/video.avi",
+      "size_bytes": 786432,
+      "mtime_ns": 1772244098000000000
+    },
+    {
+      "video_id": "mirror6_patient_000115",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000115/video.avi",
+      "size_bytes": 471894,
+      "mtime_ns": 1772244098000000000
+    },
+    {
+      "video_id": "mirror6_patient_000116",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000116/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244098000000000
+    },
+    {
+      "video_id": "mirror6_patient_000118",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000118/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772244100000000000
+    },
+    {
+      "video_id": "mirror6_patient_000119",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000119/video.avi",
+      "size_bytes": 4194304,
+      "mtime_ns": 1772244100000000000
+    },
+    {
+      "video_id": "mirror6_patient_000121",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000121/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244100000000000
+    },
+    {
+      "video_id": "mirror6_patient_000124",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000124/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244102000000000
+    },
+    {
+      "video_id": "mirror6_patient_000125",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000125/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772244102000000000
+    },
+    {
+      "video_id": "mirror6_patient_000127",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000127/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772244102000000000
+    },
+    {
+      "video_id": "mirror6_patient_000130",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000130/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772244104000000000
+    },
+    {
+      "video_id": "mirror6_patient_000132",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000132/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772244106000000000
+    },
+    {
+      "video_id": "mirror6_patient_000133",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000133/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244106000000000
+    },
+    {
+      "video_id": "mirror6_patient_000135",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000135/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772244106000000000
+    },
+    {
+      "video_id": "mirror6_patient_000136",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000136/video.avi",
+      "size_bytes": 6029312,
+      "mtime_ns": 1772244106000000000
+    },
+    {
+      "video_id": "mirror6_patient_000137",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000137/video.avi",
+      "size_bytes": 6291456,
+      "mtime_ns": 1772244106000000000
+    },
+    {
+      "video_id": "mirror6_patient_000138",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000138/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772244108000000000
+    },
+    {
+      "video_id": "mirror6_patient_000139",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000139/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244108000000000
+    },
+    {
+      "video_id": "mirror6_patient_000144",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000144/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1772244110000000000
+    },
+    {
+      "video_id": "mirror6_patient_000145",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000145/video.avi",
+      "size_bytes": 5242880,
+      "mtime_ns": 1772244110000000000
+    },
+    {
+      "video_id": "mirror6_patient_000147",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000147/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244110000000000
+    },
+    {
+      "video_id": "mirror6_patient_000150",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000150/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244112000000000
+    },
+    {
+      "video_id": "mirror6_patient_000151",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000151/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244112000000000
+    },
+    {
+      "video_id": "mirror6_patient_000156",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000156/video.avi",
+      "size_bytes": 6553600,
+      "mtime_ns": 1772244116000000000
+    },
+    {
+      "video_id": "mirror6_patient_000158",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000158/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1772244116000000000
+    },
+    {
+      "video_id": "mirror6_patient_000159",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000159/video.avi",
+      "size_bytes": 3670016,
+      "mtime_ns": 1772244116000000000
+    },
+    {
+      "video_id": "mirror6_patient_000160",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000160/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772244116000000000
+    },
+    {
+      "video_id": "mirror6_patient_000162",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000162/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1772244118000000000
+    },
+    {
+      "video_id": "mirror6_patient_000164",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000164/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1772244118000000000
+    },
+    {
+      "video_id": "mirror6_patient_000165",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000165/video.avi",
+      "size_bytes": 7077888,
+      "mtime_ns": 1772244118000000000
+    },
+    {
+      "video_id": "mirror6_patient_000170",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000170/video.avi",
+      "size_bytes": 2883584,
+      "mtime_ns": 1772422621422793239
+    },
+    {
+      "video_id": "mirror6_patient_000172",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000172/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1772423045411467728
+    },
+    {
+      "video_id": "mirror6_patient_000178",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000178/video.avi",
+      "size_bytes": 7864320,
+      "mtime_ns": 1772611829338645949
+    },
+    {
+      "video_id": "mirror6_patient_000180",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000180/video.avi",
+      "size_bytes": 7340032,
+      "mtime_ns": 1772612129497178878
+    },
+    {
+      "video_id": "mirror6_patient_000182",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000182/video.avi",
+      "size_bytes": 8388608,
+      "mtime_ns": 1772612654102083422
+    },
+    {
+      "video_id": "mirror6_patient_000188",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000188/video.avi",
+      "size_bytes": 7602176,
+      "mtime_ns": 1772790003610617294
+    },
+    {
+      "video_id": "mirror6_patient_000196",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000196/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1773046985626367525
+    },
+    {
+      "video_id": "mirror6_patient_000198",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000198/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1773047311500975073
+    },
+    {
+      "video_id": "mirror6_patient_000199",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000199/video.avi",
+      "size_bytes": 4980736,
+      "mtime_ns": 1773047518486620239
+    },
+    {
+      "video_id": "mirror6_patient_000200",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000200/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1773047655265333070
+    },
+    {
+      "video_id": "mirror6_patient_000202",
+      "path": "/root/shared/HealthMirrorDataset/mirror6_data/patient_000202/video.avi",
+      "size_bytes": 6815744,
+      "mtime_ns": 1773048081852150308
+    }
+  ]
+}

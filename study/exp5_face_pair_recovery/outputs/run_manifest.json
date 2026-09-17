@@ -1,0 +1,14 @@
+{
+  "seed": 20260808,
+  "selected_stage": "head",
+  "head_best_val_mae": 0.15407502111317456,
+  "last_stage_best_val_mae": 0.158373543533726,
+  "train_views": [
+    "original",
+    "hflip",
+    "center_crop"
+  ],
+  "input": "one preoperative plus one postoperative RGB face",
+  "encoders": "independent preoperative and postoperative EfficientNet-B0 plus projectors",
+  "evaluation": "mean of 20 deterministic pre/post frame pairs per postoperative video"
+}

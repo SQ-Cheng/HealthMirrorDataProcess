@@ -1,0 +1,68 @@
+[data] records=393 patients=168 pre_videos=168 post_videos=393 split={'test': 61, 'train': 259, 'val': 73}
+[frames] reused 544-video index
+[frames] excluded_pairs=19 final_records=374 final_patients=163 labels_and_split_refit=true
+[job-start] device=cuda:0 videos=233/69/72 patients=99/32/32 pairs=4660/1380/1440 train_inputs=13980 parameters=8187641 head_trainable=172545
+[stage-start] stage=head lr=2.0e-04 trainable=172545
+[epoch] stage=head 001/30 train_loss=0.06502 train_MAE=0.0582 train_R2=0.8351 val_MAE=0.1569 val_RMSE=0.1910 val_R2=0.1140 val_r=0.3979 throughput=1042.5/s mem=0.48GiB patience=0/8*
+[epoch] stage=head 002/30 train_loss=0.02791 train_MAE=0.0301 train_R2=0.9519 val_MAE=0.1541 val_RMSE=0.1894 val_R2=0.1290 val_r=0.4335 throughput=1184.8/s mem=0.48GiB patience=0/8*
+[epoch] stage=head 003/30 train_loss=0.01873 train_MAE=0.0240 train_R2=0.9703 val_MAE=0.1600 val_RMSE=0.1941 val_R2=0.0850 val_r=0.4202 throughput=1168.0/s mem=0.48GiB patience=1/8
+[epoch] stage=head 004/30 train_loss=0.01485 train_MAE=0.0194 train_R2=0.9818 val_MAE=0.1564 val_RMSE=0.1883 val_R2=0.1393 val_r=0.4215 throughput=1180.5/s mem=0.48GiB patience=2/8
+[epoch] stage=head 005/30 train_loss=0.01230 train_MAE=0.0164 train_R2=0.9870 val_MAE=0.1603 val_RMSE=0.1918 val_R2=0.1071 val_r=0.4031 throughput=1151.3/s mem=0.48GiB patience=3/8
+[epoch] stage=head 006/30 train_loss=0.01068 train_MAE=0.0139 train_R2=0.9909 val_MAE=0.1611 val_RMSE=0.1932 val_R2=0.0937 val_r=0.3859 throughput=1157.8/s mem=0.48GiB patience=4/8
+[epoch] stage=head 007/30 train_loss=0.00973 train_MAE=0.0156 train_R2=0.9902 val_MAE=0.1653 val_RMSE=0.1971 val_R2=0.0569 val_r=0.3840 throughput=780.9/s mem=0.48GiB patience=5/8
+[epoch] stage=head 008/30 train_loss=0.00844 train_MAE=0.0131 train_R2=0.9929 val_MAE=0.1652 val_RMSE=0.1961 val_R2=0.0659 val_r=0.3481 throughput=803.5/s mem=0.48GiB patience=6/8
+[epoch] stage=head 009/30 train_loss=0.00803 train_MAE=0.0129 train_R2=0.9927 val_MAE=0.1596 val_RMSE=0.1931 val_R2=0.0947 val_r=0.3771 throughput=879.3/s mem=0.48GiB patience=7/8
+[epoch] stage=head 010/30 train_loss=0.00727 train_MAE=0.0109 train_R2=0.9947 val_MAE=0.1641 val_RMSE=0.1972 val_R2=0.0554 val_r=0.3538 throughput=1166.0/s mem=0.48GiB patience=8/8
+[early-stop] stage=head
+[stage-start] stage=last_stage backbone_lr=1.0e-05 head_lr=1.0e-04 trainable=2431329
+[epoch] stage=last_stage 001/50 train_loss=0.08779 train_MAE=0.0764 train_R2=0.7150 val_MAE=0.1651 val_RMSE=0.1977 val_R2=0.0506 val_r=0.3501 throughput=908.4/s mem=0.58GiB patience=0/10*
+[epoch] stage=last_stage 002/50 train_loss=0.05466 train_MAE=0.0532 train_R2=0.8574 val_MAE=0.1680 val_RMSE=0.2013 val_R2=0.0163 val_r=0.2994 throughput=897.0/s mem=0.58GiB patience=1/10
+[epoch] stage=last_stage 003/50 train_loss=0.04336 train_MAE=0.0473 train_R2=0.8814 val_MAE=0.1679 val_RMSE=0.2008 val_R2=0.0210 val_r=0.3015 throughput=902.5/s mem=0.58GiB patience=2/10
+[epoch] stage=last_stage 004/50 train_loss=0.03580 train_MAE=0.0380 train_R2=0.9201 val_MAE=0.1657 val_RMSE=0.1961 val_R2=0.0666 val_r=0.3435 throughput=889.1/s mem=0.58GiB patience=3/10
+[epoch] stage=last_stage 005/50 train_loss=0.03046 train_MAE=0.0376 train_R2=0.9267 val_MAE=0.1694 val_RMSE=0.2004 val_R2=0.0244 val_r=0.3376 throughput=670.6/s mem=0.58GiB patience=4/10
+[epoch] stage=last_stage 006/50 train_loss=0.02768 train_MAE=0.0312 train_R2=0.9495 val_MAE=0.1704 val_RMSE=0.2005 val_R2=0.0235 val_r=0.3340 throughput=694.6/s mem=0.58GiB patience=5/10
+[epoch] stage=last_stage 007/50 train_loss=0.02558 train_MAE=0.0280 train_R2=0.9595 val_MAE=0.1652 val_RMSE=0.1953 val_R2=0.0741 val_r=0.3567 throughput=790.0/s mem=0.58GiB patience=6/10
+[epoch] stage=last_stage 008/50 train_loss=0.02284 train_MAE=0.0258 train_R2=0.9664 val_MAE=0.1669 val_RMSE=0.1974 val_R2=0.0541 val_r=0.3402 throughput=911.6/s mem=0.58GiB patience=7/10
+[epoch] stage=last_stage 009/50 train_loss=0.02118 train_MAE=0.0279 train_R2=0.9615 val_MAE=0.1663 val_RMSE=0.1976 val_R2=0.0519 val_r=0.3695 throughput=897.9/s mem=0.58GiB patience=8/10
+[epoch] stage=last_stage 010/50 train_loss=0.01986 train_MAE=0.0235 train_R2=0.9723 val_MAE=0.1630 val_RMSE=0.1947 val_R2=0.0791 val_r=0.3701 throughput=890.7/s mem=0.58GiB patience=0/10*
+[epoch] stage=last_stage 011/50 train_loss=0.01792 train_MAE=0.0223 train_R2=0.9768 val_MAE=0.1617 val_RMSE=0.1915 val_R2=0.1091 val_r=0.3943 throughput=903.1/s mem=0.58GiB patience=0/10*
+[epoch] stage=last_stage 012/50 train_loss=0.01742 train_MAE=0.0216 train_R2=0.9775 val_MAE=0.1621 val_RMSE=0.1909 val_R2=0.1154 val_r=0.3948 throughput=909.2/s mem=0.58GiB patience=1/10
+[epoch] stage=last_stage 013/50 train_loss=0.01616 train_MAE=0.0200 train_R2=0.9805 val_MAE=0.1617 val_RMSE=0.1915 val_R2=0.1096 val_r=0.3972 throughput=613.9/s mem=0.58GiB patience=2/10
+[epoch] stage=last_stage 014/50 train_loss=0.01559 train_MAE=0.0184 train_R2=0.9844 val_MAE=0.1619 val_RMSE=0.1913 val_R2=0.1111 val_r=0.3933 throughput=665.8/s mem=0.58GiB patience=3/10
+[epoch] stage=last_stage 015/50 train_loss=0.01495 train_MAE=0.0195 train_R2=0.9832 val_MAE=0.1595 val_RMSE=0.1883 val_R2=0.1392 val_r=0.4123 throughput=740.2/s mem=0.58GiB patience=0/10*
+[epoch] stage=last_stage 016/50 train_loss=0.01406 train_MAE=0.0181 train_R2=0.9859 val_MAE=0.1602 val_RMSE=0.1911 val_R2=0.1134 val_r=0.3921 throughput=902.5/s mem=0.58GiB patience=1/10
+[epoch] stage=last_stage 017/50 train_loss=0.01365 train_MAE=0.0181 train_R2=0.9860 val_MAE=0.1626 val_RMSE=0.1928 val_R2=0.0978 val_r=0.3841 throughput=906.4/s mem=0.58GiB patience=2/10
+[epoch] stage=last_stage 018/50 train_loss=0.01349 train_MAE=0.0190 train_R2=0.9854 val_MAE=0.1612 val_RMSE=0.1922 val_R2=0.1029 val_r=0.3955 throughput=901.7/s mem=0.58GiB patience=3/10
+[epoch] stage=last_stage 019/50 train_loss=0.01279 train_MAE=0.0166 train_R2=0.9883 val_MAE=0.1632 val_RMSE=0.1940 val_R2=0.0860 val_r=0.3718 throughput=882.8/s mem=0.58GiB patience=4/10
+[epoch] stage=last_stage 020/50 train_loss=0.01189 train_MAE=0.0176 train_R2=0.9872 val_MAE=0.1594 val_RMSE=0.1908 val_R2=0.1156 val_r=0.4012 throughput=897.1/s mem=0.58GiB patience=0/10*
+[epoch] stage=last_stage 021/50 train_loss=0.01164 train_MAE=0.0166 train_R2=0.9887 val_MAE=0.1604 val_RMSE=0.1888 val_R2=0.1345 val_r=0.4081 throughput=857.2/s mem=0.58GiB patience=1/10
+[epoch] stage=last_stage 022/50 train_loss=0.01151 train_MAE=0.0164 train_R2=0.9886 val_MAE=0.1651 val_RMSE=0.1958 val_R2=0.0688 val_r=0.3556 throughput=776.4/s mem=0.58GiB patience=2/10
+[epoch] stage=last_stage 023/50 train_loss=0.01116 train_MAE=0.0151 train_R2=0.9903 val_MAE=0.1615 val_RMSE=0.1927 val_R2=0.0980 val_r=0.3775 throughput=676.9/s mem=0.58GiB patience=3/10
+[epoch] stage=last_stage 024/50 train_loss=0.01100 train_MAE=0.0127 train_R2=0.9921 val_MAE=0.1584 val_RMSE=0.1882 val_R2=0.1397 val_r=0.4084 throughput=899.8/s mem=0.58GiB patience=0/10*
+[epoch] stage=last_stage 025/50 train_loss=0.01045 train_MAE=0.0149 train_R2=0.9908 val_MAE=0.1618 val_RMSE=0.1932 val_R2=0.0932 val_r=0.3714 throughput=918.9/s mem=0.58GiB patience=1/10
+[epoch] stage=last_stage 026/50 train_loss=0.01043 train_MAE=0.0131 train_R2=0.9923 val_MAE=0.1632 val_RMSE=0.1932 val_R2=0.0932 val_r=0.3651 throughput=920.4/s mem=0.58GiB patience=2/10
+[epoch] stage=last_stage 027/50 train_loss=0.01001 train_MAE=0.0157 train_R2=0.9902 val_MAE=0.1619 val_RMSE=0.1952 val_R2=0.0745 val_r=0.3754 throughput=909.1/s mem=0.58GiB patience=3/10
+[epoch] stage=last_stage 028/50 train_loss=0.00998 train_MAE=0.0145 train_R2=0.9912 val_MAE=0.1618 val_RMSE=0.1927 val_R2=0.0982 val_r=0.3751 throughput=901.2/s mem=0.58GiB patience=4/10
+[epoch] stage=last_stage 029/50 train_loss=0.00976 train_MAE=0.0143 train_R2=0.9915 val_MAE=0.1631 val_RMSE=0.1935 val_R2=0.0909 val_r=0.3686 throughput=629.5/s mem=0.58GiB patience=5/10
+[epoch] stage=last_stage 030/50 train_loss=0.00956 train_MAE=0.0131 train_R2=0.9928 val_MAE=0.1589 val_RMSE=0.1898 val_R2=0.1251 val_r=0.4028 throughput=601.0/s mem=0.58GiB patience=6/10
+[epoch] stage=last_stage 031/50 train_loss=0.00921 train_MAE=0.0147 train_R2=0.9910 val_MAE=0.1602 val_RMSE=0.1904 val_R2=0.1197 val_r=0.3951 throughput=892.9/s mem=0.58GiB patience=7/10
+[epoch] stage=last_stage 032/50 train_loss=0.00924 train_MAE=0.0128 train_R2=0.9931 val_MAE=0.1613 val_RMSE=0.1927 val_R2=0.0984 val_r=0.3787 throughput=907.8/s mem=0.58GiB patience=8/10
+[epoch] stage=last_stage 033/50 train_loss=0.00911 train_MAE=0.0130 train_R2=0.9930 val_MAE=0.1623 val_RMSE=0.1955 val_R2=0.0717 val_r=0.3645 throughput=910.4/s mem=0.58GiB patience=9/10
+[epoch] stage=last_stage 034/50 train_loss=0.00898 train_MAE=0.0132 train_R2=0.9926 val_MAE=0.1614 val_RMSE=0.1914 val_R2=0.1103 val_r=0.3868 throughput=874.0/s mem=0.58GiB patience=10/10
+[early-stop] stage=last_stage
+[job-complete] selected=head test_MAE=0.1425 test_R2=0.1011 test_r=0.3743
+[plots] saved figures under /root/autodl-tmp/HealthMirrorDataProcess/study/exp5_face_pair_recovery/outputs/figures
+[experiment-complete] checkpoint, histories, predictions, and figures generated
+[example] 1/10 true=0.158 video_pred=0.510 frame_pred=0.505
+[example] 2/10 true=0.223 video_pred=0.450 frame_pred=0.454
+[example] 3/10 true=0.250 video_pred=0.574 frame_pred=0.577
+[example] 4/10 true=0.311 video_pred=0.327 frame_pred=0.318
+[example] 5/10 true=0.368 video_pred=0.348 frame_pred=0.351
+[example] 6/10 true=0.435 video_pred=0.491 frame_pred=0.489
+[example] 7/10 true=0.480 video_pred=0.572 frame_pred=0.572
+[example] 8/10 true=0.536 video_pred=0.569 frame_pred=0.570
+[example] 9/10 true=0.630 video_pred=0.424 frame_pred=0.416
+[example] 10/10 true=0.752 video_pred=0.524 frame_pred=0.524
+[complete] examples=10 figure=/root/autodl-tmp/HealthMirrorDataProcess/study/exp5_face_pair_recovery/outputs/figures/interpretability_gradcam_occlusion_10faces.png
+[comparison-complete] table=/root/autodl-tmp/HealthMirrorDataProcess/study/exp5_face_pair_recovery/outputs/ablation_comparison.csv figure=/root/autodl-tmp/HealthMirrorDataProcess/study/exp5_face_pair_recovery/outputs/figures/ablation_paired_vs_single_input.png
+[post-training-complete] all current figures regenerated

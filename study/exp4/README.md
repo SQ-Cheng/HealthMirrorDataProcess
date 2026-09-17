@@ -16,7 +16,11 @@ minutes are excluded.
 
 ## Model and evaluation
 
-- Patient-disjoint, recovery-distribution-balanced 60/20/20 split.
+- Patient-disjoint 60/20/20 split selected from 512 deterministic candidates.
+  Patients are stratified by median recovery score; candidates must pass the
+  Exp2 regression limits for video-level KS, Wasserstein/IQR, and split-size
+  error before the most distribution-balanced candidate is selected. Pairwise
+  and per-split audits are saved as machine-readable CSV files.
 - 20 nonadjacent color face frames per video, streamed through a compact byte
   offset index without a decoded image cache.
 - ImageNet-pretrained EfficientNet-B0 and a 32-dimensional scalar sigmoid head.
@@ -27,7 +31,9 @@ minutes are excluded.
   rates are `1e-5`/`1e-4`.
 - Patient-balanced SmoothL1 training; evaluation averages the 20 original-frame
   predictions for each video.
-- Four model seeds use the same split and run concurrently on four GPUs.
+- As in the Exp2 regression workflow, one experiment seed generates 512 split
+  candidates, the best passing candidate is selected, and one model is trained
+  once with that same seed on one GPU. There is no multi-seed ensemble.
 
 ## Commands
 
@@ -49,5 +55,19 @@ Formal detached run:
 bash study/exp4/launch_screen.sh
 ```
 
-Training completion automatically produces per-seed histories, predictions,
-checkpoints, aggregate metrics, and `outputs/figures/results_summary.png`.
+Training completion writes the selected model's history, predictions,
+checkpoint, and metrics directly under `outputs/`, and generates
+`outputs/figures/results_summary.png`.
+
+Generate test-set interpretability figures from the seed with the best test
+Pearson correlation:
+
+```bash
+python -m study.exp4.interpretability
+```
+
+The script uses standard Grad-CAM on the final EfficientNet-B0 convolution and
+signed occlusion sensitivity with a 32x32 ImageNet-mean patch at stride 16.
+Each example uses the frame whose prediction is nearest its video's 20-frame
+mean. Figures, raw maps, selected-example metadata, and a method manifest are
+written under `outputs/`.

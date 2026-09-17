@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "experiment": "exp5_cabg_pre_post_face_pair_recovery",
+  "source_sha256": "28ab14358f627b28cf922f719092c98d033686a8883b1955f11c520d057644e1",
+  "timezone": "Asia/Shanghai",
+  "analytes": {
+    "lactate": {
+      "item": "乳酸浓度",
+      "unit": "mmol/l",
+      "valid_range": [
+        0.1,
+        30.0
+      ]
+    },
+    "blood_gas_hb": {
+      "item": "血红蛋白",
+      "unit": "g/dl",
+      "valid_range": [
+        2.0,
+        25.0
+      ]
+    },
+    "troponin": {
+      "item": "*肌钙蛋白Ⅰ(hsTnI)测定",
+      "unit": "ng/l",
+      "valid_range": [
+        0.0,
+        100000.0
+      ],
+      "log1p": true
+    },
+    "o2hb_fraction": {
+      "item": "氧合血红蛋白分数",
+      "unit": "%",
+      "valid_range": [
+        0.0,
+        100.0
+      ]
+    },
+    "glucose": {
+      "item": "*葡萄糖(Glu)测定",
+      "unit": "mmol/l",
+      "valid_range": [
+        0.1,
+        50.0
+      ]
+    }
+  },
+  "label": {
+    "method": "equal-weight mean of five trajectory-projected recovery positions",
+    "trajectory_fit_scope": "train patients only",
+    "projection_time_scale": 0.25,
+    "lab_match_max_hours": 24.0,
+    "requires_all_five_analytes": true
+  },
+  "pairing": "nearest available preoperative video from the same CABG hospitalization",
+  "counts": {
+    "cabg_episodes": 312,
+    "paired_inventory_videos": 816,
+    "labelled_postoperative_videos": 393,
+    "labelled_patients": 168,
+    "frame_index_videos": 561,
+    "video_statuses": {
+      "missing_patient_mapping": 451,
+      "no_cabg_episode": 1352,
+      "retained": 983,
+      "ambiguous_or_outside_episode": 6,
+      "time_sources_disagree_gt_5min": 29
+    },
+    "lab_match_exclusions": {
+      "missing_lactate": 177,
+      "missing_blood_gas_hb": 177,
+      "missing_o2hb_fraction": 177,
+      "missing_troponin": 50,
+      "missing_glucose": 40
+    },
+    "frame_excluded_pairs": 19,
+    "final_labelled_postoperative_videos": 374,
+    "final_labelled_patients": 163
+  },
+  "split": {
+    "seed": 20260808,
+    "candidate_count": 512,
+    "selected_candidate_index": 203,
+    "objective": 1.6750215339718837,
+    "max_ks": 0.3061516452074392,
+    "max_wasserstein_iqr": 0.6815606128314201,
+    "size_fraction_error": 0.022994652406417182,
+    "variables": [
+      "postoperative_progress",
+      "lactate_value",
+      "blood_gas_hb_value",
+      "troponin_value",
+      "o2hb_fraction_value",
+      "glucose_value"
+    ]
+  },
+  "frame_index": {
+    "frames_per_video": 20,
+    "quantile_range": [
+      0.05,
+      0.9500000000000001
+    ],
+    "minimum_source_frame_gap": 2,
+    "source_image_size": 128
+  }
+}
