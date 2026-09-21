@@ -10,13 +10,15 @@ test name and unit. Rows outside the admission-discharge interval, nonnumeric
 results, and censored values such as `<0.01` are audited and excluded from
 inferential calculations.
 
-Verified aliases are harmonized before variable IDs are assigned: blood-gas
-glucose is converted to mmol/L, fractional arterial/alveolar PO2 ratios are
-converted to percent, and duplicate analyzer labels for standard-condition or
-patient-condition P50 are collapsed. Standard-condition P50 remains distinct
-from patient-condition P50. The applied rules and row-level validation evidence
-are written to `variable_harmonization_audit.csv` and
-`field_equivalence_evidence.csv`.
+Clinically equivalent aliases are harmonized before variable IDs are assigned.
+This includes laboratory and blood-gas hemoglobin, glucose, lactate, troponin I,
+creatinine, hematocrit, co-oximetry fractions, electrolytes, oxygen-derived
+quantities, and exact source-system aliases. Explicit unit conversions are
+applied before merging. Temperature-corrected values, patient-condition versus
+standard-condition P50, total versus ionized magnesium, and blood versus urine
+measurements remain distinct. The applied rules, source labels, affected row
+counts, conversion formulas, and validation evidence are written to
+`variable_harmonization_audit.csv` and `field_equivalence_evidence.csv`.
 
 For each eligible variable:
 

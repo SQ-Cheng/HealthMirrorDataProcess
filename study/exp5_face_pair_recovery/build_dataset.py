@@ -16,6 +16,7 @@ from study.exp2_lab_multimodal.build_dataset import (
     _read_merged_patient_info,
 )
 from study.exp4.build_dataset import _session_timestamp, _unix_to_local_naive, _video_bounds
+from study.exp2_lab_longitudinal_statistics.run_analysis import _load_and_clean
 
 from .config import (
     ANALYTES,
@@ -28,10 +29,10 @@ from .config import (
     SPLIT_FRACTIONS,
     SPLIT_SCORE_BINS,
     TIMEZONE,
+    TARGET_COLUMN,
     TRAJECTORY_BINS,
     TRAJECTORY_GRID_SIZE,
     TRAJECTORY_MIN_SCALE,
-    TRAJECTORY_TIME_SCALE,
 )
 
 
@@ -39,6 +40,7 @@ META_COLUMNS = (
     "首页病案号", "首页入院时间", "首页出院时间", "手术开始日期",
     "手术结束日期", "首页手术操作名称",
 )
+PROTOCOLS = ("paired", "pre_only", "post_only")
 
 
 def _sha256(path):
@@ -111,7 +113,7 @@ def load_cabg_episodes():
     return episodes.reset_index(drop=True), pd.DataFrame(audit)
 
 
-def build_video_inventory(episodes):
+def build_video_inventory(episodes, require_paired=True):
     mappings = _read_merged_patient_info()
     by_patient = {key: value for key, value in episodes.groupby("hospital_id")}
     rows, audit, counts = [], [], Counter()
@@ -176,56 +178,78 @@ def build_video_inventory(episodes):
         counts[status] += 1
         audit.append({**base, "status": status})
     inventory = pd.DataFrame(rows).sort_values("video_id").reset_index(drop=True)
-    paired = inventory.groupby("hospital_id").phase.agg(set)
-    paired_ids = set(paired[paired.map(lambda phases: {"pre", "post"} <= phases)].index)
-    inventory = inventory[inventory.hospital_id.isin(paired_ids)].reset_index(drop=True)
+    if require_paired:
+        paired = inventory.groupby("hospital_id").phase.agg(set)
+        paired_ids = set(
+            paired[paired.map(lambda phases: {"pre", "post"} <= phases)].index
+        )
+        inventory = inventory[inventory.hospital_id.isin(paired_ids)].reset_index(drop=True)
     return inventory, pd.DataFrame(audit), counts
 
 
 def load_analytes(episodes):
-    columns = ["首页病案号", "检验项名称", "检验值(文本)", "单位", "报告时间"]
-    raw = pd.read_csv(LAB_CSV, dtype=str, keep_default_na=False, usecols=columns)
-    raw["hospital_id"] = raw["首页病案号"].map(_normalize_hospital_id)
-    raw["report_time"] = pd.to_datetime(raw["报告时间"], errors="coerce")
-    raw["value"] = _numeric(raw["检验值(文本)"])
-    raw["unit_normalized"] = raw["单位"].astype(str).str.replace(r"\s+", "", regex=True).str.lower()
-    raw["censored"] = raw["检验值(文本)"].str.match(r"^\s*[<>≤≥＜＞]", na=False)
+    _, measurements, _, _, _, harmonization_audit, _ = _load_and_clean(LAB_CSV)
+    measurements = measurements.merge(
+        episodes[[
+            "hospital_id", "admission_time", "discharge_time",
+            "surgery_start", "surgery_end",
+        ]],
+        on=["hospital_id", "admission_time", "discharge_time"], how="inner",
+        validate="many_to_one",
+    )
     frames, audit = [], []
     for analyte, definition in ANALYTES.items():
-        selected = raw[
-            raw["检验项名称"].eq(definition["item"])
-            & raw.unit_normalized.eq(definition["unit"])
+        selected = measurements[
+            measurements.item_name.eq(definition["item"])
+            & measurements.unit.eq(definition["unit"])
         ].copy()
+        selected = selected.rename(columns={"numeric_value": "value"})
+        preoperative = selected.report_time.lt(selected.surgery_start)
+        intraoperative = (
+            selected.report_time.ge(selected.surgery_start)
+            & selected.report_time.le(selected.surgery_end)
+        )
+        postoperative = selected.report_time.gt(selected.surgery_end)
         valid = (
-            selected.hospital_id.ne("") & selected.report_time.notna()
-            & selected.value.notna() & ~selected.censored
+            postoperative
             & selected.value.between(*definition["valid_range"], inclusive="both")
         )
-        kept = selected[valid].copy()
+        kept = selected.loc[valid, [
+            "hospital_id", "admission_time", "discharge_time", "surgery_start",
+            "surgery_end", "report_time", "value", "source_item_names",
+            "source_units", "harmonization_rules",
+        ]].copy()
         kept["analyte"] = analyte
         kept = kept.groupby(
-            ["hospital_id", "report_time", "analyte"], as_index=False
-        ).value.median()
+            [
+                "hospital_id", "admission_time", "discharge_time", "surgery_start",
+                "surgery_end", "report_time", "analyte",
+            ], as_index=False
+        ).agg(
+            value=("value", "median"),
+            source_item_names=("source_item_names", lambda x: "^".join(sorted(set(x)))),
+            source_units=("source_units", lambda x: "^".join(sorted(set(x)))),
+            harmonization_rules=("harmonization_rules", lambda x: "^".join(sorted(set(x)))),
+        )
         frames.append(kept)
         audit.append({
             "analyte": analyte, "source_item": definition["item"],
-            "source_unit": definition["unit"], "source_rows": len(selected),
+            "source_unit": definition["unit"], "harmonized_source_rows": len(selected),
+            "preoperative_rows_excluded": int(preoperative.sum()),
+            "intraoperative_rows_excluded": int(intraoperative.sum()),
+            "postoperative_out_of_range_rows_excluded": int(
+                (postoperative & ~selected.value.between(
+                    *definition["valid_range"], inclusive="both"
+                )).sum()
+            ),
             "retained_rows": len(kept), "retained_patients": kept.hospital_id.nunique(),
         })
     labs = pd.concat(frames, ignore_index=True)
-    labs = labs.merge(
-        episodes[["hospital_id", "admission_time", "discharge_time", "surgery_end"]],
-        on="hospital_id", how="inner",
-    )
-    labs = labs[
-        labs.report_time.ge(labs.admission_time)
-        & labs.report_time.le(labs.discharge_time)
-    ].copy()
     duration = (labs.discharge_time - labs.surgery_end).dt.total_seconds()
     labs["postoperative_progress"] = (
         (labs.report_time - labs.surgery_end).dt.total_seconds() / duration
     )
-    return labs, pd.DataFrame(audit)
+    return labs, pd.DataFrame(audit), harmonization_audit
 
 
 def _nearest(group, start, end):
@@ -247,7 +271,9 @@ def _nearest(group, start, end):
     ).iloc[0]
 
 
-def match_postoperative_labels(inventory, labs):
+def match_postoperative_labels(inventory, labs, protocol):
+    if protocol not in PROTOCOLS:
+        raise ValueError(f"Unknown protocol: {protocol}")
     pre = inventory[inventory.phase.eq("pre")].copy()
     post = inventory[inventory.phase.eq("post")].copy()
     pre_lookup = {
@@ -260,19 +286,29 @@ def match_postoperative_labels(inventory, labs):
     }
     rows, exclusions = [], Counter()
     for video in post.itertuples(index=False):
-        candidates = pre_lookup[str(video.hospital_id)]
-        pre_video = candidates.iloc[
-            np.argmin(np.abs((candidates.capture_midpoint_local - video.surgery_start).dt.total_seconds()))
-        ]
         row = video._asdict()
-        row.update({
-            "pre_video_id": pre_video.video_id,
-            "pre_video_path": pre_video.video_path,
-            "pre_capture_midpoint_local": pre_video.capture_midpoint_local,
-            "pre_hours_before_surgery": (
-                video.surgery_start - pre_video.capture_midpoint_local
-            ).total_seconds() / 3600,
-        })
+        candidates = pre_lookup.get(str(video.hospital_id))
+        if protocol != "post_only" and (candidates is None or candidates.empty):
+            exclusions["missing_preoperative_video"] += 1
+            continue
+        if candidates is not None and not candidates.empty:
+            pre_video = candidates.iloc[
+                np.argmin(np.abs((candidates.capture_midpoint_local - video.surgery_start).dt.total_seconds()))
+            ]
+            row.update({
+                "pre_video_id": pre_video.video_id,
+                "pre_video_path": pre_video.video_path,
+                "pre_capture_midpoint_local": pre_video.capture_midpoint_local,
+                "pre_hours_before_surgery": (
+                    video.surgery_start - pre_video.capture_midpoint_local
+                ).total_seconds() / 3600,
+            })
+        else:
+            row.update({
+                "pre_video_id": "", "pre_video_path": "",
+                "pre_capture_midpoint_local": pd.NaT,
+                "pre_hours_before_surgery": np.nan,
+            })
         complete = True
         for analyte in ANALYTES:
             match = _nearest(
@@ -370,6 +406,8 @@ def fit_trajectories_and_score(records, labs):
     centers = (np.arange(TRAJECTORY_BINS) + .5) / TRAJECTORY_BINS
     for analyte, definition in ANALYTES.items():
         raw_values = source.loc[source.analyte.eq(analyte), "value"].to_numpy(float)
+        if not len(raw_values):
+            raise ValueError(f"No training-patient trajectory values for {analyte}")
         if definition.get("log1p"):
             raw_values = np.log1p(raw_values)
         median = float(np.median(raw_values))
@@ -407,77 +445,145 @@ def fit_trajectories_and_score(records, labs):
         if definition.get("log1p"):
             observed = np.log1p(observed)
         z = (observed - model["median"]) / model["iqr"]
-        prior = result.postoperative_progress.to_numpy(float)
-        distances = (
-            ((z[:, None] - model["curve"][None, :]) / model["scale"][None, :]) ** 2
-            + ((grid[None, :] - prior[:, None]) / TRAJECTORY_TIME_SCALE) ** 2
-        )
-        column = f"{analyte}_recovery_component"
-        result[column] = grid[np.argmin(distances, axis=1)]
+        progress = np.clip(result.postoperative_progress.to_numpy(float), 0.0, 1.0)
+        expected = np.interp(progress, grid, model["curve"])
+        local_scale = np.interp(progress, grid, model["scale"])
+        column = f"{analyte}_deviation_component"
+        result[column] = np.abs(z - expected) / local_scale
         component_columns.append(column)
-    result["recovery_score"] = result[component_columns].mean(axis=1)
-    if not result.recovery_score.between(0, 1).all():
-        raise AssertionError("Trajectory recovery score outside [0,1]")
+    result[TARGET_COLUMN] = result[component_columns].mean(axis=1)
+    if not np.isfinite(result[TARGET_COLUMN]).all() or result[TARGET_COLUMN].lt(0).any():
+        raise AssertionError("Invalid postoperative trajectory-deviation score")
     return result, pd.DataFrame(rows)
 
 
-def prepare_records(output_dir):
+def protocol_output_dir(output_dir, protocol):
+    output_dir = Path(output_dir)
+    return output_dir if protocol == "paired" else output_dir / "ablations" / protocol
+
+
+def prepare_candidates(output_dir):
+    """Load shared sources once and construct maximum candidate cohorts."""
     output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+    for stale in (
+        output_dir / "figures" / "recovery_score_definition.png",
+        output_dir / "figures" / "gradcam_occlusion_10_faces.png",
+    ):
+        stale.unlink(missing_ok=True)
     episodes, surgery_audit = load_cabg_episodes()
-    inventory, video_audit, statuses = build_video_inventory(episodes)
-    labs, lab_audit = load_analytes(episodes)
-    records, match_exclusions = match_postoperative_labels(inventory, labs)
-    records, split_manifest = add_patient_split(records)
-    records, trajectories = fit_trajectories_and_score(records, labs)
-    pre_ids = set(records.pre_video_id); post_ids = set(records.video_id)
-    frame_records = inventory[inventory.video_id.isin(pre_ids | post_ids)][
+    inventory, video_audit, statuses = build_video_inventory(episodes, require_paired=False)
+    labs, lab_audit, harmonization_audit = load_analytes(episodes)
+    candidates, exclusions = {}, {}
+    requested_ids = set()
+    for protocol in PROTOCOLS:
+        records, match_exclusions = match_postoperative_labels(inventory, labs, protocol)
+        candidates[protocol] = records
+        exclusions[protocol] = dict(match_exclusions)
+        requested_ids.update(records.video_id.astype(str))
+        if protocol != "post_only":
+            requested_ids.update(records.pre_video_id.astype(str))
+    frame_records = inventory[inventory.video_id.astype(str).isin(requested_ids)][
         ["video_id", "video_path"]
-    ].drop_duplicates().reset_index(drop=True)
-    records.to_csv(output_dir / "records.csv", index=False)
-    frame_records.to_csv(output_dir / "frame_records.csv", index=False)
-    trajectories.to_csv(output_dir / "recovery_trajectories.csv", index=False)
+    ].drop_duplicates().sort_values("video_id").reset_index(drop=True)
     episodes.to_csv(output_dir / "cabg_episodes.csv", index=False)
     surgery_audit.to_csv(output_dir / "surgery_event_audit.csv", index=False)
     video_audit.to_csv(output_dir / "video_eligibility_audit.csv", index=False)
     lab_audit.to_csv(output_dir / "lab_source_audit.csv", index=False)
+    harmonization_audit.to_csv(output_dir / "lab_harmonization_audit.csv", index=False)
+    frame_records.to_csv(output_dir / "frame_records.csv", index=False)
+    shared = {
+        "source_sha256": _sha256(LAB_CSV), "timezone": TIMEZONE,
+        "video_statuses": dict(statuses), "lab_match_exclusions": exclusions,
+        "cabg_episodes": len(episodes), "inventory_videos": len(inventory),
+    }
+    return candidates, frame_records, labs, shared
+
+
+def finalize_protocol_records(protocol, records, labs, usable_video_ids, output_dir, shared):
+    """Apply only the face availability required by one protocol, then split and score."""
+    run_dir = protocol_output_dir(output_dir, protocol)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    usable = set(map(str, usable_video_ids))
+    post_ok = records.video_id.astype(str).isin(usable)
+    pre_ok = records.pre_video_id.astype(str).isin(usable)
+    if protocol == "paired":
+        keep = post_ok & pre_ok
+    elif protocol == "pre_only":
+        keep = pre_ok
+    else:
+        keep = post_ok
+    invalid = records.loc[~keep].copy()
+    invalid["post_frame_required"] = protocol in {"paired", "post_only"}
+    invalid["post_frame_usable"] = post_ok.loc[~keep].to_numpy()
+    invalid["pre_frame_required"] = protocol in {"paired", "pre_only"}
+    invalid["pre_frame_usable"] = pre_ok.loc[~keep].to_numpy()
+    invalid.to_csv(run_dir / "frame_exclusions.csv", index=False)
+    records = records.loc[keep].copy().reset_index(drop=True)
+    if records.hospital_id.nunique() < 15:
+        raise RuntimeError(
+            f"Too few patients after {protocol} face validation: "
+            f"{records.hospital_id.nunique()}"
+        )
+    records, split_manifest = add_patient_split(records)
+    records, trajectories = fit_trajectories_and_score(records, labs)
+    records.to_csv(run_dir / "records.csv", index=False)
+    trajectories.to_csv(run_dir / "recovery_trajectories.csv", index=False)
     split_rows = []
     for split, group in records.groupby("split"):
         split_rows.append({
             "split": split, "videos": len(group), "patients": group.hospital_id.nunique(),
-            "score_mean": group.recovery_score.mean(), "score_std": group.recovery_score.std(),
-            "score_q10": group.recovery_score.quantile(.1),
-            "score_median": group.recovery_score.median(),
-            "score_q90": group.recovery_score.quantile(.9),
+            "score_mean": group[TARGET_COLUMN].mean(), "score_std": group[TARGET_COLUMN].std(),
+            "score_q10": group[TARGET_COLUMN].quantile(.1),
+            "score_median": group[TARGET_COLUMN].median(),
+            "score_q90": group[TARGET_COLUMN].quantile(.9),
         })
-    pd.DataFrame(split_rows).to_csv(output_dir / "split_distribution.csv", index=False)
+    pd.DataFrame(split_rows).to_csv(run_dir / "split_distribution.csv", index=False)
     manifest = {
-        "schema_version": 1,
-        "experiment": "exp5_cabg_pre_post_face_pair_recovery",
-        "source_sha256": _sha256(LAB_CSV), "timezone": TIMEZONE,
+        "schema_version": 2,
+        "experiment": "exp5_cabg_face_recovery", "protocol": protocol,
+        "source_sha256": shared["source_sha256"], "timezone": TIMEZONE,
         "analytes": ANALYTES,
         "label": {
-            "method": "equal-weight mean of five trajectory-projected recovery positions",
+            "method": (
+                "equal-weight mean of nine absolute robust-standardized residuals "
+                "from the train-patient average postoperative trajectory at video time"
+            ),
             "trajectory_fit_scope": "train patients only",
-            "projection_time_scale": TRAJECTORY_TIME_SCALE,
             "lab_match_max_hours": LAB_MATCH_MAX_HOURS,
-            "requires_all_five_analytes": True,
+            "requires_all_nine_analytes": True,
+            "temporal_policy": (
+                "all analytes use reports strictly after surgery_end only; preoperative "
+                "and intraoperative reports are excluded before matching and fitting"
+            ),
         },
-        "pairing": "nearest available preoperative video from the same CABG hospitalization",
+        "input_requirement": {
+            "paired": "usable preoperative and postoperative face videos",
+            "pre_only": "usable preoperative face video only",
+            "post_only": "usable postoperative face video only",
+        }[protocol],
+        "pairing": (
+            "nearest available preoperative video from the same CABG hospitalization"
+            if protocol != "post_only" else "not applicable"
+        ),
         "counts": {
-            "cabg_episodes": len(episodes), "paired_inventory_videos": len(inventory),
+            "cabg_episodes": shared["cabg_episodes"],
+            "all_phase_inventory_videos": shared["inventory_videos"],
+            "candidate_postoperative_videos": len(records) + len(invalid),
+            "frame_excluded_records": len(invalid),
             "labelled_postoperative_videos": len(records),
             "labelled_patients": records.hospital_id.nunique(),
-            "frame_index_videos": len(frame_records),
-            "video_statuses": dict(statuses), "lab_match_exclusions": dict(match_exclusions),
+            "video_statuses": shared["video_statuses"],
+            "lab_match_exclusions": shared["lab_match_exclusions"][protocol],
         },
         "split": split_manifest,
     }
-    (output_dir / "experiment_manifest.json").write_text(
+    (run_dir / "experiment_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(
-        f"[data] records={len(records)} patients={records.hospital_id.nunique()} "
+        f"[data] protocol={protocol} records={len(records)} "
+        f"patients={records.hospital_id.nunique()} "
         f"pre_videos={records.pre_video_id.nunique()} post_videos={records.video_id.nunique()} "
         f"split={records.groupby('split').size().to_dict()}", flush=True,
     )
-    return records, frame_records, manifest
+    return records, manifest

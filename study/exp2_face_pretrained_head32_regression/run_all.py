@@ -29,6 +29,7 @@ from .config import (
     EVAL_NUM_WORKERS,
     JPEG_DECODER,
     OUTPUT_DIRS,
+    REFERENCE_INDEX_DIR,
     REFERENCE_OUTPUT_DIR,
     REGRESSION_TARGET_COLUMN,
     REGRESSION_TARGET_TRANSFORM,
@@ -47,17 +48,16 @@ from .config import (
 from .data import prepare_tasks, validate_source_data
 from .frame_index import FrameOffsetIndex, build_or_reuse_frame_index
 from .models import WEIGHT_FILES
-from .source_data import build_raw_video_source
+from .source_data import (
+    TARGET_ANALYTES,
+    build_raw_video_source,
+    validate_analyte_source_policies,
+)
 from .scaling import fit_robust_target_scaler, write_target_scalers
 from .train import train_task
 
 
-LAB_TARGET_PREFIXES = {
-    "hemoglobin_low": "hemoglobin",
-    "po2_low": "po2",
-    "lactate_high": "lactate",
-    "oxyhemoglobin_fraction": "oxyhemoglobin_fraction",
-}
+LAB_TARGET_PREFIXES = TARGET_ANALYTES
 
 _WORKER_FRAME_INDEX = None
 _WORKER_GPU_ID = None
@@ -290,7 +290,11 @@ def main():
     args = parser.parse_args()
     args.output_dir = args.output_dir or OUTPUT_DIRS[args.frame_policy]
     args.source_dir = args.source_dir or os.path.join(args.output_dir, "source_data")
-    args.index_dir = args.index_dir or os.path.join(args.output_dir, "frame_index")
+    args.index_dir = args.index_dir or (
+        REFERENCE_INDEX_DIR
+        if args.frame_policy == "20frame"
+        else os.path.join(args.output_dir, "frame_index")
+    )
     if args.reference_output_dir is None and args.frame_policy == "20frame":
         args.reference_output_dir = REFERENCE_OUTPUT_DIR
 
@@ -298,7 +302,7 @@ def main():
     requested_targets = (
         _parse_csv(args.targets)
         if args.targets
-        else (TARGETS if args.frame_policy == "allframes" else TARGETS[:3])
+        else TARGETS
     )
     unknown_architectures = sorted(set(architectures) - set(ARCHITECTURES))
     unknown_targets = sorted(set(requested_targets) - set(TARGETS))
@@ -348,19 +352,7 @@ def main():
     _set_seed(args.seed)
     build_raw_video_source(args.source_dir, preparation_targets)
     source_quality = validate_source_data(args.source_dir)
-    if "oxyhemoglobin_fraction" in preparation_targets:
-        oxy_policy = source_quality.get("analyte_source_policies", {}).get(
-            "oxyhemoglobin_fraction", {}
-        )
-        if (
-            oxy_policy.get("canonical_item_name") != "氧合血红蛋白分数"
-            or oxy_policy.get("canonical_unit") != "%"
-            or oxy_policy.get("enforcement")
-            != "exact item name, percent unit, non-venous specimen, finite 0-100 value"
-        ):
-            raise RuntimeError(
-                f"Strict oxyhemoglobin-fraction source policy is missing: {oxy_policy}"
-            )
+    validate_analyte_source_policies(source_quality, preparation_targets)
     weight_manifest = _validate_weights(args.weights_dir, architectures)
     base_manifest = pd.read_csv(
         os.path.join(args.source_dir, "base_manifest.csv"), dtype={"hospital_id": str}
@@ -466,6 +458,23 @@ def main():
         "architectures": list(manifest_architectures),
         "targets": list(ready_targets),
         "seed": args.seed,
+        "comparison_reference": (
+            {
+                "experiment": "exp2_face_history_head32_regression",
+                "output_dir": os.path.abspath(args.reference_output_dir),
+                "controlled_difference": (
+                    "this experiment omits the prior-lab history input and history "
+                    "encoder; image input, labels, splits, frame offsets, model "
+                    "backbones, head width, optimization, and job seeds are unchanged"
+                ),
+                "exact_validation": (
+                    "hospital_id, video_id, mirror, lab_patient_id, binary_label, "
+                    "source_sample_id, split, and raw_value"
+                ),
+            }
+            if args.reference_output_dir
+            else None
+        ),
         "data_fingerprints": {
             "base_manifest_sha256": _sha256_file(
                 os.path.join(args.source_dir, "base_manifest.csv")
@@ -479,6 +488,20 @@ def main():
                 )
                 for target in ready_targets
             },
+            "reference_task_record_sha256": (
+                {
+                    target: _sha256_file(
+                        os.path.join(
+                            args.reference_output_dir,
+                            "task_records",
+                            f"{target}.csv",
+                        )
+                    )
+                    for target in ready_targets
+                }
+                if args.reference_output_dir
+                else None
+            ),
             "split_distribution_audit_sha256": _sha256_file(
                 os.path.join(args.output_dir, "split_distribution_audit.csv")
             ),
@@ -512,8 +535,8 @@ def main():
             "duplicate_event_policy": (
                 "one nearest in-window lab measurement per raw video and target"
             ),
-            "po2_item_policy": (
-                "use exact item_name '氧分压'; exclude temperature-corrected PO2"
+            "analyte_source_policies": source_quality.get(
+                "analyte_source_policies", {}
             ),
         },
         "preprocessing": {

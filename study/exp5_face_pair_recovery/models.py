@@ -22,7 +22,7 @@ def _fusion_head():
     return nn.Sequential(
         nn.Linear(ENCODER_FEATURES * 4, HEAD_HIDDEN_FEATURES),
         nn.LayerNorm(HEAD_HIDDEN_FEATURES), nn.SiLU(inplace=True), nn.Dropout(0.25),
-        nn.Linear(HEAD_HIDDEN_FEATURES, 1), nn.Sigmoid(),
+        nn.Linear(HEAD_HIDDEN_FEATURES, 1), nn.Softplus(),
     )
 
 

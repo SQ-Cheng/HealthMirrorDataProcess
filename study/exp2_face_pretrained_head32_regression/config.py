@@ -3,6 +3,10 @@
 import os
 
 from study.exp2_lab_multimodal.config import DATA_ROOT, SEED
+from study.exp2_face_history_head32_regression.config import (
+    SCORE_DEFINITIONS,
+    TARGETS,
+)
 
 
 EXP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,31 +30,14 @@ REFERENCE_OUTPUT_DIR = os.path.abspath(
     )
 )
 SOURCE_DATA_DIR = os.path.join(OUTPUT_DIR, "source_data")
-LAB_TIMESERIES_CACHE = os.path.abspath(
+REFERENCE_INDEX_DIR = os.path.abspath(
     os.path.join(
-        EXP_DIR, "..", "exp2_face_only", "outputs_aug20_24h", "lab_timeseries.csv"
-    )
-)
-LAB_QUALITY_REPORT = os.path.abspath(
-    os.path.join(
-        EXP_DIR,
-        "..",
-        "exp2_face_only",
-        "outputs_aug20_24h",
-        "data_quality_report.json",
+        EXP_DIR, "..", "exp2_face_history_head32_regression", "cache", "20frame_index"
     )
 )
 
-ARCHITECTURES = ("mobilenet_v3_small", "efficientnet_b0")
-TARGETS = (
-    "hemoglobin_low",
-    "po2_low",
-    "oxyhemoglobin_fraction",
-    "lactate_high",
-)
+ARCHITECTURES = ("efficientnet_b0",)
 HEAD_HIDDEN_FEATURES = 32
-PO2_CANONICAL_ITEM_NAME = "氧分压"
-PO2_EXCLUDED_ITEM_NAMES = ("患者体温下氧分压",)
 TORCH_COMPILE_ENABLED = True
 TORCH_COMPILE_MODE = "reduce-overhead"
 
@@ -67,38 +54,6 @@ CROP_SCALE = 0.90
 BRIGHTNESS_DELTA = 0.06
 CONTRAST_DELTA = 0.08
 
-SCORE_DEFINITIONS = {
-    "hemoglobin_low": {
-        "value_column": "hemoglobin_value",
-        "direction": "low",
-        "scale": 10.0,
-        "unit": "g/L",
-        "threshold": {"male": 130.0, "other": 120.0},
-    },
-    "po2_low": {
-        "value_column": "po2_value",
-        "direction": "low",
-        "threshold": 80.0,
-        "scale": 10.0,
-        "unit": "mmHg",
-    },
-    "lactate_high": {
-        "value_column": "lactate_value",
-        "direction": "high",
-        "threshold": 2.0,
-        "scale": 1.0,
-        "unit": "mmol/L",
-    },
-    "oxyhemoglobin_fraction": {
-        "value_column": "oxyhemoglobin_fraction_value",
-        "direction": "low",
-        # Used only for split stratification and secondary threshold metrics.
-        # The model loss remains continuous raw-value regression.
-        "threshold": 94.0,
-        "scale": 2.0,
-        "unit": "%",
-    },
-}
 REGRESSION_TARGET_COLUMN = "robust_scaled_raw_value"
 REGRESSION_TARGET_TRANSFORM = "train_only_median_iqr"
 # Retained for split-distribution auditing and legacy comparison utilities.

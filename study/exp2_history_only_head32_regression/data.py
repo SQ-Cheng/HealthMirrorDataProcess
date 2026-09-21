@@ -31,7 +31,7 @@ class HistoryOnlyDataset(Dataset):
             if count:
                 self.features[row_index, :count] = history_store.features[start:end]
                 self.mask[row_index, :count] = True
-        self.labels = self.records["abnormal_score"].to_numpy(np.float32)
+        self.labels = self.records["robust_scaled_raw_value"].to_numpy(np.float32)
 
     def __len__(self):
         return len(self.records)
@@ -54,6 +54,12 @@ def load_task(reference_dir, target):
         raise ValueError(f"Unexpected split values for {target}")
     if records["video_id"].duplicated().any():
         raise ValueError(f"Duplicate video IDs for {target}")
+    required = {
+        "raw_value", "robust_scaled_raw_value", "score_threshold", "split",
+    }
+    missing = required - set(records.columns)
+    if missing:
+        raise ValueError(f"Missing raw-regression columns for {target}: {sorted(missing)}")
     history = HistoryFeatureStore.load(
         reference_dir / "history_records" / f"{target}.npz"
     )

@@ -25,24 +25,37 @@ ANALYTES = {
     "lactate": {
         "item": "乳酸浓度", "unit": "mmol/l", "valid_range": (0.1, 30.0),
     },
-    "blood_gas_hb": {
-        "item": "血红蛋白", "unit": "g/dl", "valid_range": (2.0, 25.0),
-    },
     "troponin": {
-        "item": "*肌钙蛋白Ⅰ(hsTnI)测定", "unit": "ng/l",
-        "valid_range": (0.0, 100000.0), "log1p": True,
+        "item": "肌钙蛋白Ⅰ", "unit": "ng/l",
+        "valid_range": (0.0, 200000.0), "log1p": True,
     },
-    "o2hb_fraction": {
-        "item": "氧合血红蛋白分数", "unit": "%", "valid_range": (0.0, 100.0),
+    "creatinine": {
+        "item": "肌酐(Cr)测定", "unit": "μmol/l", "valid_range": (5.0, 2000.0),
     },
-    "glucose": {
-        "item": "*葡萄糖(Glu)测定", "unit": "mmol/l", "valid_range": (0.1, 50.0),
+    "total_bilirubin": {
+        "item": "总胆红素", "unit": "μmol/l", "valid_range": (0.1, 1000.0),
+    },
+    "platelet_count": {
+        "item": "血小板", "unit": "10^9/l", "valid_range": (1.0, 2000.0),
+    },
+    "hemoglobin": {
+        "item": "血红蛋白", "unit": "g/l", "valid_range": (20.0, 250.0),
+    },
+    "crp": {
+        "item": "*快速C-反应蛋白", "unit": "mg/l", "valid_range": (0.0, 1000.0),
+    },
+    "albumin": {
+        "item": "*白蛋白(Alb)测定-溴甲酚绿法", "unit": "g/l",
+        "valid_range": (5.0, 80.0),
+    },
+    "po2": {
+        "item": "氧分压", "unit": "mmhg", "valid_range": (10.0, 800.0),
     },
 }
 TRAJECTORY_BINS = 16
 TRAJECTORY_GRID_SIZE = 201
-TRAJECTORY_TIME_SCALE = 0.25
 TRAJECTORY_MIN_SCALE = 0.35
+TARGET_COLUMN = "trajectory_deviation_score"
 
 FRAMES_PER_VIDEO = 20
 SOURCE_IMAGE_SIZE = 128

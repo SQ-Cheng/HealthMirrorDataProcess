@@ -14,6 +14,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib import font_manager
 import numpy as np
 import pandas as pd
 from scipy.stats import rankdata, theilslopes, wilcoxon
@@ -57,6 +58,14 @@ ENGLISH_NAMES = {
     "*葡萄糖(Glu)测定": "Laboratory glucose",
     "*血红蛋白": "Laboratory hemoglobin",
     "乳酸浓度": "Lactate",
+    "白细胞": "Urine white blood cells",
+    "白细胞（高倍视野）": "Urine WBC per high-power field",
+    "总胆红素": "Total bilirubin",
+    "肌酐(Cr)测定": "Creatinine",
+    "肌钙蛋白Ⅰ": "Troponin I",
+    "葡萄糖浓度": "Glucose",
+    "血小板": "Platelet count",
+    "红细胞压积": "Hematocrit",
     "二氧化碳分压": "PCO2",
     "动脉氧分压与肺泡氧分压之比": "Arterial/alveolar PO2 ratio",
     "动脉血氧分压与肺泡内氧分压之比": "Arterial/alveolar oxygen ratio",
@@ -82,106 +91,511 @@ ENGLISH_NAMES = {
     "肺泡内氧分压": "Alveolar PO2",
     "肺泡内氧分压与动脉血氧分压之差": "Alveolar-arterial PO2 difference",
     "肺泡动脉氧分压差": "A-a PO2 gradient",
-    "葡萄糖浓度": "Blood-gas glucose",
     "血氧浓度50%氧分压": "P50 from oxygen concentration",
     "血液中氧分压与吸氧浓度之比": "P/F ratio",
-    "血红蛋白": "Blood-gas hemoglobin",
+    "血红蛋白": "Hemoglobin",
+    "酸碱度": "pH",
+    "尿酸碱度": "Urine pH",
+    "钠": "Sodium",
+    "钾": "Potassium",
+    "镁": "Ionized magnesium",
+    "镁(Mg)测定": "Total magnesium",
     "还原血红蛋白": "Deoxyhemoglobin",
     "还原血红蛋白分数": "Deoxyhemoglobin fraction",
     "高铁血红蛋白": "Methemoglobin",
     "高铁血红蛋白分数": "Methemoglobin fraction",
 }
 
+def _rules(group_id, canonical_item, canonical_unit, sources, rationale):
+    return tuple(
+        {
+            "rule_id": f"{group_id}_{index + 1:02d}",
+            "source_item": source_item,
+            "source_units": source_units,
+            "canonical_item": canonical_item,
+            "canonical_unit": canonical_unit,
+            "factor": factor,
+            "offset": offset,
+            "formula": formula,
+            "rationale": rationale,
+        }
+        for index, (source_item, source_units, factor, offset, formula) in enumerate(
+            sources
+        )
+    )
+
+
 HARMONIZATION_RULES = (
+    *_rules(
+        "hemoglobin",
+        "血红蛋白",
+        "g/l",
+        (
+            ("*血红蛋白", ("g/l",), 1.0, 0.0, "identity"),
+            ("血红蛋白", ("g/dl",), 10.0, 0.0, "g/L = g/dL * 10"),
+            ("总血红蛋白", ("g/dl",), 10.0, 0.0, "g/L = g/dL * 10"),
+        ),
+        "Laboratory, blood-gas, and total hemoglobin are the same concentration quantity after unit conversion.",
+    ),
+    *_rules(
+        "glucose",
+        "葡萄糖浓度",
+        "mmol/l",
+        (
+            ("*葡萄糖(Glu)测定", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("葡萄糖浓度", ("mmol/l",), 1.0, 0.0, "identity"),
+            (
+                "葡萄糖浓度",
+                ("mg/dl",),
+                1.0 / MG_DL_PER_MMOL_L_GLUCOSE,
+                0.0,
+                "mmol/L = mg/dL / 18.0182",
+            ),
+        ),
+        "Laboratory and blood-gas glucose measure the same concentration; mass units are converted to molar units.",
+    ),
+    *_rules(
+        "lactate",
+        "乳酸浓度",
+        "mmol/l",
+        (
+            ("*乳酸浓度", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("乳酸浓度", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("乳酸", ("mmol/l",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent lactate labels with the same unit.",
+    ),
+    *_rules(
+        "troponin_i",
+        "肌钙蛋白Ⅰ",
+        "ng/l",
+        (
+            ("*肌钙蛋白Ⅰ(hsTnI)测定", ("ng/l", "pg/ml"), 1.0, 0.0, "ng/L = pg/mL"),
+            ("肌钙蛋白Ⅰ(hsTnI)测定", ("pg/ml",), 1.0, 0.0, "ng/L = pg/mL"),
+            ("*全血肌钙蛋白Ⅰ", ("μg/l", "ug/l"), 1000.0, 0.0, "ng/L = ug/L * 1000"),
+            ("全血肌钙蛋白Ⅰ", ("μg/l", "ug/l"), 1000.0, 0.0, "ng/L = ug/L * 1000"),
+            ("*高敏肌钙蛋白Ⅰ测定", ("ng/ml",), 1000.0, 0.0, "ng/L = ng/mL * 1000"),
+            ("肌钙蛋白Ⅰ(TnI)测定", ("ng/ml",), 1000.0, 0.0, "ng/L = ng/mL * 1000"),
+        ),
+        "Troponin I assay aliases converted to ng/L; assay method remains available in source_item_names.",
+    ),
+    *_rules(
+        "creatinine",
+        "肌酐(Cr)测定",
+        "μmol/l",
+        (
+            ("*肌酐(Cr)测定", ("μmol/l", "umol/l"), 1.0, 0.0, "identity"),
+            ("*肌酐(Cr)测定-苦味酸法", ("μmol/l", "umol/l"), 1.0, 0.0, "identity"),
+            ("*肌酐", ("μmol/l", "umol/l"), 1.0, 0.0, "identity"),
+        ),
+        "Blood/serum creatinine aliases; urine creatinine and eGFR are excluded.",
+    ),
+    *_rules(
+        "platelet_count",
+        "血小板",
+        "10^9/l",
+        (
+            ("*血小板", ("*10^9/l", "10^9/l", "g/l"), 1.0, 0.0, "identity (G/L = 10^9/L)"),
+        ),
+        "Platelet count unit spellings; morphology and function tests remain separate.",
+    ),
+    *_rules(
+        "hematocrit",
+        "红细胞压积",
+        "%",
+        (
+            ("*红细胞压积", ("%",), 1.0, 0.0, "identity"),
+            ("红细胞压积", ("%",), 1.0, 0.0, "identity"),
+        ),
+        "Laboratory and blood-gas hematocrit are the same percentage quantity.",
+    ),
+    *_rules(
+        "oxyhemoglobin_fraction",
+        "氧合血红蛋白分数",
+        "%",
+        (
+            ("氧合血红蛋白", ("%",), 1.0, 0.0, "identity"),
+            ("氧合血红蛋白分数", ("%",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent co-oximetry oxyhemoglobin fraction labels.",
+    ),
+    *_rules(
+        "deoxyhemoglobin_fraction",
+        "还原血红蛋白分数",
+        "%",
+        (
+            ("脱氧血红蛋白", ("%",), 1.0, 0.0, "identity"),
+            ("还原血红蛋白", ("%",), 1.0, 0.0, "identity"),
+            ("还原血红蛋白分数", ("%",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent deoxyhemoglobin/reduced-hemoglobin fraction labels.",
+    ),
+    *_rules(
+        "carboxyhemoglobin_fraction",
+        "碳氧血红蛋白分数",
+        "%",
+        (
+            ("碳氧血红蛋白", ("%",), 1.0, 0.0, "identity"),
+            ("碳氧血红蛋白分数", ("%",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent co-oximetry carboxyhemoglobin fraction labels.",
+    ),
+    *_rules(
+        "methemoglobin_fraction",
+        "高铁血红蛋白分数",
+        "%",
+        (
+            ("高铁血红蛋白", ("%",), 1.0, 0.0, "identity"),
+            ("高铁血红蛋白分数", ("%",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent co-oximetry methemoglobin fraction labels.",
+    ),
+    *_rules(
+        "sodium",
+        "钠",
+        "mmol/l",
+        (
+            ("*钠(Na)测定", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("钠", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("钠离子浓度", ("mmol/l",), 1.0, 0.0, "identity"),
+        ),
+        "Serum and blood-gas sodium concentration labels; 24-hour urine sodium remains separate.",
+    ),
+    *_rules(
+        "potassium",
+        "钾",
+        "mmol/l",
+        (
+            ("*钾", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("*钾(K)测定", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("钾", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("钾离子浓度", ("mmol/l",), 1.0, 0.0, "identity"),
+        ),
+        "Serum and blood-gas potassium concentration labels.",
+    ),
+    *_rules(
+        "serum_magnesium",
+        "镁(Mg)测定",
+        "mmol/l",
+        (
+            ("*镁", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("*镁(Mg)测定", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("镁(Mg)测定", ("mmol/l",), 1.0, 0.0, "identity"),
+        ),
+        "Serum total magnesium aliases; ionized and standardized magnesium remain separate.",
+    ),
+    *_rules(
+        "total_bilirubin",
+        "总胆红素",
+        "μmol/l",
+        (
+            ("*总胆红素(T-Bil)测定", ("μmol/l", "umol/l"), 1.0, 0.0, "identity"),
+            ("总胆红素(T-Bil)测定", ("μmol/l", "umol/l"), 1.0, 0.0, "identity"),
+            ("总胆红素", ("μmol/l", "umol/l"), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent total bilirubin labels with compatible units.",
+    ),
+    *_rules(
+        "arterial_alveolar_ratio",
+        "动脉氧分压与肺泡氧分压之比",
+        "%",
+        (
+            ("动脉氧分压与肺泡氧分压之比", ("%",), 1.0, 0.0, "identity"),
+            ("动脉氧分压与肺泡氧分压之比", ("unitless",), 1.0, 0.0, "percent value with missing unit"),
+            ("动脉血氧分压与肺泡内氧分压之比", ("unitless",), 100.0, 0.0, "percent = fraction * 100"),
+            ("动脉-肺泡氧分压比值", ("unitless",), 100.0, 0.0, "percent = fraction * 100"),
+        ),
+        "Equivalent PaO2/PAO2 ratios normalized to percent; temperature-corrected ratios remain separate.",
+    ),
+    *_rules(
+        "alveolar_po2",
+        "平均肺泡氧分压",
+        "mmhg",
+        (
+            ("平均肺泡氧分压", ("mmhg",), 1.0, 0.0, "identity"),
+            ("肺泡内氧分压", ("mmhg",), 1.0, 0.0, "identity"),
+            ("肺泡氧分压", ("mmhg",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent uncorrected alveolar oxygen-pressure labels; temperature-corrected fields remain separate.",
+    ),
+    *_rules(
+        "alveolar_arterial_gradient",
+        "肺泡动脉氧分压差",
+        "mmhg",
+        (
+            ("肺泡内氧分压与动脉血氧分压之差", ("mmhg",), 1.0, 0.0, "identity"),
+            ("肺泡动脉氧分压差", ("mmhg",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent A-a oxygen-gradient labels; 900 same-time pairs are exactly equal in the current table.",
+    ),
+    *_rules(
+        "standard_condition_p50",
+        "标准状态下氧饱和度50%时的氧分压",
+        "mmhg",
+        (
+            ("在PH7.4,PCO2=40mmHg,体温37度SO2=50%的氧分压", ("mmhg",), 1.0, 0.0, "identity"),
+            ("标准状态下氧饱和度50%时的氧分压", ("mmhg",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent definitions of P50 under pH 7.4, PCO2 40 mmHg, and 37 C.",
+    ),
+    *_rules(
+        "patient_condition_p50",
+        "患者体温下氧饱和度50%时的氧分压",
+        "mmhg",
+        (
+            ("患者体温下氧饱和度50%时的氧分压", ("mmhg",), 1.0, 0.0, "identity"),
+            ("氧饱和度50%时的氧分压", ("mmhg",), 1.0, 0.0, "identity"),
+            ("血氧浓度50%氧分压", ("mmhg",), 1.0, 0.0, "identity"),
+        ),
+        "Same-time values identify analyzer aliases for patient-condition P50.",
+    ),
+    *_rules(
+        "bnp_exact_alias",
+        "*B型钠尿肽(BNP)测定",
+        "pg/ml",
+        (
+            ("*B型钠尿肽(BNP)测定", ("pg/ml",), 1.0, 0.0, "identity"),
+            ("B型钠尿肽(BNP)测定", ("pg/ml",), 1.0, 0.0, "identity"),
+        ),
+        "Exact BNP label aliases differing only by a source-system marker.",
+    ),
+    *_rules(
+        "rapid_crp_exact_alias",
+        "*快速C-反应蛋白",
+        "mg/l",
+        (
+            ("*快速C-反应蛋白", ("mg/l",), 1.0, 0.0, "identity"),
+            ("快速C-反应蛋白", ("mg/l",), 1.0, 0.0, "identity"),
+        ),
+        "Exact rapid-CRP aliases differing only by a source-system marker.",
+    ),
+    *_rules(
+        "il6_assay_exact_alias",
+        "*白细胞介素-6(IL-6)测定",
+        "pg/ml",
+        (
+            ("*白细胞介素-6(IL-6)测定", ("pg/ml",), 1.0, 0.0, "identity"),
+            ("白细胞介素-6(IL-6)测定", ("pg/ml",), 1.0, 0.0, "identity"),
+        ),
+        "Exact IL-6 assay aliases differing only by a source-system marker.",
+    ),
+    *_rules(
+        "pct_exact_alias",
+        "*降钙素原(PCT)检测",
+        "ng/ml",
+        (
+            ("*降钙素原(PCT)检测", ("ng/ml",), 1.0, 0.0, "identity"),
+            ("降钙素原(PCT)检测", ("ng/ml",), 1.0, 0.0, "identity"),
+        ),
+        "Exact procalcitonin aliases differing only by a source-system marker.",
+    ),
+    *_rules(
+        "bnp",
+        "*B型钠尿肽(BNP)测定",
+        "pg/ml",
+        (
+            ("*B型钠尿肽", ("pg/ml",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent BNP assay label.",
+    ),
+    *_rules(
+        "nt_probnp",
+        "*N端-B型钠尿肽前体(NT-ProBNP)测定",
+        "pg/ml",
+        (
+            ("*N端-B型钠尿肽前体(NT-ProBNP)测定", ("pg/ml",), 1.0, 0.0, "identity"),
+            ("*氨基末端B型脑钠肽前体", ("ng/l",), 1.0, 0.0, "pg/mL = ng/L"),
+        ),
+        "Equivalent NT-proBNP labels; pg/mL and ng/L are numerically identical.",
+    ),
+    *_rules(
+        "white_blood_cell_count",
+        "*白细胞",
+        "10^9/l",
+        (
+            ("*白细胞", ("*10^9/l", "10^9/l", "g/l"), 1.0, 0.0, "identity (G/L = 10^9/L)"),
+        ),
+        "Blood leukocyte count unit spellings; urine microscopy leukocytes remain separate.",
+    ),
+    *_rules(
+        "hba1c",
+        "糖化血红蛋白",
+        "%",
+        (
+            ("*糖化血红蛋白", ("%",), 1.0, 0.0, "identity"),
+            ("糖化血红蛋白", ("%",), 1.0, 0.0, "identity"),
+            ("*糖化血红蛋白", ("mmol/mol",), 0.09148, 2.152, "NGSP % = IFCC mmol/mol * 0.09148 + 2.152"),
+            ("糖化血红蛋白", ("mmol/mol",), 0.09148, 2.152, "NGSP % = IFCC mmol/mol * 0.09148 + 2.152"),
+        ),
+        "HbA1c aliases converted from IFCC mmol/mol to NGSP percent using the standard linear relation.",
+    ),
+    *_rules(
+        "ph74_ionized_calcium",
+        "pH为7.4时的钙离子浓度",
+        "mmol/l",
+        (
+            ("pH为7.4时的钙离子浓度", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("在PH=7.4时钙离子浓度", ("mmol/l",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent ionized-calcium-at-pH-7.4 labels; malformed percent rows remain separate.",
+    ),
+    *_rules(
+        "ionized_magnesium",
+        "镁",
+        "mmol/l",
+        (
+            ("镁", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("离子镁", ("mmol/l",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent uncorrected ionized-magnesium labels; serum total magnesium remains separate.",
+    ),
+    *_rules(
+        "ph74_ionized_magnesium",
+        "在PH=7.4时镁离子浓度",
+        "mmol/l",
+        (
+            ("在PH=7.4时镁离子浓度", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("标准化镁", ("mmol/l",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent pH-standardized ionized-magnesium labels.",
+    ),
+    *_rules(
+        "actual_base_excess",
+        "实际碱剩余",
+        "mmol/l",
+        (
+            ("实际碱剩余", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("全血碱剩余", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("血中碱剩余", ("mmol/l",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent actual/whole-blood base-excess labels.",
+    ),
+    *_rules(
+        "standard_base_excess",
+        "标准碱剩余",
+        "mmol/l",
+        (
+            ("标准碱剩余", ("mmol/l",), 1.0, 0.0, "identity"),
+            ("细胞外液碱剩余", ("mmol/l",), 1.0, 0.0, "identity"),
+        ),
+        "Equivalent standard/extracellular-fluid base-excess labels; actual base excess remains separate.",
+    ),
     {
-        "rule_id": "blood_gas_glucose_mgdl_to_mmoll",
-        "source_item": "葡萄糖浓度",
-        "source_units": ("mg/dl",),
-        "canonical_item": "葡萄糖浓度",
-        "canonical_unit": "mmol/l",
-        "factor": 1.0 / MG_DL_PER_MMOL_L_GLUCOSE,
-        "formula": "mmol/L = mg/dL / 18.0182",
-        "rationale": "Same blood-gas glucose analyte expressed in mass units.",
-    },
-    {
-        "rule_id": "blood_gas_glucose_mmoll_identity",
-        "source_item": "葡萄糖浓度",
+        "rule_id": "sodium_blood_generic",
+        "source_item": "*钠",
         "source_units": ("mmol/l",),
-        "canonical_item": "葡萄糖浓度",
+        "canonical_item": "钠",
         "canonical_unit": "mmol/l",
         "factor": 1.0,
+        "offset": 0.0,
         "formula": "identity",
-        "rationale": "Canonical blood-gas glucose unit.",
+        "include_specimens": ("血", "血清"),
+        "rationale": "Blood/serum sodium only; the 24-hour urine sodium row is deliberately excluded.",
     },
     {
-        "rule_id": "arterial_alveolar_ratio_percent_identity",
-        "source_item": "动脉氧分压与肺泡氧分压之比",
-        "source_units": ("%",),
-        "canonical_item": "动脉氧分压与肺泡氧分压之比",
-        "canonical_unit": "%",
+        "rule_id": "blood_ph_unit_alias",
+        "source_item": "酸碱度",
+        "source_units": ("ph", "unitless"),
+        "canonical_item": "酸碱度",
+        "canonical_unit": "ph",
         "factor": 1.0,
+        "offset": 0.0,
         "formula": "identity",
-        "rationale": "Canonical percentage representation of PaO2/PAO2.",
+        "exclude_specimens": ("尿",),
+        "rationale": "Blood-gas pH unit spellings; urine pH remains a separate analyte.",
     },
     {
-        "rule_id": "arterial_alveolar_ratio_fraction_to_percent",
-        "source_item": "动脉血氧分压与肺泡内氧分压之比",
+        "rule_id": "urine_ph_star_alias",
+        "source_item": "*酸碱度",
+        "source_units": ("ph", "unitless"),
+        "canonical_item": "尿酸碱度",
+        "canonical_unit": "ph",
+        "factor": 1.0,
+        "offset": 0.0,
+        "formula": "identity",
+        "include_specimens": ("尿",),
+        "rationale": "Urine pH source-system alias; kept separate from blood-gas pH.",
+    },
+    {
+        "rule_id": "urine_ph_plain_alias",
+        "source_item": "酸碱度",
+        "source_units": ("ph", "unitless"),
+        "canonical_item": "尿酸碱度",
+        "canonical_unit": "ph",
+        "factor": 1.0,
+        "offset": 0.0,
+        "formula": "identity",
+        "include_specimens": ("尿",),
+        "rationale": "Urine pH source-system alias; kept separate from blood-gas pH.",
+    },
+    {
+        "rule_id": "egfr_missing_unit_alias",
+        "source_item": "eGFR(CKD-EPI 肌酐)",
+        "source_units": ("ml/min/1.73㎡", "ml/min/1.73m^2", "unitless"),
+        "canonical_item": "eGFR(CKD-EPI 肌酐)",
+        "canonical_unit": "ml/min/1.73m^2",
+        "factor": 1.0,
+        "offset": 0.0,
+        "formula": "identity",
+        "rationale": "Identical eGFR field with equivalent typography or a missing unit; unitless values have the expected eGFR range.",
+    },
+    {
+        "rule_id": "pf_ratio_unit_alias",
+        "source_item": "血液中氧分压与吸氧浓度之比",
+        "source_units": ("unitless", "%"),
+        "canonical_item": "血液中氧分压与吸氧浓度之比",
+        "canonical_unit": "unitless",
+        "factor": 1.0,
+        "offset": 0.0,
+        "formula": "identity",
+        "rationale": "The percent-labelled row contains a P/F ratio value, not a percentage.",
+    },
+    {
+        "rule_id": "aa_gradient_missing_unit_alias",
+        "source_item": "肺泡内氧分压与动脉血氧分压之差",
         "source_units": ("unitless",),
-        "canonical_item": "动脉氧分压与肺泡氧分压之比",
-        "canonical_unit": "%",
-        "factor": 100.0,
-        "formula": "percent = fraction * 100",
-        "rationale": "Direct formula audit confirms PO2/alveolar PO2 fraction.",
-    },
-    {
-        "rule_id": "standard_condition_p50_explicit_alias",
-        "source_item": "在PH7.4,PCO2=40mmHg,体温37度SO2=50%的氧分压",
-        "source_units": ("mmhg", "unitless"),
-        "canonical_item": "标准状态下氧饱和度50%时的氧分压",
+        "canonical_item": "肺泡动脉氧分压差",
         "canonical_unit": "mmhg",
         "factor": 1.0,
+        "offset": 0.0,
         "formula": "identity",
-        "rationale": "Explicit definition of P50 under standard conditions.",
+        "rationale": "The unitless same-name row has a plausible mmHg gradient value and is a missing-unit record.",
     },
     {
-        "rule_id": "standard_condition_p50_identity",
-        "source_item": "标准状态下氧饱和度50%时的氧分压",
-        "source_units": ("mmhg", "unitless"),
-        "canonical_item": "标准状态下氧饱和度50%时的氧分压",
-        "canonical_unit": "mmhg",
+        "rule_id": "urine_wbc_per_ul_alias",
+        "source_item": "白细胞",
+        "source_units": ("/ul", "ul"),
+        "canonical_item": "白细胞",
+        "canonical_unit": "/ul",
         "factor": 1.0,
+        "offset": 0.0,
         "formula": "identity",
-        "rationale": "Canonical standard-condition P50.",
+        "include_specimens": ("尿",),
+        "rationale": "Urine WBC count unit spellings; blood morphology rows are excluded.",
     },
     {
-        "rule_id": "patient_condition_p50_identity",
-        "source_item": "患者体温下氧饱和度50%时的氧分压",
-        "source_units": ("mmhg", "unitless"),
-        "canonical_item": "患者体温下氧饱和度50%时的氧分压",
-        "canonical_unit": "mmhg",
+        "rule_id": "urine_wbc_hpf_parenthesis_alias_01",
+        "source_item": "白细胞(高倍视野)",
+        "source_units": ("hpf", "/hpf"),
+        "canonical_item": "白细胞（高倍视野）",
+        "canonical_unit": "/hpf",
         "factor": 1.0,
+        "offset": 0.0,
         "formula": "identity",
-        "rationale": "Canonical patient-condition P50.",
+        "include_specimens": ("尿",),
+        "rationale": "Equivalent urine WBC per-high-power-field label and unit typography.",
     },
     {
-        "rule_id": "patient_condition_p50_generic_alias",
-        "source_item": "氧饱和度50%时的氧分压",
-        "source_units": ("mmhg", "unitless"),
-        "canonical_item": "患者体温下氧饱和度50%时的氧分压",
-        "canonical_unit": "mmhg",
+        "rule_id": "urine_wbc_hpf_parenthesis_alias_02",
+        "source_item": "白细胞（高倍视野）",
+        "source_units": ("hpf", "/hpf"),
+        "canonical_item": "白细胞（高倍视野）",
+        "canonical_unit": "/hpf",
         "factor": 1.0,
+        "offset": 0.0,
         "formula": "identity",
-        "rationale": "Same-time values equal patient-condition P50 in 99.98% of pairs.",
-    },
-    {
-        "rule_id": "patient_condition_p50_oxygen_concentration_alias",
-        "source_item": "血氧浓度50%氧分压",
-        "source_units": ("mmhg", "unitless"),
-        "canonical_item": "患者体温下氧饱和度50%时的氧分压",
-        "canonical_unit": "mmhg",
-        "factor": 1.0,
-        "formula": "identity",
-        "rationale": "Same-time values equal patient-condition P50 in 97.84% of pairs.",
+        "include_specimens": ("尿",),
+        "rationale": "Canonical urine WBC per-high-power-field label.",
     },
 )
 
@@ -227,10 +641,17 @@ def _harmonize_analytes(data):
             data["source_item_name"].eq(rule["source_item"])
             & data["source_unit"].isin(rule["source_units"])
         )
+        if "include_specimens" in rule:
+            mask &= data["标本名称"].isin(rule["include_specimens"])
+        if "exclude_specimens" in rule:
+            mask &= ~data["标本名称"].isin(rule["exclude_specimens"])
         selected = data.loc[mask]
         if selected.empty:
             continue
-        converted = selected["source_numeric_value"] * rule["factor"]
+        converted = (
+            selected["source_numeric_value"] * rule["factor"]
+            + rule.get("offset", 0.0)
+        )
         data.loc[mask, "numeric_value"] = converted
         data.loc[mask, "item_name"] = rule["canonical_item"]
         data.loc[mask, "unit"] = rule["canonical_unit"]
@@ -240,10 +661,17 @@ def _harmonize_analytes(data):
                 "rule_id": rule["rule_id"],
                 "source_item_name": rule["source_item"],
                 "source_units": "^".join(rule["source_units"]),
+                "included_specimens": "^".join(
+                    rule.get("include_specimens", ())
+                ),
+                "excluded_specimens": "^".join(
+                    rule.get("exclude_specimens", ())
+                ),
                 "canonical_item_name": rule["canonical_item"],
                 "canonical_unit": rule["canonical_unit"],
                 "value_formula": rule["formula"],
                 "conversion_factor": rule["factor"],
+                "conversion_offset": rule.get("offset", 0.0),
                 "rows_affected": int(len(selected)),
                 "patients_affected": int(selected["hospital_id"].nunique()),
                 "source_value_min": float(selected["source_numeric_value"].min()),
@@ -401,6 +829,13 @@ def _field_equivalence_evidence(data):
         "血氧浓度50%氧分压 [mmhg]",
         "Fields are effectively identical at the same report time.",
         "Deduplicate as patient-condition P50.",
+    )
+    equality_check(
+        "alveolar_arterial_gradient_alias",
+        "肺泡内氧分压与动脉血氧分压之差 [mmhg]",
+        "肺泡动脉氧分压差 [mmhg]",
+        "The two A-a oxygen-gradient labels are identical at shared report times.",
+        "Merge as uncorrected alveolar-arterial PO2 gradient.",
     )
 
     mmol = source[
@@ -992,9 +1427,15 @@ def _binned_trajectories(measurements, eligible_ids, dictionary):
 
 
 def _figure_style():
+    for path in (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    ):
+        if os.path.exists(path):
+            font_manager.fontManager.addfont(path)
     plt.rcParams.update(
         {
-            "font.family": "DejaVu Sans",
+            "font.family": ["Noto Sans CJK JP", "DejaVu Sans"],
             "font.size": 9,
             "axes.spines.top": False,
             "axes.spines.right": False,
@@ -1410,18 +1851,19 @@ def _write_report(
 - 进入首末配对推断的变量：{len(statistics)} 个
 - BH-FDR q<0.05 的变量：{len(significant)} 个
 
-一次住院由病案号、入院时间和出院时间共同定义。仅保留报告时间位于住院区间内的非截尾数值结果；同一住院、同一规范化变量、同一报告时间的重复或别名行取中位数。除下述经过验证的换算与别名规则外，检验项仍按名称和单位分开。
+一次住院由病案号、入院时间和出院时间共同定义。仅保留报告时间位于住院区间内的非截尾数值结果；同一住院、同一规范化变量、同一报告时间的重复或别名行取中位数。除下述有明确检验定义、单位换算或同时间一致性依据的规则外，检验项仍按名称和单位分开。
 
 ## 等价字段规范化
 
 本次分析在生成变量 ID 前完成经过验证的字段合并，因此变量 ID 已按规范化后的字典重新生成：
 
-1. 血气葡萄糖统一为 mmol/L，`mg/dL ÷ {MG_DL_PER_MMOL_L_GLUCOSE:.4f}` 后与原 mmol/L 字段合并。
-2. 动脉/肺泡氧分压比统一为百分比；倍数表示字段乘以 100 后合并。原始公式核验分别与 `100×PO₂/平均肺泡PO₂` 和 `PO₂/肺泡PO₂` 高度一致。
-3. 患者条件 P50 合并“患者体温下 P50”“P50”和“血氧浓度 P50”三个设备别名；同时间值分别有 99.98% 和 97.84% 完全相同。
-4. 固定 pH 7.4、PCO₂ 40 mmHg、37℃ 定义的字段合并为标准条件 P50。标准条件 P50 与患者条件 P50 保持为两个不同指标。
+1. 血红蛋白将实验室 g/L、血气/总血红蛋白 g/dL 统一到 g/L；葡萄糖将实验室与血气字段统一到 mmol/L；乳酸、肌钙蛋白 I、肌酐、血小板、血细胞比容、电解质、胆红素、BNP/NT-proBNP 等明确同义项也统一名称和单位。
+2. 氧合、还原、碳氧和高铁血红蛋白的设备别名分别合并；肺泡氧分压、A-a 氧分压差及动脉/肺泡氧分压比的同义字段分别合并，其中比值统一为百分比。
+3. HbA1c 的 IFCC mmol/mol 使用标准线性关系换算为 NGSP %；葡萄糖使用 `mg/dL ÷ {MG_DL_PER_MMOL_L_GLUCOSE:.4f}` 换算为 mmol/L；其他线性单位换算均逐条记录。
+4. 患者条件 P50 的设备别名合并，固定 pH 7.4、PCO₂ 40 mmHg、37℃ 的字段合并为标准条件 P50；两类 P50 仍保持为不同指标。
+5. 体温校正与未校正的 PO₂/PCO₂、实际与标准碱剩余、总镁与离子镁、血液与尿液项目不会因名称接近而混合。
 
-原先血气葡萄糖和氧比值的相反方向来自不同检验套覆盖了不同患者时间窗口，不是数值换算后仍然相反。规范化规则、影响行数和换算前后范围见 `../tables/variable_harmonization_audit.csv`；公式、同时间一致性和近邻换算证据见 `../tables/field_equivalence_evidence.csv`。
+本次共应用 {len(harmonization_audit)} 条实际命中的源字段规则，覆盖 {int(harmonization_audit['rows_affected'].sum()):,} 条清洗前测量并形成 {harmonization_audit['canonical_item_name'].nunique()} 个规范化组。完整规则、影响行数、原字段与换算前后范围见 `../tables/variable_harmonization_audit.csv`；公式和同时间一致性证据见 `../tables/field_equivalence_evidence.csv`。
 
 首末变化先在每次住院内计算；同一患者存在多次住院时，再取患者内变化中位数，确保推断统计中每名患者只贡献一次。使用双侧 Wilcoxon 符号秩检验，并在全部变量间进行 Benjamini-Hochberg FDR 校正。置信区间为患者级 bootstrap 中位数 95% CI。Theil-Sen 斜率用于描述每个住院 episode 内的稳健日变化。
 
@@ -1660,6 +2102,9 @@ def run(source_path=LAB_CSV, output_dir=OUTPUT_DIR):
         "exclusions": exclusions,
         "harmonization": {
             "rules_applied": int(len(harmonization_audit)),
+            "canonical_groups": int(
+                harmonization_audit["canonical_item_name"].nunique()
+            ),
             "rows_covered_by_rules": int(
                 harmonization_audit["rows_affected"].sum()
             ),

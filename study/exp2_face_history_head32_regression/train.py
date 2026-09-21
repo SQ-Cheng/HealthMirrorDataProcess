@@ -48,6 +48,7 @@ from .config import (
     FRAMES_PER_VIDEO,
     EVAL_NUM_WORKERS,
     PREFETCH_FACTOR,
+    SCORE_DEFINITIONS,
     SMOOTH_L1_BETA,
     TRAIN_NUM_WORKERS,
     TRAIN_SOURCE_BATCH_SIZES,
@@ -134,7 +135,7 @@ def _loader(frame_index, records, history_store, views, architecture, shuffle):
     return dataset, loader
 
 
-def _regression_metrics(targets, predictions, thresholds):
+def _regression_metrics(targets, predictions, thresholds, direction):
     targets = np.asarray(targets, dtype=np.float64)
     predictions = np.asarray(predictions, dtype=np.float64)
     thresholds = np.asarray(thresholds, dtype=np.float64)
@@ -163,7 +164,7 @@ def _regression_metrics(targets, predictions, thresholds):
         "fn": 0,
         "tp": 0,
         "sign_threshold": np.nan,
-        "sign_threshold_policy": "per-video clinical lower threshold",
+        "sign_threshold_policy": f"per-video clinical {direction} threshold",
     }
     if not len(targets):
         return result
@@ -196,13 +197,28 @@ def _regression_metrics(targets, predictions, thresholds):
         }
     )
     non_boundary = ~np.isclose(targets, thresholds, atol=1e-12)
-    sign_targets = (targets[non_boundary] < thresholds[non_boundary]).astype(np.uint8)
-    sign_predictions = (
-        predictions[non_boundary] < thresholds[non_boundary]
-    ).astype(np.uint8)
-    abnormal_decision_score = (
-        thresholds[non_boundary] - predictions[non_boundary]
-    )
+    if direction == "low":
+        sign_targets = (
+            targets[non_boundary] < thresholds[non_boundary]
+        ).astype(np.uint8)
+        sign_predictions = (
+            predictions[non_boundary] < thresholds[non_boundary]
+        ).astype(np.uint8)
+        abnormal_decision_score = (
+            thresholds[non_boundary] - predictions[non_boundary]
+        )
+    elif direction == "high":
+        sign_targets = (
+            targets[non_boundary] > thresholds[non_boundary]
+        ).astype(np.uint8)
+        sign_predictions = (
+            predictions[non_boundary] > thresholds[non_boundary]
+        ).astype(np.uint8)
+        abnormal_decision_score = (
+            predictions[non_boundary] - thresholds[non_boundary]
+        )
+    else:
+        raise ValueError(f"Unsupported score direction: {direction}")
     result["sign_n"] = int(len(sign_targets))
     if len(sign_targets) and len(np.unique(sign_targets)) == 2:
         tn, fp, fn, tp = confusion_matrix(
@@ -414,7 +430,7 @@ def _evaluate(model, loader, criterion, device, max_batches=None):
     }
 
 
-def _video_metrics(evaluation, dataset, split, target_scaler):
+def _video_metrics(evaluation, dataset, split, target, target_scaler):
     sample_indices = evaluation["record_indices"].astype(np.int64)
     video_rows = dataset.frame_video_rows[sample_indices]
     aggregation = pd.DataFrame({
@@ -445,19 +461,22 @@ def _video_metrics(evaluation, dataset, split, target_scaler):
     video_predictions["y_pred_scaled"] = aggregation["y_pred_scaled"].to_numpy(
         np.float32
     )
-    video_predictions["y_true"] = target_scaler.inverse_transform(
-        video_predictions["y_true_scaled"]
+    expected_scaled = target_scaler.transform(
+        video_predictions["raw_value"].to_numpy(np.float64)
+    ).astype(np.float32)
+    actual_scaled = video_predictions["y_true_scaled"].to_numpy(np.float32)
+    if not np.array_equal(actual_scaled, expected_scaled):
+        mismatches = int(np.count_nonzero(actual_scaled != expected_scaled))
+        raise AssertionError(
+            f"Scaled labels are misaligned with raw values for {split}: "
+            f"{mismatches}/{len(actual_scaled)}"
+        )
+    video_predictions["y_true"] = video_predictions["raw_value"].to_numpy(
+        np.float64
     )
     video_predictions["y_pred"] = target_scaler.inverse_transform(
         video_predictions["y_pred_scaled"]
     )
-    if not np.allclose(
-        video_predictions["y_true"],
-        video_predictions["raw_value"],
-        rtol=0.0,
-        atol=2e-5,
-    ):
-        raise AssertionError(f"Inverse-scaled labels differ from raw values for {split}")
     video_predictions["residual"] = (
         video_predictions["y_pred"] - video_predictions["y_true"]
     )
@@ -466,8 +485,11 @@ def _video_metrics(evaluation, dataset, split, target_scaler):
         video_predictions["y_true"],
         video_predictions["y_pred"],
         video_predictions["score_threshold"],
+        SCORE_DEFINITIONS[target]["direction"],
     )
-    frame_true_raw = target_scaler.inverse_transform(evaluation["labels"])
+    frame_true_raw = dataset.video_records.iloc[video_rows]["raw_value"].to_numpy(
+        np.float64
+    )
     frame_pred_raw = target_scaler.inverse_transform(evaluation["scores"])
     compact_frames = {
         "split": np.full(len(sample_indices), split),
@@ -612,10 +634,10 @@ def _run_stage(
             max_batches=max_batches,
         )
         train_metrics, _, _ = _video_metrics(
-            train_eval, datasets["train"], "train", target_scaler
+            train_eval, datasets["train"], "train", target, target_scaler
         )
         val_metrics, _, _ = _video_metrics(
-            validation, datasets["val"], "val", target_scaler
+            validation, datasets["val"], "val", target, target_scaler
         )
         score = (
             -val_metrics["mae"]
@@ -738,8 +760,17 @@ def train_task(
     train_threshold = records_by_split["train"]["score_threshold"].to_numpy(
         np.float64
     )[train_video_rows]
-    n_abnormal = int((train_raw < train_threshold).sum())
-    n_normal = int((train_raw > train_threshold).sum())
+    direction = SCORE_DEFINITIONS[target]["direction"]
+    if direction == "low":
+        abnormal_mask = train_raw < train_threshold
+        normal_mask = train_raw > train_threshold
+    elif direction == "high":
+        abnormal_mask = train_raw > train_threshold
+        normal_mask = train_raw < train_threshold
+    else:
+        raise ValueError(f"Unsupported score direction for {target}: {direction}")
+    n_abnormal = int(abnormal_mask.sum())
+    n_normal = int(normal_mask.sum())
     n_boundary = int(np.isclose(train_raw, train_threshold, atol=1e-12).sum())
     device = torch.device(
         f"cuda:{torch.cuda.current_device()}" if torch.cuda.is_available() else "cpu"
@@ -854,7 +885,7 @@ def train_task(
     split_code = {"train": 0, "val": 1, "test": 2}
     for split in ("train", "val", "test"):
         metrics, frames, videos = _video_metrics(
-            evaluations[split], datasets[split], split, target_scaler
+            evaluations[split], datasets[split], split, target, target_scaler
         )
         metric_rows.append({
             "architecture": architecture,

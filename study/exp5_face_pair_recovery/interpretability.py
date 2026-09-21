@@ -13,7 +13,9 @@ import torch.nn.functional as F
 
 from study.exp4.frame_index import FrameOffsetIndex
 
-from .config import CACHE_DIR, IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD, OUTPUT_DIR
+from .config import (
+    CACHE_DIR, IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD, OUTPUT_DIR, TARGET_COLUMN,
+)
 from .data import PairedFrameDataset
 from .models import build_model
 
@@ -260,7 +262,7 @@ def main():
     selected_records = selected[["hospital_id", "video_id"]].merge(
         records, on=["hospital_id", "video_id"], how="left", validate="one_to_one"
     )
-    if selected_records.recovery_score.isna().any():
+    if selected_records[TARGET_COLUMN].isna().any():
         raise RuntimeError("Selected test examples are absent from records.csv")
 
     device = torch.device(f"cuda:{args.device}")

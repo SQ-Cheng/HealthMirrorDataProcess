@@ -14,24 +14,40 @@ import pandas as pd
 OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 FIGURE_DIR = OUTPUT_DIR / "figures"
 EXPERIMENT_LABEL = "Face + prior-lab history raw-value regression"
-ARCHITECTURES = ("mobilenet_v3_small", "efficientnet_b0")
+ARCHITECTURES = ("efficientnet_b0",)
 ARCHITECTURE_LABELS = {
     "mobilenet_v3_small": "MobileNetV3-Small",
     "efficientnet_b0": "EfficientNet-B0",
 }
-TASKS = ("hemoglobin_low", "po2_low")
+TASKS = (
+    "oxyhemoglobin_fraction",
+    "lactate_high",
+    "urea_high",
+    "troponin_high",
+    "platelet_count_low",
+    "hemoglobin_low",
+    "aa_po2_ratio_low",
+    "creatinine_high",
+)
 TASK_LABELS = {
-    "hemoglobin_low": "Hemoglobin",
-    "pco2_low": "pCO2 low",
-    "po2_low": "PO2",
-    "high_blood_pressure": "High blood pressure",
-    "lactate_high": "Lactate high",
     "oxyhemoglobin_fraction": "Oxyhemoglobin fraction",
+    "lactate_high": "Lactate",
+    "urea_high": "Urea",
+    "troponin_high": "Troponin I",
+    "platelet_count_low": "Platelets",
+    "hemoglobin_low": "Hemoglobin",
+    "aa_po2_ratio_low": "A/a PO2 ratio",
+    "creatinine_high": "Creatinine",
 }
 TASK_UNITS = {
-    "hemoglobin_low": "g/L",
-    "po2_low": "mmHg",
     "oxyhemoglobin_fraction": "%",
+    "lactate_high": "mmol/L",
+    "urea_high": "mmol/L",
+    "troponin_high": "ng/L",
+    "platelet_count_low": "10^9/L",
+    "hemoglobin_low": "g/L",
+    "aa_po2_ratio_low": "%",
+    "creatinine_high": "umol/L",
 }
 COLORS = {
     "mobilenet_v3_small": "#2878B5",
@@ -180,7 +196,7 @@ def plot_test_metrics(metrics):
             axes[1, 1],
             ("sign_roc_auc", "sign_balanced_accuracy"),
             ("Sign ROC-AUC", "Sign bACC"),
-            "Clinical low-threshold classification",
+            "Clinical-threshold classification",
             (0, 1.04),
         ),
     )

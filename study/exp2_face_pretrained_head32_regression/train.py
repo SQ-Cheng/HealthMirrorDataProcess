@@ -425,19 +425,22 @@ def _video_metrics(evaluation, dataset, split, target, target_scaler):
     video_predictions["y_pred_scaled"] = aggregation["y_pred_scaled"].to_numpy(
         np.float32
     )
-    video_predictions["y_true"] = target_scaler.inverse_transform(
-        video_predictions["y_true_scaled"]
+    expected_scaled = target_scaler.transform(
+        video_predictions["raw_value"].to_numpy(np.float64)
+    ).astype(np.float32)
+    actual_scaled = video_predictions["y_true_scaled"].to_numpy(np.float32)
+    if not np.array_equal(actual_scaled, expected_scaled):
+        mismatches = int(np.count_nonzero(actual_scaled != expected_scaled))
+        raise AssertionError(
+            f"Scaled labels are misaligned with raw values for {split}: "
+            f"{mismatches}/{len(actual_scaled)}"
+        )
+    video_predictions["y_true"] = video_predictions["raw_value"].to_numpy(
+        np.float64
     )
     video_predictions["y_pred"] = target_scaler.inverse_transform(
         video_predictions["y_pred_scaled"]
     )
-    if not np.allclose(
-        video_predictions["y_true"],
-        video_predictions["raw_value"],
-        rtol=0.0,
-        atol=2e-5,
-    ):
-        raise AssertionError(f"Inverse-scaled labels differ from raw values for {split}")
     video_predictions["residual"] = (
         video_predictions["y_pred"] - video_predictions["y_true"]
     )
@@ -448,7 +451,9 @@ def _video_metrics(evaluation, dataset, split, target, target_scaler):
         video_predictions["score_threshold"],
         SCORE_DEFINITIONS[target]["direction"],
     )
-    frame_true_raw = target_scaler.inverse_transform(evaluation["labels"])
+    frame_true_raw = dataset.video_records.iloc[video_rows]["raw_value"].to_numpy(
+        np.float64
+    )
     frame_pred_raw = target_scaler.inverse_transform(evaluation["scores"])
     compact_frames = {
         "split": np.full(len(sample_indices), split),

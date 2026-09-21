@@ -148,6 +148,9 @@ def _score_events(events, target, video_summary):
 
     result["standardized_distance"] = np.asarray(distance, dtype=np.float64)
     result["abnormal_score"] = np.arcsinh(result["standardized_distance"])
+    result["split_balance_value"] = result["raw_value"]
+    if target == "troponin_high":
+        result["split_balance_value"] = np.log1p(result["raw_value"])
     if not np.isfinite(result["abnormal_score"]).all():
         raise ValueError(f"Non-finite abnormal scores for {target}")
     return result
@@ -209,6 +212,7 @@ def build_task_records(base_manifest, video_summary, target):
         "score_scale",
         "standardized_distance",
         "abnormal_score",
+        "split_balance_value",
         "source_sample_id",
         "match_delta_h",
         "match_signed_delta_h",
@@ -252,7 +256,7 @@ def build_task_records(base_manifest, video_summary, target):
 
 
 def _split_value_columns(target):
-    columns = ["raw_value", "abnormal_score"]
+    columns = ["split_balance_value", "abnormal_score"]
     if target == "high_blood_pressure":
         columns.append("diastolic_blood_pressure")
     return columns
@@ -658,6 +662,11 @@ def prepare_tasks(
                     "patient-group class-stratified candidate search with "
                     "video-level continuous-distribution selection"
                 ),
+                "distribution_transforms": {
+                    "default_split_balance_value": "raw_value",
+                    "troponin_high_split_balance_value": "log1p(raw_value_ng_per_L)",
+                    "training_target": "unchanged robust-scaled raw_value",
+                },
                 "seed": int(seed),
                 "candidate_count": SPLIT_CANDIDATES,
                 "target_fractions": {

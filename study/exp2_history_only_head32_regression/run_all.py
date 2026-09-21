@@ -15,19 +15,24 @@ import numpy as np
 import pandas as pd
 import torch
 
+from study.exp2_face_history_head32_regression.scaling import RobustTargetScaler
+
 from .config import (
     BATCH_SIZE,
+    FACE_ONLY_REFERENCE_DIR,
+    FINETUNE_LEARNING_RATE,
+    FINETUNE_MAX_EPOCHS,
+    FINETUNE_PATIENCE,
     HEAD_HIDDEN_FEATURES,
+    HEAD_LEARNING_RATE,
+    HEAD_MAX_EPOCHS,
+    HEAD_PATIENCE,
     HISTORY_HIDDEN_FEATURES,
     HISTORY_INPUT_FEATURES,
     HISTORY_OUTPUT_FEATURES,
-    LEARNING_RATE,
-    MAX_EPOCHS,
     MODEL_NAME,
     OUTPUT_DIR,
-    PATIENCE,
     REFERENCE_DIR,
-    SCORE_TRANSFORM,
     SEED,
     SMOOTH_L1_BETA,
     TARGETS,
@@ -66,6 +71,13 @@ def _copy_and_audit_inputs(reference_dir, output_dir, targets):
     history_dir = output_dir / "history_records"
     task_dir.mkdir(parents=True, exist_ok=True)
     history_dir.mkdir(parents=True, exist_ok=True)
+    scaler_source = reference_dir / "target_scalers.json"
+    scaler_destination = output_dir / "target_scalers.json"
+    shutil.copy2(scaler_source, scaler_destination)
+    for name in ("history_policy.json", "history_coverage.csv"):
+        source = reference_dir / "history_records" / name
+        if source.is_file():
+            shutil.copy2(source, history_dir / name)
     audit_rows = []
     for target in targets:
         task_source = reference_dir / "task_records" / f"{target}.csv"
@@ -114,6 +126,8 @@ def _copy_and_audit_inputs(reference_dir, output_dir, targets):
                     "history_feature_sha256": _sha256(history_destination),
                     "reference_task_record_sha256": _sha256(task_source),
                     "reference_history_feature_sha256": _sha256(history_source),
+                    "target_scalers_sha256": _sha256(scaler_destination),
+                    "reference_target_scalers_sha256": _sha256(scaler_source),
                     "exact_match": True,
                 }
             )
@@ -124,9 +138,24 @@ def _copy_and_audit_inputs(reference_dir, output_dir, targets):
         and audit["history_feature_sha256"]
         .eq(audit["reference_history_feature_sha256"])
         .all()
+        and audit["target_scalers_sha256"]
+        .eq(audit["reference_target_scalers_sha256"])
+        .all()
     ):
         raise AssertionError("Copied input hashes differ from the reference experiment")
     return audit
+
+
+def _load_target_scalers(reference_dir, targets):
+    with (reference_dir / "target_scalers.json").open(encoding="utf-8") as handle:
+        payload = json.load(handle)
+    definitions = payload.get("targets", {})
+    missing = sorted(set(targets) - set(definitions))
+    if missing:
+        raise ValueError(f"Reference target scalers are missing: {missing}")
+    return {
+        target: RobustTargetScaler(**definitions[target]) for target in targets
+    }
 
 
 def _run_job(job):
@@ -135,14 +164,19 @@ def _run_job(job):
     seed = int(job["seed"])
     _seed(seed)
     records, history = load_task(Path(job["output_dir"]), job["target"])
+    target_scaler = RobustTargetScaler(**job["target_scaler"])
     return train_task(
         target=job["target"],
         records=records,
         history_store=history,
+        target_scaler=target_scaler,
         run_dir=Path(job["output_dir"]) / "runs" / job["target"],
         device=torch.device(f"cuda:{gpu_id}"),
         seed=seed,
-        max_epochs=job["max_epochs"],
+        head_epochs=job["head_epochs"],
+        finetune_epochs=job["finetune_epochs"],
+        head_patience=job["head_patience"],
+        finetune_patience=job["finetune_patience"],
     )
 
 
@@ -150,12 +184,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", default=str(OUTPUT_DIR))
     parser.add_argument("--reference-dir", default=str(REFERENCE_DIR))
+    parser.add_argument(
+        "--face-only-reference-dir", default=str(FACE_ONLY_REFERENCE_DIR)
+    )
     parser.add_argument("--targets", default=",".join(TARGETS))
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--smoke-test", action="store_true")
     args = parser.parse_args()
     output_dir = Path(args.output_dir).resolve()
     reference_dir = Path(args.reference_dir).resolve()
+    face_only_reference_dir = Path(args.face_only_reference_dir).resolve()
     targets = tuple(value.strip() for value in args.targets.split(",") if value.strip())
     unknown = sorted(set(targets) - set(TARGETS))
     if unknown:
@@ -167,6 +205,7 @@ def main():
     (output_dir / "runs").mkdir(parents=True)
     _seed(SEED)
     audit = _copy_and_audit_inputs(reference_dir, output_dir, targets)
+    target_scalers = _load_target_scalers(reference_dir, targets)
     model = HistoryOnlyRegressor()
     counts = parameter_counts(model)
     parameter_names = [name for name, _ in model.named_parameters()]
@@ -184,12 +223,14 @@ def main():
         "controlled_variables": {
             "task_records": "byte-identical copies from reference",
             "patient_split": "exact reference train/val/test assignment",
-            "regression_target": f"{SCORE_TRANSFORM} abnormal score",
+            "regression_target": "train-only median/IQR robust-scaled raw value",
+            "target_scalers": "byte-identical copy from reference",
             "history_features": "byte-identical compact NPZ from reference",
             "history_encoder": "same 2->16->16 masked-mean encoder",
             "head_hidden_features": HEAD_HIDDEN_FEATURES,
             "head_dropout": 0.25,
             "loss": f"unweighted SmoothL1 beta={SMOOTH_L1_BETA}",
+            "training_schedule": "same two learning-rate stages as reference",
         },
         "ablated_components": [
             "face image input",
@@ -197,7 +238,7 @@ def main():
             "five image views",
             "image resize and ImageNet normalization",
             "pretrained image backbone",
-            "backbone fine-tuning stage",
+            "pretrained image-backbone parameters",
         ],
         "sample_unit": "one history sequence and one prediction per labelled video",
         "model": {
@@ -216,17 +257,34 @@ def main():
             "forbidden_image_parameters": forbidden,
         },
         "training": {
-            "stages": 1,
-            "reason": "all remaining parameters are task-specific and trainable",
-            "learning_rate": LEARNING_RATE,
+            "stages": 2,
+            "stage_1": {
+                "name": "head",
+                "learning_rate": HEAD_LEARNING_RATE,
+                "max_epochs": 1 if args.smoke_test else HEAD_MAX_EPOCHS,
+                "early_stopping_patience": 1 if args.smoke_test else HEAD_PATIENCE,
+            },
+            "stage_2": {
+                "name": "finetune",
+                "learning_rate": FINETUNE_LEARNING_RATE,
+                "max_epochs": 1 if args.smoke_test else FINETUNE_MAX_EPOCHS,
+                "early_stopping_patience": (
+                    1 if args.smoke_test else FINETUNE_PATIENCE
+                ),
+                "parameter_transition": (
+                    "none; no backbone exists, so all history/head parameters remain trainable"
+                ),
+            },
             "weight_decay": WEIGHT_DECAY,
             "batch_size": BATCH_SIZE,
-            "max_epochs": 2 if args.smoke_test else MAX_EPOCHS,
-            "early_stopping_patience": PATIENCE,
             "optimizer": "AdamW",
             "scheduler": "CosineAnnealingLR",
             "mixed_precision": "FP16 autocast with GradScaler",
             "torch_compile": False,
+        },
+        "comparison_references": {
+            "face_plus_history": str(reference_dir),
+            "face_only": str(face_only_reference_dir),
         },
         "data_alignment_audit": str(
             (output_dir / "data_alignment_audit.csv").resolve()
@@ -251,7 +309,11 @@ def main():
             "gpu_id": index % torch.cuda.device_count(),
             "seed": _job_seed(target, SEED),
             "output_dir": str(output_dir),
-            "max_epochs": 2 if args.smoke_test else MAX_EPOCHS,
+            "target_scaler": target_scalers[target].to_dict(),
+            "head_epochs": 1 if args.smoke_test else HEAD_MAX_EPOCHS,
+            "finetune_epochs": 1 if args.smoke_test else FINETUNE_MAX_EPOCHS,
+            "head_patience": 1 if args.smoke_test else HEAD_PATIENCE,
+            "finetune_patience": 1 if args.smoke_test else FINETUNE_PATIENCE,
         }
         for index, target in enumerate(targets)
     ]
@@ -306,7 +368,7 @@ def main():
     print("[plot] generating history-only and baseline comparison figures", flush=True)
     from .plot_results import main as plot_results
 
-    plot_results(output_dir, reference_dir)
+    plot_results(output_dir, reference_dir, face_only_reference_dir)
     print(f"[complete] outputs={output_dir}", flush=True)
 
 

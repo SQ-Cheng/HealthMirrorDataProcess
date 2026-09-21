@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-09-18T06:27:40.625535+00:00",
+  "operation": "lossless CSV row union; old rows followed by new rows; no clinical-row deduplication",
+  "columns": [
+    "首页病案号",
+    "首页性别",
+    "首页就诊时年龄",
+    "首页入院时间",
+    "首页入院科室",
+    "首页出院时间",
+    "首页出院科室",
+    "首页住院天数",
+    "手术开始日期",
+    "手术结束日期",
+    "首页手术操作名称",
+    "首页离院方式",
+    "检验套名称",
+    "检验项名称",
+    "检验值(文本)",
+    "单位",
+    "标本名称",
+    "报告时间"
+  ],
+  "sources": [
+    {
+      "role": "old",
+      "path": "/root/autodl-tmp/HealthMirrorDataProcess/backups/merged_lab_tests.before_260917_20260917T133351Z.csv",
+      "rows": 132771,
+      "patients": 349,
+      "sha256": "28ab14358f627b28cf922f719092c98d033686a8883b1955f11c520d057644e1"
+    },
+    {
+      "role": "new",
+      "path": "/root/autodl-tmp/HealthMirrorDataProcess/backups/merged_lab_tests.new_before_union_20260918T062709Z.csv",
+      "rows": 446298,
+      "patients": 811,
+      "sha256": "057d4180cd81eec2b4cbebe603210d74b572452850e2165008bce9ce7a3bea51"
+    }
+  ],
+  "normalized_patient_intersection": 0,
+  "expected_merged_rows": 579069,
+  "merged": {
+    "path": "/root/autodl-tmp/HealthMirrorDataProcess/merged_lab_tests.csv",
+    "rows": 579069,
+    "patients": 1160,
+    "sha256": "5e41a342586f85fe354ac668f23b1c3072790f560e2b6a2267bf71377dcd3b9b"
+  }
+}

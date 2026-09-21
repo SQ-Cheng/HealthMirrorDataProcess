@@ -1,13 +1,8 @@
 # Exp2 Raw-Video Head32 Raw-Value Regression
 
-Canonical IDs:
-
-- `exp2_raw_video_20frame_head32_regression_balanced_split`
-- `exp2_raw_video_allframes_head32_regression_balanced_split`
-
-Both variants live in this directory. Versioned artifacts are stored under
-`outputs/20frame` and `outputs/allframes`; logs use the same names under `logs`.
-The source builder enumerates every raw `video.avi`, maps its hospital ID, and reads
+The retained 20-frame control uses the exact source builder from the corresponding
+face-plus-history experiment. That builder enumerates every raw `video.avi`, maps
+its hospital ID, and reads
 the capture interval from the corresponding frame-level `video.avi.ts`. It does not
 use cleaned ECG/rPPG session CSV files.
 
@@ -16,20 +11,16 @@ use cleaned ECG/rPPG session CSV files.
 - Maximum video-lab interval distance: 24 hours.
 - One label per video and target: choose the nearest valid measurement by interval
   distance, then video-midpoint distance, then report timestamp.
-- The retained 20-frame variant predicts `hemoglobin_low`, `po2_low`, and
-  `oxyhemoglobin_fraction` from 20 deterministic non-adjacent frames sampled
-  from 5% through 95% of each video.
-- The all-frame variant predicts `hemoglobin_low`, `po2_low`, and `lactate_high`
-  from every decodable frame in each video.
+- The experiment predicts oxyhemoglobin fraction, lactate, urea, troponin I,
+  platelet count, hemoglobin, A/a PO2 ratio, and creatinine from 20 deterministic
+  non-adjacent frames sampled from 5% through 95% of each video.
 - Training views: original, horizontal flip, 90% center crop, brightness +6%, and
   contrast +8%.
 - Validation and test use every frame selected by the variant with only the
   original view.
-- PO2 uses only the exact source item `氧分压`; temperature-corrected PO2 is
-  excluded before video-lab matching.
-- Oxyhemoglobin fraction uses only exact `氧合血红蛋白分数` values reported in
-  percent, excludes explicitly venous specimens, and enforces the physical
-  range 0-100%.
+- Oxyhemoglobin fraction accepts `氧合血红蛋白分数` and `氧合血红蛋白` values
+  reported in percent, excludes explicitly venous specimens, and enforces the
+  physical range 0-100%.
 
 Each variant contains its own source audit and compact JPEG byte-offset index.
 Decoded images are never persisted.
@@ -38,7 +29,7 @@ Decoded images are never persisted.
 
 Each architecture/target pair has an independent model:
 
-- MobileNetV3-Small and EfficientNet-B0 with local ImageNet pretrained weights.
+- EfficientNet-B0 with local ImageNet pretrained weights.
 - Classification head replaced by
   `Linear -> LayerNorm -> SiLU -> Dropout -> Linear(1)`, hidden width 32.
 - Stage 1 freezes the backbone and trains the head at `2e-4`.
@@ -48,35 +39,23 @@ Each architecture/target pair has an independent model:
 
 Each target scaler is fitted only on training videos:
 `scaled = (raw value - training median) / training IQR`. Predictions and all
-reported MAE/RMSE values are inverse-transformed to g/L, mmHg, mmol/L, or %. Clinical
+reported MAE/RMSE values are inverse-transformed to canonical lab units. Clinical
 thresholds remain only for secondary AUC/bACC reporting.
 
 For oxyhemoglobin fraction, `<94%` is an operational split-stratification and
 secondary-metric threshold. It does not alter, clip, or weight the continuous
 raw-value regression target.
 
-Splits are patient-disjoint 60/20/20. The 20-frame retraining reuses and validates
-the exact samples, raw values, and split assignments from the corresponding
-face-plus-history experiment. Both architectures receive identical records and
-splits.
+Splits are patient-disjoint 60/20/20. The 20-frame retraining reuses the history
+experiment's compact frame-offset index and validates the exact samples, raw
+values, and split assignments from that experiment. Both architectures receive
+identical records and splits. The intended comparison changes only the presence
+of the prior-lab history encoder and its input.
 
-The all-frame run has eight independent architecture/target jobs dispatched
-dynamically across four GPUs. Every successful experiment automatically generates
-its validated result figures after training.
+The eight independent target jobs are dispatched dynamically across four GPUs.
+Every successful experiment automatically generates validated result figures.
 
 ## Start
-
-```bash
-bash study/exp2_face_pretrained_head32_regression/launch_screen.sh allframes
-```
-
-Attach with:
-
-```bash
-screen -r exp2_face_pretrained_head32_regression_allframes
-```
-
-The retained 20-frame entry is:
 
 ```bash
 bash study/exp2_face_pretrained_head32_regression/launch_screen.sh 20frame

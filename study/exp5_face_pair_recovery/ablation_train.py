@@ -23,12 +23,14 @@ from .config import (
     HEAD_LEARNING_RATE, HEAD_MAX_EPOCHS, HEAD_PATIENCE, MIN_LEARNING_RATE,
     OUTPUT_DIR, PREFETCH_FACTOR, SEED, TRAIN_NUM_WORKERS,
     TRAIN_SOURCE_BATCH_SIZE, TRAIN_VIEWS, WEIGHT_DECAY,
+    TARGET_COLUMN,
 )
 from .data import SingleFrameDataset
 from .models import (
     build_ablation_model, freeze_backbone, head_parameters, last_stage_parameters,
     parameter_counts, train_head_modules, unfreeze_last_stage,
 )
+from .plot_results import plot_results
 from .train import (
     _clone, _compile, _loss, _metrics, _plot_history, _prepare, seed_everything,
 )
@@ -116,7 +118,7 @@ def _evaluate(model, dataset, loader, device, split):
         frame_count=("y_pred", "size"), frame_prediction_std=("y_pred", "std"),
     )
     info = dataset.records.iloc[aggregate.video_row.to_numpy(int)][[
-        "hospital_id", "pre_video_id", "video_id", "recovery_score",
+        "hospital_id", "pre_video_id", "video_id", TARGET_COLUMN,
         "postoperative_progress",
     ]].reset_index(drop=True)
     result = pd.concat([info, aggregate.drop(columns="video_row")], axis=1)
@@ -267,8 +269,9 @@ def train_ablation(records, frame_index, mode, seed, device_id, run_dir):
         "last_stage_best_val_mae": fine_mae,
         "missing_branch": "zero 64-dimensional embedding; encoder not executed",
         "fusion": "same 256-to-32 head as paired main experiment",
+        "target": "equal-weight postoperative trajectory-deviation score",
         "train_views": list(TRAIN_VIEWS),
-        "records_sha256": _sha256(OUTPUT_DIR / "records.csv"),
+        "records_sha256": _sha256(run_dir / "records.csv"),
         "frame_index_sha256": _sha256(CACHE_DIR / "frame_offsets.npz"),
     }, indent=2), encoding="utf-8")
     test = metric_rows[-1]
@@ -292,9 +295,7 @@ def smoke_test(records, frame_index, mode, device_id):
         prediction = model(images).squeeze(1)
         loss = _loss(prediction, targets, weights)
     loss.backward(); total, trainable = parameter_counts(model)
-    if not torch.isfinite(loss) or not (
-        prediction.detach().ge(0).all() and prediction.detach().le(1).all()
-    ):
+    if not torch.isfinite(loss) or not prediction.detach().ge(0).all():
         raise RuntimeError("Invalid ablation smoke output")
     print(
         f"[smoke-ok] mode={mode} shape={tuple(images.shape)} loss={float(loss):.6f} "
@@ -309,7 +310,8 @@ def main():
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
-    records_path = OUTPUT_DIR / "records.csv"
+    run_dir = OUTPUT_DIR / "ablations" / args.mode
+    records_path = run_dir / "records.csv"
     frame_index_path = CACHE_DIR / "frame_offsets.npz"
     records = pd.read_csv(records_path, dtype={"hospital_id": str})
     frame_index = FrameOffsetIndex.load(frame_index_path)
@@ -317,8 +319,8 @@ def main():
         raise AssertionError("Main Exp5 records contain patient leakage")
     if args.smoke:
         smoke_test(records, frame_index, args.mode, args.device); return
-    run_dir = OUTPUT_DIR / "ablations" / args.mode
     train_ablation(records, frame_index, args.mode, args.seed, args.device, run_dir)
+    plot_results(run_dir)
 
 
 if __name__ == "__main__":

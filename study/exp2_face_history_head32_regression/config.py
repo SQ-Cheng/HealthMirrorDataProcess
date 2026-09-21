@@ -16,6 +16,7 @@ OUTPUT_DIRS = {
 OUTPUT_DIR = OUTPUT_DIRS["20frame"]
 LOG_DIR = os.path.join(EXP_DIR, "logs")
 SOURCE_DATA_DIR = os.path.join(OUTPUT_DIR, "source_data")
+INDEX_DIR = os.path.join(EXP_DIR, "cache", "20frame_index")
 REFERENCE_OUTPUT_DIR = os.path.abspath(
     os.path.join(EXP_DIR, "..", "exp2_face_pretrained_head32_regression", "outputs", "20frame")
 )
@@ -23,26 +24,18 @@ REFERENCE_SOURCE_DATA_DIR = os.path.join(REFERENCE_OUTPUT_DIR, "source_data")
 REFERENCE_INDEX_DIR = os.path.abspath(
     os.path.join(EXP_DIR, "..", "exp2_face_pretrained_head32_regression", "cache", "20frame_index")
 )
-LAB_TIMESERIES_CACHE = os.path.abspath(
-    os.path.join(
-        EXP_DIR, "..", "exp2_face_only", "outputs_aug20_24h", "lab_timeseries.csv"
-    )
-)
-LAB_QUALITY_REPORT = os.path.abspath(
-    os.path.join(
-        EXP_DIR,
-        "..",
-        "exp2_face_only",
-        "outputs_aug20_24h",
-        "data_quality_report.json",
-    )
-)
+LAB_TIMESERIES_CACHE = os.path.join(SOURCE_DATA_DIR, "lab_timeseries.csv")
 
-ARCHITECTURES = ("mobilenet_v3_small", "efficientnet_b0")
+ARCHITECTURES = ("efficientnet_b0",)
 TARGETS = (
-    "hemoglobin_low",
-    "po2_low",
     "oxyhemoglobin_fraction",
+    "lactate_high",
+    "urea_high",
+    "troponin_high",
+    "platelet_count_low",
+    "hemoglobin_low",
+    "aa_po2_ratio_low",
+    "creatinine_high",
 )
 HEAD_HIDDEN_FEATURES = 32
 HISTORY_INPUT_FEATURES = 2
@@ -50,8 +43,6 @@ HISTORY_HIDDEN_FEATURES = 16
 HISTORY_OUTPUT_FEATURES = 16
 HISTORY_TIME_SCALE_HOURS = 24.0
 HISTORY_POLICY = "same_analyte_same_admission_strictly_before_current_label"
-PO2_CANONICAL_ITEM_NAME = "氧分压"
-PO2_EXCLUDED_ITEM_NAMES = ("患者体温下氧分压",)
 TORCH_COMPILE_ENABLED = True
 TORCH_COMPILE_MODE = "reduce-overhead"
 
@@ -69,19 +60,12 @@ BRIGHTNESS_DELTA = 0.06
 CONTRAST_DELTA = 0.08
 
 SCORE_DEFINITIONS = {
-    "hemoglobin_low": {
-        "value_column": "hemoglobin_value",
+    "oxyhemoglobin_fraction": {
+        "value_column": "oxyhemoglobin_fraction_value",
         "direction": "low",
-        "scale": 10.0,
-        "unit": "g/L",
-        "threshold": {"male": 130.0, "other": 120.0},
-    },
-    "po2_low": {
-        "value_column": "po2_value",
-        "direction": "low",
-        "threshold": 80.0,
-        "scale": 10.0,
-        "unit": "mmHg",
+        "threshold": 94.0,
+        "scale": 2.0,
+        "unit": "%",
     },
     "lactate_high": {
         "value_column": "lactate_value",
@@ -90,12 +74,47 @@ SCORE_DEFINITIONS = {
         "scale": 1.0,
         "unit": "mmol/L",
     },
-    "oxyhemoglobin_fraction": {
-        "value_column": "oxyhemoglobin_fraction_value",
+    "urea_high": {
+        "value_column": "urea_value",
+        "direction": "high",
+        "threshold": 8.3,
+        "scale": 2.0,
+        "unit": "mmol/L",
+    },
+    "troponin_high": {
+        "value_column": "troponin_value",
+        "direction": "high",
+        "threshold": 34.0,
+        "scale": 34.0,
+        "unit": "ng/L",
+    },
+    "platelet_count_low": {
+        "value_column": "platelet_count_value",
         "direction": "low",
-        "threshold": 94.0,
-        "scale": 1.0,
+        "threshold": 100.0,
+        "scale": 50.0,
+        "unit": "10^9/L",
+    },
+    "hemoglobin_low": {
+        "value_column": "hemoglobin_value",
+        "direction": "low",
+        "scale": 10.0,
+        "unit": "g/L",
+        "threshold": {"male": 130.0, "other": 120.0},
+    },
+    "aa_po2_ratio_low": {
+        "value_column": "aa_po2_ratio_value",
+        "direction": "low",
+        "threshold": 75.0,
+        "scale": 15.0,
         "unit": "%",
+    },
+    "creatinine_high": {
+        "value_column": "creatinine_value",
+        "direction": "high",
+        "threshold": 110.0,
+        "scale": 30.0,
+        "unit": "umol/L",
     },
 }
 REGRESSION_TARGET_COLUMN = "robust_scaled_raw_value"

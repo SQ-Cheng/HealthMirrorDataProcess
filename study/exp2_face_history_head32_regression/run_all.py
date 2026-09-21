@@ -29,6 +29,7 @@ from .config import (
     HISTORY_INPUT_FEATURES,
     HISTORY_OUTPUT_FEATURES,
     HISTORY_POLICY,
+    INDEX_DIR,
     EVAL_BATCH_SIZES,
     EVAL_NUM_WORKERS,
     JPEG_DECODER,
@@ -58,7 +59,11 @@ from .history_data import (
     write_history_manifest,
 )
 from .models import HistoryEncoder, WEIGHT_FILES
-from .source_data import build_raw_video_source
+from .source_data import (
+    TARGET_ANALYTES,
+    build_raw_video_source,
+    validate_analyte_source_policies,
+)
 from .scaling import (
     apply_train_range_weights,
     fit_robust_target_scaler,
@@ -67,12 +72,7 @@ from .scaling import (
 from .train import train_task
 
 
-LAB_TARGET_PREFIXES = {
-    "hemoglobin_low": "hemoglobin",
-    "po2_low": "po2",
-    "lactate_high": "lactate",
-    "oxyhemoglobin_fraction": "oxyhemoglobin_fraction",
-}
+LAB_TARGET_PREFIXES = TARGET_ANALYTES
 
 _WORKER_FRAME_INDEX = None
 _WORKER_GPU_ID = None
@@ -307,6 +307,11 @@ def main():
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
+        "--rebuild-split",
+        action="store_true",
+        help="Search a new patient-disjoint split for the current full dataset.",
+    )
+    parser.add_argument(
         "--range-weighted",
         action="store_true",
         help="Weight training loss by train-only raw-value range frequency.",
@@ -322,7 +327,7 @@ def main():
     args = parser.parse_args()
     args.output_dir = args.output_dir or OUTPUT_DIRS[args.frame_policy]
     args.source_dir = args.source_dir or SOURCE_DATA_DIR
-    args.index_dir = args.index_dir or REFERENCE_INDEX_DIR
+    args.index_dir = args.index_dir or INDEX_DIR
 
     architectures = _parse_csv(args.architectures)
     requested_targets = (
@@ -379,19 +384,7 @@ def main():
     _set_seed(args.seed)
     build_raw_video_source(args.source_dir, preparation_targets)
     source_quality = validate_source_data(args.source_dir)
-    if "oxyhemoglobin_fraction" in preparation_targets:
-        oxy_policy = source_quality.get("analyte_source_policies", {}).get(
-            "oxyhemoglobin_fraction", {}
-        )
-        if (
-            oxy_policy.get("canonical_item_name") != "氧合血红蛋白分数"
-            or oxy_policy.get("canonical_unit") != "%"
-            or oxy_policy.get("enforcement")
-            != "exact item name, percent unit, non-venous specimen, finite 0-100 value"
-        ):
-            raise RuntimeError(
-                f"Strict oxyhemoglobin-fraction source policy is missing: {oxy_policy}"
-            )
+    validate_analyte_source_policies(source_quality, preparation_targets)
     weight_manifest = _validate_weights(args.weights_dir, architectures)
     base_manifest = pd.read_csv(
         os.path.join(args.source_dir, "base_manifest.csv"), dtype={"hospital_id": str}
@@ -435,8 +428,10 @@ def main():
         args.output_dir,
         preparation_targets,
         args.seed,
-        reference_records_dir=os.path.join(
-            args.reference_output_dir, "task_records"
+        reference_records_dir=(
+            None
+            if args.rebuild_split
+            else os.path.join(args.reference_output_dir, "task_records")
         ),
     )
     ready_targets = tuple(
@@ -448,7 +443,8 @@ def main():
             f"Requested {args.frame_policy} tasks are not trainable: "
             f"{skipped.to_dict('records')}"
         )
-    _validate_reference_task_records(task_records, args.reference_output_dir)
+    if not args.rebuild_split:
+        _validate_reference_task_records(task_records, args.reference_output_dir)
     target_scalers = {}
     range_weighting = {}
     for target in ready_targets:
@@ -534,6 +530,11 @@ def main():
         "architectures": list(manifest_architectures),
         "targets": list(ready_targets),
         "seed": args.seed,
+        "split_source": (
+            "new patient-level balanced candidate search on current full dataset"
+            if args.rebuild_split
+            else "exact reference task split"
+        ),
         "data_fingerprints": {
             "base_manifest_sha256": _sha256_file(
                 os.path.join(args.source_dir, "base_manifest.csv")
@@ -604,9 +605,8 @@ def main():
             "duplicate_event_policy": (
                 "one nearest in-window lab measurement per raw video and target"
             ),
-            "po2_item_policy": (
-                "use exact item_name '氧分压'; exclude all patient-temperature-"
-                "corrected PO2 rows"
+            "analyte_source_policies": source_quality.get(
+                "analyte_source_policies", {}
             ),
         },
         "preprocessing": {

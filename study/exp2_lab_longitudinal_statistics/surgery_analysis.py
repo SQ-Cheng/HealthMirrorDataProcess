@@ -56,15 +56,15 @@ CONTRAST_LABELS = {
 }
 
 CABG_TRAJECTORY_PANELS = (
-    ("A008", "Lactate"),
-    ("A004", "Troponin"),
-    ("A035", "Blood-gas Hb"),
-    ("A007", "Lab Hb"),
-    ("A021", "PO2"),
-    ("A023", "O2Hb Frac"),
-    ("A006", "Glucose"),
-    ("A009", "PCO2"),
-    ("A034", "P/F ratio"),
+    ("乳酸浓度", "Lactate"),
+    ("肌钙蛋白Ⅰ", "Troponin"),
+    ("肌酐(Cr)测定", "Creatinine"),
+    ("总胆红素", "Total bilirubin"),
+    ("血小板", "Platelet count"),
+    ("血红蛋白", "Hemoglobin"),
+    ("*快速C-反应蛋白", "C-reactive protein"),
+    ("*白蛋白(Alb)测定-溴甲酚绿法", "Albumin"),
+    ("氧分压", "PaO2"),
 )
 
 PROCEDURE_ENGLISH = {
@@ -942,15 +942,17 @@ def _plot_phase_heatmap(summary, output_dir):
 def _plot_top_phase_trajectories(summary, selected_ids, output_dir):
     del selected_ids
     figure, axes = plt.subplots(3, 3, figsize=(16, 11), squeeze=False)
-    for axis, (variable_id, display_name) in zip(
+    for axis, (item_name, display_name) in zip(
         axes.flat, CABG_TRAJECTORY_PANELS
     ):
         values = summary[
             summary["cohort"].eq("cabg")
-            & summary["variable_id"].eq(variable_id)
+            & summary["item_name_cn"].eq(item_name)
         ].sort_values("phase_order")
         if values.empty:
-            raise ValueError(f"No CABG trajectory data for {variable_id}")
+            axis.axis("off")
+            axis.set_title(f"{display_name}: no eligible data", fontsize=9)
+            continue
         x = values["phase_order"].to_numpy()
         axis.plot(x, values["median"], color="#2F6B8A", marker="o")
         axis.fill_between(
@@ -977,7 +979,7 @@ def _plot_top_phase_trajectories(summary, selected_ids, output_dir):
             )
         row = values.iloc[0]
         axis.set_title(
-            f"{display_name} ({variable_id})",
+            f"{display_name} ({row['variable_id']})",
             fontsize=9,
         )
         axis.set_ylabel(row["unit"])
@@ -1303,7 +1305,7 @@ CABG 手术时长中位数为 {duration['median']:.2f} 小时（IQR {duration['q
 
 每个非重叠阶段先在同一 episode 内取中位数，再在同一患者的重复住院间取中位数，最后计算患者间中位数和 IQR，避免化验频率较高的患者占更大权重。
 
-输入化验值继承住院期主分析的字段规范化：血气葡萄糖单位、动脉/肺泡氧比值尺度及 P50 设备别名在进入手术分期前已经统一；标准条件与患者条件 P50 仍保持分离。规则和证据分别见 `../tables/variable_harmonization_audit.csv` 与 `../tables/field_equivalence_evidence.csv`。
+输入化验值继承住院期主分析的完整字段规范化：实验室与血气来源的同一生理量按明确单位换算统一，设备别名在进入手术分期前合并。体温校正与未校正字段、标准条件与患者条件 P50、总镁与离子镁以及血液与尿液项目仍保持分离。规则和证据分别见 `../tables/variable_harmonization_audit.csv` 与 `../tables/field_equivalence_evidence.csv`。
 
 ## CABG 主要配对变化
 

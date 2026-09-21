@@ -33,7 +33,6 @@ def _bar_group(axis, frame, metrics, title):
 def plot_comparison(output_dir=OUTPUT_DIR):
     output_dir = Path(output_dir)
     rows, predictions = [], {}
-    reference = None
     for name, run_dir in RUNS.items():
         metrics_path = run_dir / "metrics.csv"
         predictions_path = run_dir / "video_predictions.csv"
@@ -47,25 +46,23 @@ def plot_comparison(output_dir=OUTPUT_DIR):
             model, _ = build_ablation_model(run_dir.name)
         parameters = parameter_counts(model)[0]
         del model
-        rows.append({"model": name, "parameters": parameters, **test.to_dict()})
+        rows.append({
+            "model": name, "parameters": parameters,
+            "test_videos": int(test["n"]), **test.to_dict(),
+        })
         pred = pd.read_csv(
             predictions_path, dtype={"hospital_id": str, "video_id": str}
         )
         pred = pred[pred.split.eq("test")].sort_values(
             ["hospital_id", "video_id"]
         ).reset_index(drop=True)
-        keys = pred[["hospital_id", "video_id", "y_true"]]
-        if reference is None:
-            reference = keys
-        elif not keys.equals(reference):
-            raise AssertionError(f"Test samples differ for {name}")
         predictions[name] = pred
     comparison = pd.DataFrame(rows).set_index("model")
     comparison.to_csv(output_dir / "ablation_comparison.csv")
-    merged = reference.copy()
-    for name, pred in predictions.items():
-        merged[name] = pred.y_pred
-    merged.to_csv(output_dir / "ablation_test_predictions.csv", index=False)
+    pd.concat(
+        [pred.assign(model=name) for name, pred in predictions.items()],
+        ignore_index=True,
+    ).to_csv(output_dir / "ablation_test_predictions.csv", index=False)
 
     figure, axes = plt.subplots(2, 3, figsize=(16, 9))
     _bar_group(axes[0, 0], comparison, ("mae", "rmse"), "Test error (lower is better)")
@@ -73,21 +70,22 @@ def plot_comparison(output_dir=OUTPUT_DIR):
     _bar_group(axes[0, 2], comparison, ("pearson_r", "spearman_r"), "Test correlation")
     for axis, ((name, pred), color) in zip(axes[1], zip(predictions.items(), COLORS)):
         axis.scatter(pred.y_true, pred.y_pred, s=24, alpha=.72, color=color)
-        axis.plot([0, 1], [0, 1], "--", color="#555", lw=1)
+        upper = max(float(pred.y_true.max()), float(pred.y_pred.max())) * 1.05
+        axis.plot([0, upper], [0, upper], "--", color="#555", lw=1)
         row = comparison.loc[name]
         parameters_m = row.parameters / 1e6
         axis.set(
-            xlim=(0, 1), ylim=(0, 1), xlabel="True recovery score",
-            ylabel="Predicted recovery score",
+            xlim=(0, upper), ylim=(0, upper), xlabel="True trajectory deviation",
+            ylabel="Predicted trajectory deviation",
             title=(
-                f"{name} ({parameters_m:.2f}M params)\n"
+                f"{name} ({parameters_m:.2f}M params, n={int(row.test_videos)})\n"
                 f"MAE={row.mae:.3f}, R2={row.r2:.3f}, r={row.pearson_r:.3f}"
             ),
         )
         axis.grid(alpha=.2)
     figure.suptitle(
-        "Exp5 current dual-encoder main vs single-input models\n"
-        "Identical held-out patients; model capacities differ",
+        "Exp5 paired vs single-input protocols\n"
+        "Each protocol uses its maximum eligible cohort; test cohorts may differ",
         fontsize=15,
     )
     figure.tight_layout(rect=(0, 0, 1, .97))

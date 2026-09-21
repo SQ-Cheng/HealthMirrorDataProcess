@@ -8,13 +8,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .config import ANALYTES
+from .config import ANALYTES, TARGET_COLUMN
 
 
 DISPLAY = {
-    "lactate": "Lactate", "blood_gas_hb": "Blood-gas Hb",
-    "troponin": "Troponin", "o2hb_fraction": "O2Hb fraction",
-    "glucose": "Glucose",
+    "lactate": "Lactate", "troponin": "Troponin I",
+    "creatinine": "Creatinine", "total_bilirubin": "Total bilirubin",
+    "platelet_count": "Platelet count", "hemoglobin": "Hemoglobin",
+    "crp": "C-reactive protein", "albumin": "Albumin", "po2": "PaO2",
 }
 
 
@@ -26,7 +27,7 @@ def plot_results(output_dir):
     metrics = pd.read_csv(output_dir / "metrics.csv")
     predictions = pd.read_csv(output_dir / "video_predictions.csv", dtype={"hospital_id": str})
 
-    figure, axes = plt.subplots(2, 3, figsize=(17, 9))
+    figure, axes = plt.subplots(2, 5, figsize=(23, 9))
     for axis, analyte in zip(axes.flat, ANALYTES):
         values = trajectories[trajectories.analyte.eq(analyte)].sort_values("progress_center")
         axis.plot(values.progress_center, values["median"], marker="o", color="#2F6B8A")
@@ -38,12 +39,12 @@ def plot_results(output_dir):
         axis.grid(alpha=.2)
     axis = axes.flat[-1]
     for split, color in zip(("train", "val", "test"), ("#4C78A8", "#F2A541", "#59A14F")):
-        axis.hist(records.loc[records.split.eq(split), "recovery_score"], bins=np.linspace(0, 1, 16),
+        axis.hist(records.loc[records.split.eq(split), TARGET_COLUMN], bins=16,
                   alpha=.5, label=split, color=color)
-    axis.set(title="Equal-weight recovery score", xlabel="Score", ylabel="Postoperative videos")
+    axis.set(title="Equal-weight trajectory deviation", xlabel="Robust absolute deviation", ylabel="Postoperative videos")
     axis.legend(); axis.grid(alpha=.2)
-    figure.suptitle("Training-only average trajectories and derived recovery scores")
-    figure.tight_layout(); figure.savefig(figure_dir / "recovery_score_definition.png", dpi=180, bbox_inches="tight")
+    figure.suptitle("Training-only postoperative trajectories and derived deviation scores")
+    figure.tight_layout(); figure.savefig(figure_dir / "trajectory_deviation_definition.png", dpi=180, bbox_inches="tight")
     plt.close(figure)
 
     test_metric = metrics[metrics.split.eq("test")].iloc[0]
@@ -57,9 +58,10 @@ def plot_results(output_dir):
     axes[1].bar_label(bars, fmt="%.3f", fontsize=8); axes[1].axhline(0, color="#666", linestyle=":")
     axes[1].set_title("Test fit")
     axes[2].scatter(test.y_true, test.y_pred, s=28, alpha=.75, color="#2F6B8A")
-    axes[2].plot([0, 1], [0, 1], "--", color="#555")
-    axes[2].set(xlim=(0, 1), ylim=(0, 1), xlabel="True score", ylabel="Predicted score", title="Held-out patients")
-    figure.suptitle("Paired pre/postoperative face recovery results")
+    upper = max(float(test.y_true.max()), float(test.y_pred.max())) * 1.05
+    axes[2].plot([0, upper], [0, upper], "--", color="#555")
+    axes[2].set(xlim=(0, upper), ylim=(0, upper), xlabel="True deviation", ylabel="Predicted deviation", title="Held-out patients")
+    figure.suptitle("Postoperative trajectory-deviation prediction results")
     figure.tight_layout(); figure.savefig(figure_dir / "results_summary.png", dpi=180, bbox_inches="tight")
     plt.close(figure)
     print(f"[plots] saved figures under {figure_dir}", flush=True)

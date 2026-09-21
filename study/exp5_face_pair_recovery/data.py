@@ -8,7 +8,10 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.io import ImageReadMode, decode_jpeg
 
-from .config import DECODE_CACHE_FRAMES, MAX_OPEN_FILES_PER_WORKER, SOURCE_IMAGE_SIZE
+from .config import (
+    DECODE_CACHE_FRAMES, MAX_OPEN_FILES_PER_WORKER, SOURCE_IMAGE_SIZE,
+    TARGET_COLUMN,
+)
 
 
 class PairedFrameDataset(Dataset):
@@ -34,7 +37,7 @@ class PairedFrameDataset(Dataset):
         self.post_indices = np.concatenate(post_indices)
         self.pre_indices = np.concatenate(pre_indices)
         self.frame_video_rows = np.concatenate(video_rows)
-        self.labels = self.records.recovery_score.to_numpy(np.float32)
+        self.labels = self.records[TARGET_COLUMN].to_numpy(np.float32)
         counts = self.records.groupby("hospital_id").video_id.transform("size")
         weights = 1.0 / counts.to_numpy(np.float32)
         self.video_weights = weights / weights.mean()
@@ -104,13 +107,31 @@ class PairedFrameDataset(Dataset):
 
 
 class SingleFrameDataset(PairedFrameDataset):
-    """Use one side of the exact paired-frame index for controlled ablations."""
+    """Stream only the face side required by a protocol-specific cohort."""
 
     def __init__(self, frame_index, records, mode, views=("original",), expand_views=False):
         if mode not in {"pre_only", "post_only"}:
             raise ValueError(f"Unsupported single-frame mode: {mode}")
-        super().__init__(frame_index, records, views, expand_views)
         self.mode = mode
+        self.index = frame_index
+        self.records = records.reset_index(drop=True).copy()
+        self.views = tuple(views)
+        self.expand_views = bool(expand_views)
+        field = "pre_video_id" if mode == "pre_only" else "video_id"
+        frame_indices, video_rows = [], []
+        for video_row, video_id in enumerate(self.records[field].astype(str)):
+            start, end = frame_index.frame_range(video_id)
+            selected = np.arange(start, end, dtype=np.int64)
+            frame_indices.append(selected)
+            video_rows.append(np.full(len(selected), video_row, dtype=np.int32))
+        self.post_indices = np.concatenate(frame_indices)
+        self.pre_indices = self.post_indices
+        self.frame_video_rows = np.concatenate(video_rows)
+        self.labels = self.records[TARGET_COLUMN].to_numpy(np.float32)
+        counts = self.records.groupby("hospital_id").video_id.transform("size")
+        weights = 1.0 / counts.to_numpy(np.float32)
+        self.video_weights = weights / weights.mean()
+        self._handles, self._decoded = OrderedDict(), OrderedDict()
 
     def __getitem__(self, frame_row):
         video_row = int(self.frame_video_rows[frame_row])

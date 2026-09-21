@@ -25,6 +25,7 @@ from .config import (
     HEAD_LEARNING_RATE, HEAD_MAX_EPOCHS, HEAD_PATIENCE, IMAGE_SIZE,
     IMAGENET_MEAN, IMAGENET_STD, MIN_LEARNING_RATE, PREFETCH_FACTOR,
     SMOOTH_L1_BETA, TORCH_COMPILE_ENABLED, TORCH_COMPILE_MODE,
+    TARGET_COLUMN,
     TRAIN_NUM_WORKERS, TRAIN_SOURCE_BATCH_SIZE, TRAIN_VIEWS, WEIGHT_DECAY,
 )
 from .data import PairedFrameDataset
@@ -150,7 +151,7 @@ def _evaluate(model, dataset, loader, device, split):
     ).agg(y_true=("y_true", "first"), y_pred=("y_pred", "mean"),
           frame_count=("y_pred", "size"), frame_prediction_std=("y_pred", "std"))
     info = dataset.records.iloc[aggregate.video_row.to_numpy(int)][
-        ["hospital_id", "pre_video_id", "video_id", "recovery_score", "postoperative_progress"]
+        ["hospital_id", "pre_video_id", "video_id", TARGET_COLUMN, "postoperative_progress"]
     ].reset_index(drop=True)
     result = pd.concat([info, aggregate.drop(columns="video_row")], axis=1)
     result.insert(0, "split", split)
@@ -264,6 +265,7 @@ def train(records, frame_index, seed, device_id, run_dir):
         "seed": seed, "selected_stage": selected, "head_best_val_mae": head_mae,
         "last_stage_best_val_mae": fine_mae, "train_views": list(TRAIN_VIEWS),
         "input": "one preoperative plus one postoperative RGB face",
+        "target": "equal-weight postoperative trajectory-deviation score",
         "encoders": "independent preoperative and postoperative EfficientNet-B0 plus projectors",
         "evaluation": "mean of 20 deterministic pre/post frame pairs per postoperative video",
     }, indent=2), encoding="utf-8")

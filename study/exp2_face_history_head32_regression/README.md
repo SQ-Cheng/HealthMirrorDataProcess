@@ -1,9 +1,9 @@
 # Exp2 Face + Prior Lab History Head32 Raw-Value Regression
 
 This controlled experiment uses the retained 20-frame Head32 regression setup
-with prior measurements of the same analyte. It trains independent
-MobileNetV3-Small and EfficientNet-B0 models for Hemoglobin, PO2, and
-oxyhemoglobin fraction.
+with prior measurements of the same analyte. It trains one independent
+EfficientNet-B0 model for each of: oxyhemoglobin fraction, lactate, urea,
+troponin I, platelet count, hemoglobin, A/a PO2 ratio, and creatinine.
 
 ## Controlled Data
 
@@ -20,6 +20,21 @@ oxyhemoglobin fraction.
   the scaler. Predictions are inverse-transformed before raw-unit metrics.
 - The compact NPZ passed to the model contains the historical raw value transformed
   by the same target scaler and `-log1p(age_hours / 24)`. Sequences are not truncated.
+
+Exact accepted source fields are recorded in
+`outputs/20frame/source_data/data_quality_report.json`. The canonical groups are:
+
+- Oxyhemoglobin: `氧合血红蛋白分数`, `氧合血红蛋白` (non-venous, `%`).
+- Lactate: `*乳酸浓度`, `乳酸浓度`, `乳酸` (`mmol/L`).
+- Urea: `*尿素(Urea)测定` (`mmol/L`).
+- Troponin I: hsTnI, whole-blood TnI, and high-sensitivity TnI exact aliases;
+  `pg/mL`, `ug/L`, and `ng/mL` are converted to `ng/L`.
+- Platelets: `*血小板`, `血小板`; count units are harmonized to `10^9/L`.
+- Hemoglobin: `*血红蛋白`, `血红蛋白`, `总血红蛋白`; `g/dL` is converted to `g/L`.
+- A/a PO2 ratio: the percent field plus the validated unitless fraction field
+  multiplied by 100; temperature-corrected ratio fields are excluded.
+- Creatinine: blood/serum `*肌酐(Cr)测定`, its picrate-method alias, and `*肌酐`;
+  urine creatinine and eGFR are excluded.
 
 ## Train-range weighted variant
 
@@ -52,7 +67,8 @@ concat(image feature, history feature)
 The history encoder has 352 trainable parameters. Stage 1 freezes the image
 backbone and trains the history encoder plus regression head at `2e-4`. Stage 2
 fine-tunes the whole model at `1e-5`. The loss is unweighted SmoothL1 in robust-
-scaled target space; MAE/RMSE and prediction files use `g/L` or `mmHg`.
+scaled target space; predictions and metrics are inverse-transformed to each
+analyte's canonical laboratory unit.
 
 ## Start
 
@@ -61,4 +77,16 @@ bash study/exp2_face_history_head32_regression/launch_screen.sh
 ```
 
 Four dynamic workers are assigned to GPUs 0-3. Result figures are generated
-automatically after all four architecture/target jobs finish.
+automatically after all eight target jobs finish.
+
+For a complete rebuild from the current merged lab table and every raw video,
+including a fresh patient-level balanced split, use:
+
+```bash
+bash study/exp2_face_history_head32_regression/launch_screen.sh \
+  --overwrite --rebuild-split
+```
+
+This path builds a local canonical lab timeseries and compact frame-offset index;
+it does not depend on the historical `exp2_face_only` lab cache or another
+experiment's frame index.

@@ -53,11 +53,6 @@ def validate_source_data(source_dir):
         raise RuntimeError("Raw-video source unexpectedly depends on session CSV files")
     if float(policy.get("maximum_delta_hours", np.inf)) != 24.0:
         raise RuntimeError(f"Expected a 24-hour source window, found {policy}")
-    po2_policy = quality.get("analyte_source_policies", {}).get("po2", {})
-    if po2_policy.get("canonical_item_name") != "氧分压":
-        raise RuntimeError(f"Canonical PO2 source policy is missing: {po2_policy}")
-    if po2_policy.get("enforcement") != "filter by exact item_name before label matching":
-        raise RuntimeError(f"Strict PO2 filtering was not enforced: {po2_policy}")
     return quality
 
 

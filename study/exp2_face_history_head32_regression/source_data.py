@@ -1,4 +1,4 @@
-"""Build one nearest 24-hour lab label per raw video and target."""
+"""Build one nearest 24-hour lab label per current raw video and target."""
 
 from collections import Counter, defaultdict
 import glob
@@ -21,19 +21,19 @@ from study.exp2_lab_multimodal.config import DATA_ROOT, LAB_CSV
 
 from .config import (
     LAB_MATCH_MAX_DELTA_HOURS,
-    LAB_QUALITY_REPORT,
-    LAB_TIMESERIES_CACHE,
-    PO2_CANONICAL_ITEM_NAME,
-    PO2_EXCLUDED_ITEM_NAMES,
     SCORE_DEFINITIONS,
 )
 
 
 TARGET_ANALYTES = {
-    "hemoglobin_low": "hemoglobin",
-    "po2_low": "po2",
-    "lactate_high": "lactate",
     "oxyhemoglobin_fraction": "oxyhemoglobin_fraction",
+    "lactate_high": "lactate",
+    "urea_high": "urea",
+    "troponin_high": "troponin",
+    "platelet_count_low": "platelet_count",
+    "hemoglobin_low": "hemoglobin",
+    "aa_po2_ratio_low": "aa_po2_ratio",
+    "creatinine_high": "creatinine",
 }
 
 
@@ -72,130 +72,238 @@ def _read_video_time_bounds(path):
     }
 
 
-def _load_oxyhemoglobin_fraction():
-    columns = ["首页病案号", "检验项名称", "检验值(文本)", "单位", "标本名称", "报告时间"]
-    raw = pd.read_csv(LAB_CSV, dtype=str, keep_default_na=False, usecols=columns)
-    selected = raw.loc[raw["检验项名称"].eq("氧合血红蛋白分数")].copy()
-    selected["hospital_id"] = selected["首页病案号"].map(_normalize_hospital_id)
-    selected["timestamp_unix"] = _parse_datetime_to_unix(selected["报告时间"])
-    selected["value"] = _extract_numeric(selected["检验值(文本)"])
-    numeric = selected["value"].notna()
-    percent_unit = selected["单位"].astype(str).str.strip().eq("%")
-    non_venous = ~selected["标本名称"].astype(str).str.contains("静脉", regex=False)
-    physical_range = selected["value"].between(0.0, 100.0, inclusive="both")
-    valid = (selected["hospital_id"].ne("") & selected["timestamp_unix"].notna()
-             & numeric & percent_unit & non_venous & physical_range)
-    result = selected.loc[valid].copy()
-    conflicts = result.groupby(["hospital_id", "timestamp_unix"])["value"].nunique().gt(1)
-    if conflicts.any():
-        raise ValueError(f"Oxyhemoglobin fraction has conflicting values at the same patient timestamp: {int(conflicts.sum())} events")
-    result = result.drop_duplicates(["hospital_id", "timestamp_unix", "value"], keep="first")
-    labs = pd.DataFrame({
-        "hospital_id": result["hospital_id"],
-        "analyte": "oxyhemoglobin_fraction",
-        "value": result["value"].astype(float),
-        "timestamp_unix": result["timestamp_unix"].astype(float),
-        "unit": "%",
-        "item_name": "氧合血红蛋白分数",
-    })
-    policy = {
-        "canonical_item_name": "氧合血红蛋白分数", "canonical_unit": "%",
-        "excluded_non_numeric_rows": int((~numeric).sum()),
-        "excluded_non_percent_unit_rows": int((numeric & ~percent_unit).sum()),
-        "excluded_venous_rows": int((numeric & percent_unit & ~non_venous).sum()),
-        "excluded_outside_0_100_rows": int((numeric & percent_unit & non_venous & ~physical_range).sum()),
-        "retained_rows": int(len(labs)), "retained_patients": int(labs["hospital_id"].nunique()),
-        "enforcement": "exact item name, percent unit, non-venous specimen, finite 0-100 value",
-    }
-    return labs, policy
-
-
-def _load_lab_data(targets):
-    required = {
-        "hospital_id",
-        "analyte",
-        "item_name",
-        "value",
-        "timestamp_unix",
-    }
-    if not os.path.isfile(LAB_TIMESERIES_CACHE):
-        raise FileNotFoundError(
-            f"Missing corrected lab cache: {LAB_TIMESERIES_CACHE}"
-        )
-    if not os.path.isfile(LAB_QUALITY_REPORT):
-        raise FileNotFoundError(
-            f"Missing corrected lab quality report: {LAB_QUALITY_REPORT}"
-        )
-    with open(LAB_QUALITY_REPORT, encoding="utf-8") as handle:
-        quality = json.load(handle)
-    timezone = quality.get("lab_report_time", {}).get("source_timezone")
-    if timezone != LAB_REPORT_TIMEZONE:
-        raise RuntimeError(
-            f"Expected {LAB_REPORT_TIMEZONE} lab timestamps, found {timezone}"
-        )
-
-    labs = pd.read_csv(
-        LAB_TIMESERIES_CACHE,
-        dtype={"hospital_id": str, "analyte": str},
-    )
-    missing = required - set(labs.columns)
-    if missing:
-        raise ValueError(f"Corrected lab cache is missing columns: {sorted(missing)}")
-    labs["hospital_id"] = labs["hospital_id"].map(_normalize_hospital_id)
-    labs["timestamp_unix"] = pd.to_numeric(
-        labs["timestamp_unix"], errors="coerce"
-    )
-    labs["value"] = pd.to_numeric(labs["value"], errors="coerce")
-    labs = labs[
-        labs["hospital_id"].ne("")
-        & labs["timestamp_unix"].notna()
-        & labs["value"].notna()
-    ].copy()
-    po2_mask = labs["analyte"].eq("po2")
-    unexpected_po2 = labs.loc[
-        po2_mask & labs["item_name"].ne(PO2_CANONICAL_ITEM_NAME), "item_name"
-    ].value_counts()
-    labs = labs.loc[
-        ~po2_mask | labs["item_name"].eq(PO2_CANONICAL_ITEM_NAME)
-    ].copy()
-    conflicting_po2 = (
-        labs.loc[labs["analyte"].eq("po2")]
-        .groupby(["hospital_id", "timestamp_unix"])["value"]
-        .nunique()
-        .gt(1)
-    )
-    if conflicting_po2.any():
-        raise ValueError(
-            "Canonical PO2 cache contains conflicting values at the same "
-            f"patient timestamp: {int(conflicting_po2.sum())} events"
-        )
-    quality = dict(quality)
-    quality["analyte_source_policies"] = {
-        **quality.get("analyte_source_policies", {}),
-        "po2": {
-            "canonical_item_name": PO2_CANONICAL_ITEM_NAME,
-            "excluded_item_names": list(PO2_EXCLUDED_ITEM_NAMES),
-            "excluded_cache_rows": int(unexpected_po2.sum()),
-            "excluded_cache_rows_by_item": {
-                str(name): int(count) for name, count in unexpected_po2.items()
-            },
-            "enforcement": "filter by exact item_name before label matching",
+LAB_SOURCE_DEFINITIONS = {
+    "oxyhemoglobin_fraction": {
+        "items": ("氧合血红蛋白分数", "氧合血红蛋白"),
+        "canonical_unit": "%",
+        "valid_range": (0.0, 100.0),
+        "exclude_venous": True,
+        "unit_conversion": {"%": 1.0},
+    },
+    "lactate": {
+        "items": ("*乳酸浓度", "乳酸浓度", "乳酸"),
+        "canonical_unit": "mmol/L",
+        "valid_range": (0.05, 30.0),
+        "exclude_venous": False,
+        "unit_conversion": {"mmol/L": 1.0},
+    },
+    "urea": {
+        "items": ("*尿素(Urea)测定",),
+        "canonical_unit": "mmol/L",
+        "valid_range": (0.1, 100.0),
+        "exclude_venous": False,
+        "unit_conversion": {"mmol/L": 1.0},
+    },
+    "troponin": {
+        "items": (
+            "*肌钙蛋白Ⅰ(hsTnI)测定",
+            "肌钙蛋白Ⅰ(hsTnI)测定",
+            "*全血肌钙蛋白Ⅰ",
+            "全血肌钙蛋白Ⅰ",
+            "*高敏肌钙蛋白Ⅰ测定",
+            "肌钙蛋白Ⅰ(TnI)测定",
+        ),
+        "canonical_unit": "ng/L",
+        "valid_range": (0.0, 500000.0),
+        "exclude_venous": False,
+        "unit_conversion": {
+            "ng/L": 1.0,
+            "pg/mL": 1.0,
+            "ug/L": 1000.0,
+            "ng/mL": 1000.0,
         },
-    }
-    if "oxyhemoglobin_fraction" in targets:
-        oxyhemoglobin, oxyhemoglobin_policy = _load_oxyhemoglobin_fraction()
-        labs = pd.concat([labs, oxyhemoglobin], ignore_index=True)
-        quality["analyte_source_policies"]["oxyhemoglobin_fraction"] = oxyhemoglobin_policy
+    },
+    "platelet_count": {
+        "items": ("*血小板", "血小板"),
+        "canonical_unit": "10^9/L",
+        "valid_range": (1.0, 2000.0),
+        "exclude_venous": False,
+        "unit_conversion": {"*10^9/L": 1.0, "10^9/L": 1.0, "G/L": 1.0},
+    },
+    "hemoglobin": {
+        "items": ("*血红蛋白", "血红蛋白", "总血红蛋白"),
+        "canonical_unit": "g/L",
+        "valid_range": (20.0, 250.0),
+        "exclude_venous": False,
+        "unit_conversion": {"g/L": 1.0, "g/dL": 10.0},
+    },
+    "aa_po2_ratio": {
+        "items": (
+            "动脉氧分压与肺泡氧分压之比",
+            "动脉血氧分压与肺泡内氧分压之比",
+        ),
+        "canonical_unit": "%",
+        "valid_range": (1.0, 800.0),
+        "exclude_venous": True,
+        "unit_conversion": {
+            "动脉氧分压与肺泡氧分压之比 [%]": 1.0,
+            "动脉血氧分压与肺泡内氧分压之比 [unitless]": 100.0,
+        },
+    },
+    "creatinine": {
+        "items": ("*肌酐(Cr)测定", "*肌酐(Cr)测定-苦味酸法", "*肌酐"),
+        "canonical_unit": "umol/L",
+        "valid_range": (5.0, 2000.0),
+        "exclude_venous": False,
+        "unit_conversion": {"umol/L": 1.0},
+    },
+    "total_bilirubin": {
+        "items": (
+            "*总胆红素(T-Bil)测定", "总胆红素(T-Bil)测定", "总胆红素",
+        ),
+        "canonical_unit": "umol/L",
+        "valid_range": (0.1, 1000.0),
+        "exclude_venous": False,
+        "unit_conversion": {"umol/L": 1.0},
+    },
+}
 
-    sex_source = pd.read_csv(
-        LAB_CSV,
-        dtype=str,
-        keep_default_na=False,
-        usecols=["首页病案号", "首页性别"],
+
+def _canonical_values(analyte, items, values, units):
+    values = pd.to_numeric(values, errors="coerce")
+    units = (
+        units.astype(str)
+        .str.replace(r"\s+", "", regex=True)
+        .str.lower()
+        .str.replace("μ", "u", regex=False)
+        .str.replace("µ", "u", regex=False)
+        .str.replace("∧", "^", regex=False)
     )
-    sex_source["hospital_id"] = sex_source["首页病案号"].map(
-        _normalize_hospital_id
+    if analyte == "hemoglobin":
+        supported = units.isin(("g/l", "g/dl"))
+        is_gdl = units.eq("g/dl")
+        return values.where(~is_gdl, values * 10.0), supported
+    if analyte == "troponin":
+        factors = units.map({
+            "ng/l": 1.0,
+            "pg/ml": 1.0,
+            "ug/l": 1000.0,
+            "ng/ml": 1000.0,
+        })
+        return values * factors, factors.notna()
+    if analyte == "platelet_count":
+        supported = units.isin(("*10^9/l", "10^9/l", "g/l"))
+        return values, supported
+    if analyte == "aa_po2_ratio":
+        fraction_item = items.eq("动脉血氧分压与肺泡内氧分压之比")
+        percent_item = items.eq("动脉氧分压与肺泡氧分压之比")
+        supported = (fraction_item & units.eq("")) | (percent_item & units.eq("%"))
+        return values.where(~fraction_item, values * 100.0), supported
+    expected = {
+        "oxyhemoglobin_fraction": "%",
+        "lactate": "mmol/l",
+        "urea": "mmol/l",
+        "creatinine": "umol/l",
+        "total_bilirubin": "umol/l",
+    }[analyte]
+    return values, units.eq(expected)
+
+
+def _load_lab_data(targets, output_dir):
+    requested_analytes = {TARGET_ANALYTES[target] for target in targets}
+    columns = [
+        "首页病案号", "首页性别", "检验套名称", "检验项名称",
+        "检验值(文本)", "单位", "标本名称", "报告时间",
+    ]
+    raw = pd.read_csv(
+        LAB_CSV, dtype=str, keep_default_na=False, usecols=columns,
     )
+    raw["hospital_id"] = raw["首页病案号"].map(_normalize_hospital_id)
+    raw["timestamp_unix"] = _parse_datetime_to_unix(raw["报告时间"])
+    raw["numeric_value"] = _extract_numeric(
+        raw["检验值(文本)"].str.replace(",", "", regex=False)
+    )
+    raw["censored"] = raw["检验值(文本)"].str.match(
+        r"^\s*[<>≤≥＜＞]", na=False,
+    )
+
+    lab_frames, policies = [], {}
+    for analyte in sorted(requested_analytes):
+        definition = LAB_SOURCE_DEFINITIONS[analyte]
+        selected = raw.loc[raw["检验项名称"].isin(definition["items"])].copy()
+        values, unit_supported = _canonical_values(
+            analyte,
+            selected["检验项名称"],
+            selected["numeric_value"],
+            selected["单位"],
+        )
+        selected["value"] = values
+        selected["unit_supported"] = unit_supported
+        selected["non_venous"] = ~selected["标本名称"].str.contains(
+            "静脉", regex=False,
+        )
+        selected["in_valid_range"] = selected["value"].between(
+            *definition["valid_range"], inclusive="both",
+        )
+        selected["valid"] = (
+            selected["hospital_id"].ne("")
+            & selected["timestamp_unix"].notna()
+            & selected["value"].notna()
+            & ~selected["censored"]
+            & selected["unit_supported"]
+            & selected["in_valid_range"]
+            & (
+                selected["non_venous"]
+                if definition["exclude_venous"]
+                else True
+            )
+        )
+        retained = selected.loc[selected["valid"]].copy()
+        conflicts = (
+            retained.groupby(["hospital_id", "timestamp_unix"])["value"]
+            .nunique().gt(1)
+        )
+        retained = retained.groupby(
+            ["hospital_id", "timestamp_unix"], as_index=False,
+        ).agg(
+            value=("value", "median"),
+            item_name=("检验项名称", lambda values: "|".join(sorted(set(values)))),
+        )
+        retained["analyte"] = analyte
+        retained["unit"] = definition["canonical_unit"]
+        lab_frames.append(retained[
+            ["hospital_id", "analyte", "value", "timestamp_unix", "unit", "item_name"]
+        ])
+        policies[analyte] = {
+            "accepted_item_names": list(definition["items"]),
+            "canonical_item_name": definition["items"][0],
+            "canonical_unit": definition["canonical_unit"],
+            "excluded_item_names": [],
+            "exclude_venous_specimens": definition["exclude_venous"],
+            "valid_range": list(definition["valid_range"]),
+            "unit_conversion": definition["unit_conversion"],
+            "source_rows": int(len(selected)),
+            "retained_source_rows": int(selected["valid"].sum()),
+            "retained_patient_timestamp_events": int(len(retained)),
+            "retained_patients": int(retained["hospital_id"].nunique()),
+            "source_rows_by_item": {
+                str(name): int(count)
+                for name, count in selected["检验项名称"].value_counts().items()
+            },
+            "retained_source_rows_by_item": {
+                str(name): int(count)
+                for name, count in selected.loc[
+                    selected["valid"], "检验项名称"
+                ].value_counts().items()
+            },
+            "source_units": {
+                str(name): int(count)
+                for name, count in selected["单位"].value_counts().items()
+            },
+            "conflicting_patient_timestamps_collapsed_by_median": int(conflicts.sum()),
+            "enforcement": (
+                "explicit item aliases, canonical unit conversion, specimen policy, "
+                "finite physical range, censored-value exclusion, deterministic median "
+                "for duplicate patient timestamps"
+            ),
+        }
+    labs = pd.concat(lab_frames, ignore_index=True)
+    labs = labs.sort_values(
+        ["hospital_id", "analyte", "timestamp_unix", "value"],
+    ).reset_index(drop=True)
+    labs.to_csv(os.path.join(output_dir, "lab_timeseries.csv"), index=False)
+
+    sex_source = raw[["hospital_id", "首页性别"]].copy()
     sex_lookup = {}
     for hospital_id, group in sex_source[
         sex_source["hospital_id"].ne("")
@@ -203,6 +311,14 @@ def _load_lab_data(targets):
         values = group["首页性别"].astype(str).str.strip()
         values = values[~values.isin(("", "nan", "None"))]
         sex_lookup[str(hospital_id)] = values.iloc[0] if len(values) else ""
+    quality = {
+        "lab_report_time": {
+            "source_column": "报告时间",
+            "source_timezone": LAB_REPORT_TIMEZONE,
+            "stored_representation": "UTC Unix seconds",
+        },
+        "analyte_source_policies": policies,
+    }
     return labs, sex_lookup, quality
 
 
@@ -258,14 +374,41 @@ def _binary_label(target, value, sex):
     raise ValueError(f"Unsupported direction for {target}")
 
 
+def validate_analyte_source_policies(quality, targets):
+    """Verify that every requested target used its complete canonical source policy."""
+    policies = quality.get("analyte_source_policies", {})
+    for target in targets:
+        analyte = TARGET_ANALYTES[target]
+        expected = LAB_SOURCE_DEFINITIONS[analyte]
+        actual = policies.get(analyte, {})
+        problems = []
+        if actual.get("accepted_item_names") != list(expected["items"]):
+            problems.append("accepted_item_names")
+        if actual.get("canonical_unit") != expected["canonical_unit"]:
+            problems.append("canonical_unit")
+        if actual.get("exclude_venous_specimens") is not expected["exclude_venous"]:
+            problems.append("exclude_venous_specimens")
+        if actual.get("valid_range") != list(expected["valid_range"]):
+            problems.append("valid_range")
+        if actual.get("unit_conversion") != expected["unit_conversion"]:
+            problems.append("unit_conversion")
+        if int(actual.get("retained_patient_timestamp_events", 0)) <= 0:
+            problems.append("retained_patient_timestamp_events")
+        if problems:
+            raise RuntimeError(
+                f"Invalid source policy for {target}/{analyte}: "
+                f"fields={problems}, policy={actual}"
+            )
+
+
 def build_raw_video_source(output_dir, targets):
-    """Write the corrected 940-video pool and one nearest value per target."""
+    """Write the current all-video pool and one nearest value per target."""
     os.makedirs(output_dir, exist_ok=True)
     unknown = sorted(set(targets) - set(TARGET_ANALYTES))
     if unknown:
         raise ValueError(f"Unsupported raw-video targets: {unknown}")
 
-    labs, sex_lookup, upstream_quality = _load_lab_data(targets)
+    labs, sex_lookup, upstream_quality = _load_lab_data(targets, output_dir)
     info_lookup = _read_merged_patient_info()
     measurements = defaultdict(lambda: defaultdict(list))
     for row in labs.itertuples(index=False):
@@ -516,8 +659,8 @@ def build_raw_video_source(output_dir, targets):
         "counts": counts,
         "source_fingerprints": {
             "lab_timeseries_cache": {
-                "path": LAB_TIMESERIES_CACHE,
-                "sha256": _sha256(LAB_TIMESERIES_CACHE),
+                "path": os.path.join(output_dir, "lab_timeseries.csv"),
+                "sha256": _sha256(os.path.join(output_dir, "lab_timeseries.csv")),
             },
             "merged_lab_tests": {
                 "path": LAB_CSV,

@@ -17,10 +17,8 @@ from .config import (
     HISTORY_POLICY,
     HISTORY_TIME_SCALE_HOURS,
     LAB_TIMESERIES_CACHE,
-    PO2_CANONICAL_ITEM_NAME,
-    PO2_EXCLUDED_ITEM_NAMES,
 )
-from .source_data import TARGET_ANALYTES, _load_oxyhemoglobin_fraction
+from .source_data import LAB_SOURCE_DEFINITIONS, TARGET_ANALYTES
 
 
 @dataclass(frozen=True)
@@ -88,24 +86,13 @@ def build_history_artifacts(target, records, base_manifest, output_dir, scaler):
     if enriched["current_lab_time_unix"].isna().any():
         raise ValueError(f"Missing current lab timestamps for {target}")
 
-    if analyte == "oxyhemoglobin_fraction":
-        labs, _ = _load_oxyhemoglobin_fraction()
-    else:
-        labs = pd.read_csv(
-            LAB_TIMESERIES_CACHE,
-            dtype={"hospital_id": str, "analyte": str},
-        )
-        labs = labs.loc[labs["analyte"].eq(analyte)].copy()
-    if analyte == "po2":
-        if "item_name" not in labs:
-            raise ValueError("PO2 history cache lacks item_name")
-        labs = labs.loc[
-            labs["item_name"].eq(PO2_CANONICAL_ITEM_NAME)
-        ].copy()
-        if labs.empty:
-            raise ValueError(
-                f"No canonical PO2 rows found for {PO2_CANONICAL_ITEM_NAME}"
-            )
+    labs = pd.read_csv(
+        LAB_TIMESERIES_CACHE,
+        dtype={"hospital_id": str, "analyte": str},
+    )
+    labs = labs.loc[labs["analyte"].eq(analyte)].copy()
+    if labs.empty:
+        raise ValueError(f"No canonical history rows found for {analyte}")
     labs["timestamp_unix"] = pd.to_numeric(labs["timestamp_unix"], errors="coerce")
     labs["value"] = pd.to_numeric(labs["value"], errors="coerce")
     labs = labs.dropna(subset=["timestamp_unix", "value"])
@@ -126,19 +113,22 @@ def build_history_artifacts(target, records, base_manifest, output_dir, scaler):
         hospital_id = str(row.hospital_id)
         current_time = float(row.current_lab_time_unix)
         episodes = episodes_by_patient.get(hospital_id)
-        if episodes is None:
-            raise ValueError(f"No admission episode for {target}/{row.video_id}")
-        containing = episodes.loc[
-            episodes["admission_time_unix"].le(current_time)
-            & episodes["discharge_time_unix"].ge(current_time)
-        ]
-        if len(containing) != 1:
-            raise ValueError(
-                f"Expected one episode for {target}/{row.video_id}, found {len(containing)}"
-            )
-        episode = containing.iloc[0]
+        containing = (
+            episodes.loc[
+                episodes["admission_time_unix"].le(current_time)
+                & episodes["discharge_time_unix"].ge(current_time)
+            ]
+            if episodes is not None
+            else pd.DataFrame()
+        )
+        episode = containing.iloc[0] if len(containing) == 1 else None
+        unavailable_reason = ""
+        if len(containing) == 0:
+            unavailable_reason = "no_admission_interval_contains_current_label"
+        elif len(containing) > 1:
+            unavailable_reason = "multiple_admission_intervals_contain_current_label"
         patient_labs = labs_by_patient.get(hospital_id)
-        if patient_labs is None:
+        if patient_labs is None or episode is None:
             history = pd.DataFrame(columns=labs.columns)
         else:
             history = patient_labs.loc[
@@ -189,6 +179,15 @@ def build_history_artifacts(target, records, base_manifest, output_dir, scaler):
                 "video_id": str(row.video_id),
                 "split": str(row.split),
                 "current_lab_time_unix": current_time,
+                "history_unavailable_reason": unavailable_reason,
+                "episode_admission_time_unix": (
+                    float(episode["admission_time_unix"])
+                    if episode is not None else np.nan
+                ),
+                "episode_discharge_time_unix": (
+                    float(episode["discharge_time_unix"])
+                    if episode is not None else np.nan
+                ),
                 "history_count": len(history),
                 "has_history": bool(len(history)),
                 "oldest_history_delta_hours": (
@@ -238,6 +237,9 @@ def write_history_manifest(summaries, output_dir, scalers):
                 "history_measurements": int(counts.sum()),
                 "median_history_count": float(np.median(counts)),
                 "max_history_count": int(counts.max()),
+                "unresolved_admission_interval_videos": int(
+                    group["history_unavailable_reason"].astype(str).ne("").sum()
+                ),
             }
         )
     pd.DataFrame(rows).to_csv(
@@ -252,21 +254,14 @@ def write_history_manifest(summaries, output_dir, scalers):
                 "policy": HISTORY_POLICY,
                 "analyte_scope": "same analyte as the prediction target",
                 "analyte_source_policies": {
-                    "po2": {
-                        "canonical_item_name": PO2_CANONICAL_ITEM_NAME,
-                        "excluded_item_names": list(PO2_EXCLUDED_ITEM_NAMES),
-                        "enforcement": "exact item_name filter before sequence construction",
-                    },
-                    "oxyhemoglobin_fraction": {
-                        "canonical_item_name": "氧合血红蛋白分数",
-                        "canonical_unit": "%",
-                        "excluded_specimen_pattern": "静脉",
-                        "physical_range": [0.0, 100.0],
-                        "enforcement": (
-                            "exact item name, percent unit, non-venous specimen, "
-                            "finite 0-100 value for labels and histories"
-                        ),
-                    },
+                    analyte: {
+                        "accepted_item_names": list(definition["items"]),
+                        "canonical_unit": definition["canonical_unit"],
+                        "exclude_venous_specimens": definition["exclude_venous"],
+                        "valid_range": list(definition["valid_range"]),
+                        "unit_conversion": definition["unit_conversion"],
+                    }
+                    for analyte, definition in LAB_SOURCE_DEFINITIONS.items()
                 },
                 "episode_scope": (
                     "same normalized hospital ID and unique closed admission-discharge interval "
@@ -285,6 +280,10 @@ def write_history_manifest(summaries, output_dir, scalers):
                 "sequence_policy": "all qualifying rows retained; no truncation",
                 "pooling": "masked mean after per-measurement MLP",
                 "missing_history": "zero pooled vector",
+                "unresolved_admission_interval": (
+                    "retain the face/label sample, record the reason in the per-target "
+                    "summary, and use an empty history sequence"
+                ),
             },
             handle,
             ensure_ascii=False,
