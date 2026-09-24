@@ -1,5 +1,6 @@
 """Prepare the shared frame index and the replacement bilirubin task."""
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -38,9 +39,25 @@ def _register_target():
     history_data.TARGET_ANALYTES[TARGET] = ANALYTE
 
 
+def _validated_reference_time_policy():
+    path = REFERENCE_DIR / "source_data/data_quality_report.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    policy = payload.get("video_match_policy", {})
+    if policy.get("video_time_source") != "patient_info.txt Session Timestamp":
+        raise RuntimeError(f"Reference data does not use canonical session time: {policy}")
+    if policy.get("lab_episode_scope") != "same hospitalization as the video session":
+        raise RuntimeError(f"Reference data lacks hospitalization-scoped matching: {policy}")
+    return {
+        "path": str(path.resolve()),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "video_match_policy": policy,
+    }
+
+
 def prepare():
     _register_target()
     PREPARED_DIR.mkdir(parents=True, exist_ok=True)
+    reference_time_policy = _validated_reference_time_policy()
     source_dir = PREPARED_DIR / "source_data"
     base_manifest, video_summary, quality = source_data.build_raw_video_source(
         str(source_dir), (TARGET,)
@@ -93,11 +110,12 @@ def prepare():
         TARGET, records, base_manifest, str(history_dir), scaler
     )
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "target": TARGET,
         "definition": DEFINITION,
         "source_policy": quality["analyte_source_policies"][ANALYTE],
         "video_match_policy": quality["video_match_policy"],
+        "reference_time_alignment": reference_time_policy,
         "frame_policy": frame_manifest["frame_policy"],
         "split": selection,
         "counts": {
@@ -113,6 +131,14 @@ def prepare():
     }
     (PREPARED_DIR / "bilirubin_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (PREPARED_DIR / "time_alignment_contract.json").write_text(
+        json.dumps({
+            "schema_version": 1,
+            "reference": reference_time_policy,
+            "bilirubin_video_match_policy": quality["video_match_policy"],
+        }, ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )
     print(
         f"[prepare-complete] target={TARGET} videos={len(records)} "

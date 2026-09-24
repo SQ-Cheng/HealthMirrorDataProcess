@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="/root/autodl-tmp/HealthMirrorDataProcess"
-TARGETS="oxyhemoglobin_fraction,lactate_high,urea_high,troponin_high,platelet_count_low,hemoglobin_low,aa_po2_ratio_low,creatinine_high"
+TARGETS="oxyhemoglobin_fraction,lactate_high,urea_high,total_bilirubin_high,platelet_count_low,hemoglobin_low,aa_po2_ratio_low,creatinine_high"
 CHAIN_LOG="${ROOT_DIR}/study/exp2_face_history_head32_regression/logs/remaining_three_pathway_chain.log"
 
 mkdir -p "$(dirname "${CHAIN_LOG}")"

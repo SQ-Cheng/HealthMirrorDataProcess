@@ -54,7 +54,7 @@ ROOT = Path(__file__).resolve().parents[2]
 REFERENCE_DIR = ROOT / "study/exp2_face_history_head32_regression/outputs/20frame"
 PREPARED_DIR = ROOT / "study/exp2_binary_classification_common/prepared"
 FRAME_INDEX_PATH = PREPARED_DIR / "20frame_index/frame_offsets.npz"
-WEIGHTS_DIR = ROOT / "study/exp2_face_pretrained/pretrained_weights"
+WEIGHTS_DIR = ROOT / "study/common/pretrained_weights"
 EXPERIMENT_DIRS = {
     "face_history": ROOT / "study/exp2_face_history_head32_classification",
     "face_only": ROOT / "study/exp2_face_pretrained_head32_classification",
@@ -526,6 +526,7 @@ def train_task(
             (PREPARED_DIR if target == "total_bilirubin_high" else REFERENCE_DIR)
             / "task_records" / f"{target}.csv"
         ),
+        "time_alignment_contract": str(PREPARED_DIR / "time_alignment_contract.json"),
         "split_policy": "exact reuse of the patient-disjoint regression split",
         "loss": "BCEWithLogitsLoss",
         "pos_weight": pos_weight, "decision_threshold": 0.5,

@@ -80,7 +80,7 @@ def build_pretrained_model(architecture, weights_dir):
     weight_path = os.path.join(weights_dir, WEIGHT_FILES[architecture])
     if not os.path.exists(weight_path):
         raise FileNotFoundError(
-            f"Missing pretrained weights: {weight_path}. Run download_weights.py first."
+            f"Missing pretrained weights: {weight_path}. Run python -m study.common.download_weights first."
         )
 
     if architecture == "mobilenet_v3_small":

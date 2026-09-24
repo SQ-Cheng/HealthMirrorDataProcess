@@ -11,6 +11,13 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp, wasserstein_distance
 
+from study.common.time_alignment import (
+    TimeAlignmentError,
+    read_frame_timestamp_diagnostics,
+    read_session_metadata,
+    read_video_session,
+    unix_to_local_naive,
+)
 from study.exp2_lab_multimodal.build_dataset import (
     _normalize_hospital_id,
     _read_merged_patient_info,
@@ -71,7 +78,7 @@ def load_surgical_episodes():
         starts = _tokens(episode["手术开始日期"])
         ends = _tokens(episode["手术结束日期"])
         names = _tokens(episode["首页手术操作名称"])
-        valid_events = []
+        valid_cabg_events = []
         for position in range(max(len(starts), len(ends), len(names))):
             start_text = starts[position] if position < len(starts) else ""
             end_text = ends[position] if position < len(ends) else ""
@@ -88,6 +95,7 @@ def load_surgical_episodes():
                 and start >= episode.admission_time
                 and end <= episode.discharge_time
             )
+            is_cabg = "冠状动脉旁路移植" in name
             event_rows.append({
                 "hospital_id": episode.hospital_id,
                 "admission_time": episode.admission_time,
@@ -97,14 +105,17 @@ def load_surgical_episodes():
                 "surgery_start": start,
                 "surgery_end": end,
                 "valid_event": valid,
+                "is_cabg": is_cabg,
                 "token_counts_match": len(starts) == len(ends) == len(names),
             })
-            if valid:
-                valid_events.append((start, end, name, position))
-        if not valid_events:
+            if valid and is_cabg:
+                valid_cabg_events.append((start, end, name, position))
+        if not valid_cabg_events:
             continue
-        # Recovery begins after the final valid operation in the hospitalization.
-        start, end, name, position = max(valid_events, key=lambda event: event[1])
+        # Recovery begins at the end of the first recorded CABG in the admission.
+        start, end, name, position = min(
+            valid_cabg_events, key=lambda event: event[3]
+        )
         episode_rows.append({
             "hospital_id": episode.hospital_id,
             "admission_time": episode.admission_time,
@@ -113,7 +124,7 @@ def load_surgical_episodes():
             "index_surgery_end": end,
             "index_surgery_name": name,
             "index_surgery_position": position,
-            "valid_surgery_count": len(valid_events),
+            "valid_surgery_count": len(valid_cabg_events),
         })
     episodes = pd.DataFrame(episode_rows).drop_duplicates(
         ["hospital_id", "admission_time", "discharge_time"]
@@ -125,48 +136,30 @@ def load_surgical_episodes():
 
 
 def _video_bounds(timestamp_path):
-    values, invalid, nonmonotonic = [], 0, 0
-    previous = None
     try:
-        with open(timestamp_path, encoding="utf-8", errors="replace") as handle:
-            next(handle, None)
-            for line in handle:
-                try:
-                    value = float(line.rsplit(",", 1)[-1].strip())
-                except (IndexError, ValueError):
-                    invalid += 1
-                    continue
-                if not np.isfinite(value):
-                    invalid += 1
-                    continue
-                if previous is not None and value < previous:
-                    nonmonotonic += 1
-                previous = value
-                values.append(value)
-    except OSError:
-        return None
-    if not values:
+        diagnostics = read_frame_timestamp_diagnostics(
+            timestamp_path, timezone=TIMEZONE
+        )
+    except TimeAlignmentError:
         return None
     return {
-        "capture_start_unix": float(min(values)),
-        "capture_end_unix": float(max(values)),
-        "timestamp_rows": len(values),
-        "invalid_timestamp_rows": invalid,
-        "nonmonotonic_steps": nonmonotonic,
+        **diagnostics,
+        "capture_start_unix": diagnostics["frame_timestamp_start_unix"],
+        "capture_end_unix": diagnostics["frame_timestamp_end_unix"],
     }
 
 
 def _session_timestamp(patient_info_path):
     try:
-        text = Path(patient_info_path).read_text(encoding="utf-8", errors="replace")
-    except OSError:
+        return read_session_metadata(
+            patient_info_path, timezone=TIMEZONE
+        )["session_time_local"]
+    except TimeAlignmentError:
         return pd.NaT
-    match = re.search(r"^Session Timestamp:\s*(.+?)\s*$", text, flags=re.MULTILINE)
-    return pd.to_datetime(match.group(1), errors="coerce") if match else pd.NaT
 
 
 def _unix_to_local_naive(value):
-    return pd.Timestamp(value, unit="s", tz="UTC").tz_convert(TIMEZONE).tz_localize(None)
+    return unix_to_local_naive(value, TIMEZONE)
 
 
 def build_recovery_candidates(output_dir):
@@ -192,38 +185,43 @@ def build_recovery_candidates(output_dir):
         hospital_id = _normalize_hospital_id(
             mapping.get("Hospital_Patient_ID", "") if mapping else ""
         )
-        bounds = _video_bounds(str(video_path) + ".ts")
-        session_time = _session_timestamp(video_path.with_name("patient_info.txt"))
         row = {
             "video_id": video_id,
             "mirror": mirror,
             "lab_patient_id": local_id,
             "hospital_id": hospital_id,
             "video_path": str(video_path),
-            "session_time": session_time,
         }
         if not hospital_id:
             status = "invalid_or_missing_patient_mapping"
-        elif bounds is None:
-            status = "missing_or_invalid_video_timestamps"
-        elif pd.isna(session_time):
-            status = "missing_or_invalid_session_timestamp"
         else:
-            row.update(bounds)
-            capture_start = _unix_to_local_naive(bounds["capture_start_unix"])
-            capture_end = _unix_to_local_naive(bounds["capture_end_unix"])
-            capture_midpoint = _unix_to_local_naive(
-                (bounds["capture_start_unix"] + bounds["capture_end_unix"]) / 2.0
-            )
-            source_delta = abs((session_time - capture_start).total_seconds())
-            row.update({
-                "capture_start_local": capture_start,
-                "capture_end_local": capture_end,
-                "capture_midpoint_local": capture_midpoint,
-                "time_source_delta_seconds": source_delta,
-            })
-            if source_delta > MAX_TIME_SOURCE_DELTA_SECONDS:
-                status = "time_sources_disagree_gt_5min"
+            try:
+                timing = read_video_session(
+                    video_path,
+                    expected_local_id=local_id,
+                    expected_hospital_id=hospital_id,
+                    timezone=TIMEZONE,
+                )
+            except TimeAlignmentError as exc:
+                status = exc.code
+                row["validation_error"] = str(exc)
+                timing = None
+            if timing is not None:
+                row.update(timing)
+                capture_start = _unix_to_local_naive(timing["capture_start_unix"])
+                capture_end = _unix_to_local_naive(timing["capture_end_unix"])
+                capture_midpoint = _unix_to_local_naive(timing["capture_midpoint_unix"])
+                row.update({
+                    "session_time": timing["session_time_local"],
+                    "capture_start_local": capture_start,
+                    "capture_end_local": capture_end,
+                    "capture_midpoint_local": capture_midpoint,
+                    "time_source_delta_seconds": timing[
+                        "frame_timestamp_source_abs_delta_seconds"
+                    ],
+                })
+            if timing is None:
+                pass
             elif hospital_id not in episodes_by_patient:
                 status = "no_valid_surgery_episode"
             else:
@@ -269,19 +267,23 @@ def build_recovery_candidates(output_dir):
     episodes.to_csv(output_dir / "surgical_episodes.csv", index=False)
     surgery_events.to_csv(output_dir / "surgery_event_audit.csv", index=False)
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "experiment": "exp4_postoperative_recovery_from_face",
         "label_definition": {
-            "zero_time": "end of final valid surgery in hospitalization",
+            "zero_time": "end of first valid CABG event in hospitalization",
             "one_time": "hospital discharge",
             "interpolation": "linear at video capture interval midpoint",
             "video_interval_requirement": "entire interval within [surgery_end, discharge]",
         },
         "time_policy": {
             "timezone": TIMEZONE,
-            "primary": "video.avi.ts capture interval",
-            "validation": "patient_info.txt Session Timestamp compared with capture start",
-            "maximum_absolute_source_delta_seconds": MAX_TIME_SOURCE_DELTA_SECONDS,
+            "primary": "patient_info.txt Session Timestamp",
+            "capture_interval": "Session Timestamp plus robust frame-timestamp duration",
+            "validation": (
+                "local and hospital IDs must match; frame timestamp source delta is "
+                "retained as a warning and never replaces Session Timestamp"
+            ),
+            "source_delta_warning_seconds": MAX_TIME_SOURCE_DELTA_SECONDS,
         },
         "counts": {
             "raw_video_files": len(video_paths),
@@ -289,6 +291,14 @@ def build_recovery_candidates(output_dir):
             "surgical_patients": int(episodes["hospital_id"].nunique()),
             "retained_videos_before_frame_validation": len(records),
             "retained_patients_before_frame_validation": int(records["hospital_id"].nunique()),
+            "frame_timestamp_source_warnings": int(sum(
+                bool(row.get("frame_timestamp_source_warning", False))
+                for row in audit_rows
+            )),
+            "implausible_frame_timestamp_rows_rejected": int(sum(
+                int(row.get("implausible_timestamp_rows", 0) or 0)
+                for row in audit_rows
+            )),
             "statuses": dict(exclusions),
         },
         "source": {

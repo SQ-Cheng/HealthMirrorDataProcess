@@ -11,7 +11,7 @@ from study.exp2_face_history_head32_regression.config import (
 
 EXP_DIR = os.path.dirname(os.path.abspath(__file__))
 WEIGHTS_DIR = os.path.abspath(
-    os.path.join(EXP_DIR, "..", "exp2_face_pretrained", "pretrained_weights")
+    os.path.join(EXP_DIR, "..", "common", "pretrained_weights")
 )
 OUTPUT_ROOT = os.path.join(EXP_DIR, "outputs")
 OUTPUT_DIRS = {

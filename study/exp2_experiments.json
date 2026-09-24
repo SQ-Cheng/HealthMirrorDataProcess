@@ -1,84 +1,23 @@
 {
-  "schema_version": 1,
-  "path_policy": "compatibility paths remain stable while active jobs depend on them",
-  "completion_policy": {
-    "auto_generate_validated_figures": true,
-    "plot_only_after_all_jobs_succeed": true
-  },
-  "assets": [
-    {
-      "id": "exp2_source_24h_rgb",
-      "path": "study/exp2_face_only/outputs_aug20_24h",
-      "status": "retained",
-      "role": "corrected label and video metadata"
-    },
-    {
-      "id": "exp2_imagenet_weights",
-      "path": "study/exp2_face_pretrained/pretrained_weights",
-      "status": "retained",
-      "role": "verified pretrained checkpoints"
-    },
-    {
-      "id": "exp2_20frame_index",
-      "path": "study/exp2_face_pretrained_head32_regression/outputs/20frame/frame_index",
-      "status": "retained",
-      "role": "deterministic 20-frame JPEG byte-offset index without decoded frame cache"
-    },
-    {
-      "id": "exp2_allframe_index",
-      "path": "study/exp2_face_pretrained_head32_regression/outputs/allframes/frame_index",
-      "status": "retained",
-      "role": "all-decodable-frame JPEG byte-offset index without decoded frame cache"
-    }
-  ],
+  "schema_version": 2,
   "experiments": [
-    {
-      "id": "exp2_binary_20frame_head32_views5",
-      "path": "study/exp2_face_pretrained_head32",
-      "status": "active",
-      "task_type": "independent binary classification",
-      "training_views": 5
-    },
-    {
-      "id": "exp2_binary_allframes_head32_views3",
-      "path": "study/exp2_face_pretrained_allframes_head32_views3",
-      "status": "completed_primary",
-      "task_type": "independent binary classification",
-      "training_views": 3
-    },
-    {
-      "id": "exp2_regression_20frame_head32_single_task",
-      "path": "study/exp2_face_pretrained_head32_regression",
-      "result_variant": "outputs/20frame",
-      "status": "completed_primary",
-      "task_type": "independent abnormal-score regression",
-      "training_views": 5
-    },
-    {
-      "id": "exp2_regression_allframes_head32_single_task",
-      "path": "study/exp2_face_pretrained_head32_regression",
-      "result_variant": "outputs/allframes",
-      "status": "active",
-      "task_type": "independent abnormal-score regression",
-      "targets": ["hemoglobin_low", "po2_low", "lactate_high"],
-      "training_views": 5
-    },
-    {
-      "id": "exp2_regression_allframes_head32_multitask",
-      "path": "study/exp2_face_pretrained_allframes_head32_multitask_regression",
-      "status": "active_with_known_split_limitation",
-      "task_type": "shared-backbone multi-output abnormal-score regression",
-      "training_views": 5,
-      "known_limitations": [
-        "PCO2-low positive videos are allocated train/validation/test as 2/4/1"
-      ]
-    }
+    {"id": "face_history_regression", "path": "study/exp2_face_history_head32_regression", "task": "raw_value_regression"},
+    {"id": "face_regression", "path": "study/exp2_face_pretrained_head32_regression", "task": "raw_value_regression"},
+    {"id": "history_regression", "path": "study/exp2_history_only_head32_regression", "task": "raw_value_regression"},
+    {"id": "face_history_classification", "path": "study/exp2_face_history_head32_classification", "task": "binary_classification"},
+    {"id": "face_classification", "path": "study/exp2_face_pretrained_head32_classification", "task": "binary_classification"},
+    {"id": "history_classification", "path": "study/exp2_history_only_head32_classification", "task": "binary_classification"},
+    {"id": "lab_longitudinal_statistics", "path": "study/exp2_lab_longitudinal_statistics", "task": "descriptive_statistics"}
   ],
-  "removed": [
-    "exp2_lab_multimodal_model",
-    "exp2_face_only_grayscale",
-    "exp2_face_only_aug20_96px",
-    "exp2_face_pretrained_20frame",
-    "exp2_face_pretrained_20frame_head32"
+  "shared_code": [
+    "study/common",
+    "study/exp2_binary_classification_common",
+    "study/exp2_lab_multimodal"
+  ],
+  "external_inputs": [
+    "/root/shared/HealthMirrorDataset",
+    "merged_lab_tests.csv",
+    "merged_patient_info_*.csv",
+    "study/common/pretrained_weights/efficientnet_b0_rwightman-7f5810bc.pth"
   ]
 }

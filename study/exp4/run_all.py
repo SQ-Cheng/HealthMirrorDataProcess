@@ -13,7 +13,7 @@ import torch
 import torch.nn.functional as F
 
 from .build_dataset import add_balanced_patient_split, build_recovery_candidates
-from .config import CACHE_DIR, OUTPUT_DIR, SEED, TRAIN_VIEWS
+from .config import CACHE_DIR, FRAMES_PER_VIDEO, OUTPUT_DIR, SEED, TRAIN_VIEWS
 from .frame_index import FrameOffsetIndex, build_or_reuse_frame_index
 from .models import build_model, freeze_backbone
 from .plot_results import plot_results
@@ -44,6 +44,11 @@ def prepare(seed=SEED):
     })
     quality["frame_policy"] = frame_manifest["policy"]
     quality["split_policy"] = split_manifest
+    quality["training_input"] = {
+        "frames_per_video": FRAMES_PER_VIDEO,
+        "train_views": list(TRAIN_VIEWS),
+        "evaluation_views": ["original"],
+    }
     (OUTPUT_DIR / "experiment_manifest.json").write_text(
         json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8"
     )

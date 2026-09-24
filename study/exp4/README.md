@@ -2,17 +2,19 @@
 
 ## Task
 
-For surgical hospitalizations, recovery is defined as 0 at the end of the
-final valid surgery and 1 at discharge. A video receives the linearly
+For CABG hospitalizations, recovery is defined as 0 at the end of the first
+valid CABG event and 1 at discharge. A video receives the linearly
 interpolated score at its capture-interval midpoint. The complete video must
 fall between surgery end and discharge. Patients without a valid surgery are
 excluded.
 
 Hospitalization and surgery metadata come from `merged_lab_tests.csv`; lab
-result values are not used. Video time comes from `video.avi.ts` and is checked
-against `patient_info.txt` Session Timestamp after conversion to
-`Asia/Shanghai`. Videos with an absolute start-time disagreement over five
-minutes are excluded.
+result values are not used. Absolute video time comes only from the
+`patient_info.txt` Session Timestamp in `Asia/Shanghai`; `video.avi.ts` is
+cleaned and used only for recording duration and source-clock diagnostics.
+The local ID, embedded hospital ID, and hospitalization membership are
+validated. Source-clock disagreements over five minutes are retained as audit
+warnings and never replace a valid Session Timestamp.
 
 ## Model and evaluation
 
@@ -24,8 +26,9 @@ minutes are excluded.
 - 20 nonadjacent color face frames per video, streamed through a compact byte
   offset index without a decoded image cache.
 - ImageNet-pretrained EfficientNet-B0 and a 32-dimensional scalar sigmoid head.
-- Training views: original, horizontal flip, and center crop. Color intensity
-  is not altered because pallor may be task-relevant.
+- Five deterministic training views per frame: original, horizontal flip,
+  center crop, +6% brightness, and +8% contrast. Validation and test use only
+  the original view.
 - Stage 1 freezes the backbone and trains the head at `1e-3`.
 - Stage 2 unfreezes only the last EfficientNet stage; backbone/head learning
   rates are `1e-5`/`1e-4`.

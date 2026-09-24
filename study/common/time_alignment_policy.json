@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "clinical_time_source": "patient_info.txt:Session Timestamp",
+  "timezone": "Asia/Shanghai",
+  "frame_timestamp_source": "video.avi.ts",
+  "frame_timestamp_role": "recording duration and source-clock diagnostics only",
+  "known_failures_fixed": [
+    "A parseable truncated frame timestamp could expand one video interval across decades when min/max was used.",
+    "Some recorder frame clocks differ from Session Timestamp by hours or weeks; using them as absolute clinical time can match the wrong hospitalization or lab result."
+  ],
+  "validation": {
+    "session_local_patient_id": "must match the patient directory ID",
+    "session_embedded_hospital_id": "must match the merged patient mapping",
+    "session_plausible_range": "2018-01-01 through one year after parser execution",
+    "frame_timestamp_cleanup": "reject malformed, non-finite, implausible, non-increasing, and discontinuous rows; use the longest contiguous segment",
+    "maximum_video_duration_seconds": 1800,
+    "source_clock_warning_seconds": 300,
+    "lab_matching_scope": "the complete session interval and matched lab must be in exactly one hospitalization"
+  },
+  "source_clock_warning_behavior": "retain the sample when Session Timestamp and IDs/hospitalization validate; never substitute the frame clock"
+}

@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from study.common.plot_layout import target_grid_figsize, target_grid_shape
+
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 FIGURE_DIR = OUTPUT_DIR / "figures"
@@ -23,7 +25,7 @@ TASKS = (
     "oxyhemoglobin_fraction",
     "lactate_high",
     "urea_high",
-    "troponin_high",
+    "total_bilirubin_high",
     "platelet_count_low",
     "hemoglobin_low",
     "aa_po2_ratio_low",
@@ -33,7 +35,7 @@ TASK_LABELS = {
     "oxyhemoglobin_fraction": "Oxyhemoglobin fraction",
     "lactate_high": "Lactate",
     "urea_high": "Urea",
-    "troponin_high": "Troponin I",
+    "total_bilirubin_high": "Total bilirubin",
     "platelet_count_low": "Platelets",
     "hemoglobin_low": "Hemoglobin",
     "aa_po2_ratio_low": "A/a PO2 ratio",
@@ -43,7 +45,7 @@ TASK_UNITS = {
     "oxyhemoglobin_fraction": "%",
     "lactate_high": "mmol/L",
     "urea_high": "mmol/L",
-    "troponin_high": "ng/L",
+    "total_bilirubin_high": "umol/L",
     "platelet_count_low": "10^9/L",
     "hemoglobin_low": "g/L",
     "aa_po2_ratio_low": "%",
@@ -300,64 +302,53 @@ def plot_predictions(metrics):
     test_metrics = metrics.loc[metrics["split"].eq("test")].set_index(
         ["architecture", "target"]
     )
+    panels = [
+        (target, architecture)
+        for target in TASKS
+        for architecture in ARCHITECTURES
+    ]
+    rows, columns = target_grid_shape(len(panels))
     figure, axes = plt.subplots(
-        len(TASKS),
-        len(ARCHITECTURES),
-        figsize=(6.5 * len(ARCHITECTURES), max(9, 4.6 * len(TASKS))),
+        rows,
+        columns,
+        figsize=target_grid_figsize(rows, columns),
         squeeze=False,
     )
-    for row, target in enumerate(TASKS):
-        for column, architecture in enumerate(ARCHITECTURES):
-            axis = axes[row, column]
-            path = (
-                OUTPUT_DIR
-                / "runs"
-                / architecture
-                / target
-                / "video_predictions.csv"
-            )
-            predictions = pd.read_csv(path)
-            predictions = predictions.loc[predictions["split"].eq("test")]
-            y_true = predictions["y_true"].to_numpy(dtype=np.float64)
-            y_pred = predictions["y_pred"].to_numpy(dtype=np.float64)
-            normal = predictions["binary_label"].to_numpy(dtype=np.int64) == 0
-            axis.scatter(
-                y_true[normal],
-                y_pred[normal],
-                s=22,
-                alpha=0.67,
-                color="#4C78A8",
-                edgecolors="none",
-                label="Normal side",
-            )
-            axis.scatter(
-                y_true[~normal],
-                y_pred[~normal],
-                s=22,
-                alpha=0.72,
-                color="#E15759",
-                edgecolors="none",
-                label="Abnormal/boundary side",
-            )
-            lower = float(min(y_true.min(), y_pred.min()))
-            upper = float(max(y_true.max(), y_pred.max()))
-            padding = max((upper - lower) * 0.06, 0.05)
-            limits = (lower - padding, upper + padding)
-            axis.plot(limits, limits, color="#333333", linestyle="--", linewidth=1)
-            axis.set_xlim(limits)
-            axis.set_ylim(limits)
-            axis.set_aspect("equal", adjustable="box")
-            axis.set_xlabel(f"True value ({TASK_UNITS[target]})")
-            axis.set_ylabel(f"Predicted value ({TASK_UNITS[target]})")
-            row_metrics = test_metrics.loc[(architecture, target)]
-            axis.set_title(
-                f"{TASK_LABELS[target]} | {ARCHITECTURE_LABELS[architecture]}\n"
-                f"n={int(row_metrics['n'])}, MAE={row_metrics['mae']:.3f} "
-                f"{TASK_UNITS[target]}, "
-                f"r={row_metrics['pearson_r']:.3f}"
-            )
-            axis.grid(alpha=0.18)
-            axis.legend(loc="best")
+    for axis, (target, architecture) in zip(axes.flat, panels):
+        path = OUTPUT_DIR / "runs" / architecture / target / "video_predictions.csv"
+        predictions = pd.read_csv(path)
+        predictions = predictions.loc[predictions["split"].eq("test")]
+        y_true = predictions["y_true"].to_numpy(dtype=np.float64)
+        y_pred = predictions["y_pred"].to_numpy(dtype=np.float64)
+        normal = predictions["binary_label"].to_numpy(dtype=np.int64) == 0
+        axis.scatter(
+            y_true[normal], y_pred[normal], s=22, alpha=0.67,
+            color="#4C78A8", edgecolors="none", label="Normal side",
+        )
+        axis.scatter(
+            y_true[~normal], y_pred[~normal], s=22, alpha=0.72,
+            color="#E15759", edgecolors="none", label="Abnormal/boundary side",
+        )
+        lower = float(min(y_true.min(), y_pred.min()))
+        upper = float(max(y_true.max(), y_pred.max()))
+        padding = max((upper - lower) * 0.06, 0.05)
+        limits = (lower - padding, upper + padding)
+        axis.plot(limits, limits, color="#333333", linestyle="--", linewidth=1)
+        axis.set_xlim(limits)
+        axis.set_ylim(limits)
+        axis.set_aspect("equal", adjustable="box")
+        axis.set_xlabel(f"True value ({TASK_UNITS[target]})")
+        axis.set_ylabel(f"Predicted value ({TASK_UNITS[target]})")
+        row_metrics = test_metrics.loc[(architecture, target)]
+        axis.set_title(
+            f"{TASK_LABELS[target]} | {ARCHITECTURE_LABELS[architecture]}\n"
+            f"n={int(row_metrics['n'])}, MAE={row_metrics['mae']:.3f} "
+            f"{TASK_UNITS[target]}, r={row_metrics['pearson_r']:.3f}"
+        )
+        axis.grid(alpha=0.18)
+        axis.legend(loc="best")
+    for axis in axes.flat[len(panels):]:
+        axis.axis("off")
     figure.suptitle(
         f"{EXPERIMENT_LABEL}: video-level test predictions",
         fontsize=15,

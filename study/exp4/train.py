@@ -20,6 +20,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
 from .config import (
+    BRIGHTNESS_DELTA,
+    CONTRAST_DELTA,
     CROP_SCALE,
     EVAL_BATCH_SIZE,
     EVAL_NUM_WORKERS,
@@ -84,6 +86,18 @@ def _prepare_images(images, view_codes, device):
     flip = view_codes.eq(1)
     if flip.any():
         images[flip] = torch.flip(images[flip], dims=(-1,))
+    brightness = view_codes.eq(3)
+    if brightness.any():
+        images[brightness] = (
+            images[brightness] * (1.0 + BRIGHTNESS_DELTA)
+        ).clamp_(0.0, 1.0)
+    contrast = view_codes.eq(4)
+    if contrast.any():
+        selected = images[contrast]
+        spatial_mean = selected.mean(dim=(-2, -1), keepdim=True)
+        images[contrast] = (
+            (selected - spatial_mean) * (1.0 + CONTRAST_DELTA) + spatial_mean
+        ).clamp_(0.0, 1.0)
     crop = view_codes.eq(2)
     output = torch.empty((len(images), 3, IMAGE_SIZE, IMAGE_SIZE), device=device)
     regular = ~crop

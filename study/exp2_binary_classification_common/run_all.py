@@ -3,6 +3,7 @@
 import argparse
 import multiprocessing as mp
 from pathlib import Path
+import shutil
 import traceback
 
 import pandas as pd
@@ -33,6 +34,7 @@ def main():
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--skip-prepare", action="store_true")
     parser.add_argument("--smoke-test", action="store_true")
+    parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--gpus", default=None)
     args = parser.parse_args()
@@ -40,6 +42,9 @@ def main():
         prepare()
     if args.prepare_only:
         return
+    if args.overwrite:
+        for experiment_dir in EXPERIMENT_DIRS.values():
+            shutil.rmtree(experiment_dir / "outputs", ignore_errors=True)
     if args.gpus:
         devices = [int(value) for value in args.gpus.split(",")]
     else:

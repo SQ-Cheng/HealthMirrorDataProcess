@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from study.common.plot_layout import target_grid_figsize, target_grid_shape
+
 from .config import TARGETS
 
 
@@ -16,7 +18,7 @@ TARGET_LABELS = {
     "oxyhemoglobin_fraction": "O2Hb fraction",
     "lactate_high": "Lactate",
     "urea_high": "Urea",
-    "troponin_high": "Troponin I",
+    "total_bilirubin_high": "Total bilirubin",
     "platelet_count_low": "Platelets",
     "hemoglobin_low": "Hemoglobin",
     "aa_po2_ratio_low": "A/a PO2 ratio",
@@ -26,7 +28,7 @@ TARGET_UNITS = {
     "oxyhemoglobin_fraction": "%",
     "lactate_high": "mmol/L",
     "urea_high": "mmol/L",
-    "troponin_high": "ng/L",
+    "total_bilirubin_high": "umol/L",
     "platelet_count_low": "10^9/L",
     "hemoglobin_low": "g/L",
     "aa_po2_ratio_low": "%",
@@ -130,8 +132,9 @@ def _plot_training(history, figure_dir):
 
 
 def _plot_predictions(output_dir, figure_dir):
+    rows, columns = target_grid_shape(len(TARGETS))
     figure, axes = plt.subplots(
-        2, 4, figsize=(18, 9.5), squeeze=False
+        rows, columns, figsize=target_grid_figsize(rows, columns), squeeze=False
     )
     for column, target in enumerate(TARGETS):
         predictions = pd.read_csv(
@@ -158,6 +161,8 @@ def _plot_predictions(output_dir, figure_dir):
         axis.set_title(f"{TARGET_LABELS[target]} | test n={len(predictions)}")
         axis.grid(alpha=0.2)
         axis.legend()
+    for axis in axes.flat[len(TARGETS):]:
+        axis.axis("off")
     figure.suptitle("History-only video-level test predictions", fontsize=14)
     figure.tight_layout()
     figure.savefig(

@@ -7,7 +7,7 @@ from study.exp2_lab_multimodal.config import DATA_ROOT, SEED
 
 EXP_DIR = os.path.dirname(os.path.abspath(__file__))
 WEIGHTS_DIR = os.path.abspath(
-    os.path.join(EXP_DIR, "..", "exp2_face_pretrained", "pretrained_weights")
+    os.path.join(EXP_DIR, "..", "common", "pretrained_weights")
 )
 OUTPUT_ROOT = os.path.join(EXP_DIR, "outputs")
 OUTPUT_DIRS = {
@@ -31,7 +31,7 @@ TARGETS = (
     "oxyhemoglobin_fraction",
     "lactate_high",
     "urea_high",
-    "troponin_high",
+    "total_bilirubin_high",
     "platelet_count_low",
     "hemoglobin_low",
     "aa_po2_ratio_low",
@@ -87,6 +87,13 @@ SCORE_DEFINITIONS = {
         "threshold": 34.0,
         "scale": 34.0,
         "unit": "ng/L",
+    },
+    "total_bilirubin_high": {
+        "value_column": "total_bilirubin_value",
+        "direction": "high",
+        "threshold": 21.0,
+        "scale": 10.0,
+        "unit": "umol/L",
     },
     "platelet_count_low": {
         "value_column": "platelet_count_value",

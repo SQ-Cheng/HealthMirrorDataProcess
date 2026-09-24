@@ -11,7 +11,7 @@ use cleaned ECG/rPPG session CSV files.
 - Maximum video-lab interval distance: 24 hours.
 - One label per video and target: choose the nearest valid measurement by interval
   distance, then video-midpoint distance, then report timestamp.
-- The experiment predicts oxyhemoglobin fraction, lactate, urea, troponin I,
+- The experiment predicts oxyhemoglobin fraction, lactate, urea, total bilirubin,
   platelet count, hemoglobin, A/a PO2 ratio, and creatinine from 20 deterministic
   non-adjacent frames sampled from 5% through 95% of each video.
 - Training views: original, horizontal flip, 90% center crop, brightness +6%, and

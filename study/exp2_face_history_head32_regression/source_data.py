@@ -10,6 +10,7 @@ import re
 import numpy as np
 import pandas as pd
 
+from study.common.time_alignment import TimeAlignmentError, read_video_session
 from study.exp2_lab_multimodal.build_dataset import (
     LAB_REPORT_TIMEZONE,
     _extract_numeric,
@@ -30,6 +31,7 @@ TARGET_ANALYTES = {
     "lactate_high": "lactate",
     "urea_high": "urea",
     "troponin_high": "troponin",
+    "total_bilirubin_high": "total_bilirubin",
     "platelet_count_low": "platelet_count",
     "hemoglobin_low": "hemoglobin",
     "aa_po2_ratio_low": "aa_po2_ratio",
@@ -43,33 +45,6 @@ def _sha256(path):
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def _read_video_time_bounds(path):
-    timestamps = []
-    invalid_rows = 0
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        next(handle, None)
-        for line in handle:
-            try:
-                timestamp = float(line.rsplit(",", 1)[-1].strip())
-            except (IndexError, ValueError):
-                invalid_rows += 1
-                continue
-            if np.isfinite(timestamp):
-                timestamps.append(timestamp)
-            else:
-                invalid_rows += 1
-    if not timestamps:
-        return None
-    values = np.asarray(timestamps, dtype=np.float64)
-    return {
-        "capture_start_unix": float(values.min()),
-        "capture_end_unix": float(values.max()),
-        "timestamp_rows": int(len(values)),
-        "invalid_timestamp_rows": int(invalid_rows),
-        "nonmonotonic_steps": int(np.count_nonzero(np.diff(values) < 0)),
-    }
 
 
 LAB_SOURCE_DEFINITIONS = {
@@ -322,6 +297,29 @@ def _load_lab_data(targets, output_dir):
     return labs, sex_lookup, quality
 
 
+def _load_hospital_episodes():
+    columns = ["首页病案号", "首页入院时间", "首页出院时间"]
+    raw = pd.read_csv(
+        LAB_CSV, dtype=str, keep_default_na=False, usecols=columns,
+    ).drop_duplicates()
+    raw["hospital_id"] = raw["首页病案号"].map(_normalize_hospital_id)
+    raw["admission_unix"] = _parse_datetime_to_unix(raw["首页入院时间"])
+    raw["discharge_unix"] = _parse_datetime_to_unix(raw["首页出院时间"])
+    valid = raw.loc[
+        raw["hospital_id"].ne("")
+        & raw["admission_unix"].notna()
+        & raw["discharge_unix"].notna()
+        & raw["discharge_unix"].gt(raw["admission_unix"]),
+        ["hospital_id", "admission_unix", "discharge_unix"],
+    ].drop_duplicates()
+    episodes = defaultdict(list)
+    for row in valid.itertuples(index=False):
+        episodes[str(row.hospital_id)].append(
+            (float(row.admission_unix), float(row.discharge_unix))
+        )
+    return episodes
+
+
 def _interval_delta_seconds(timestamp, start, end):
     if timestamp < start:
         return start - timestamp
@@ -410,6 +408,7 @@ def build_raw_video_source(output_dir, targets):
 
     labs, sex_lookup, upstream_quality = _load_lab_data(targets, output_dir)
     info_lookup = _read_merged_patient_info()
+    episodes_by_patient = _load_hospital_episodes()
     measurements = defaultdict(lambda: defaultdict(list))
     for row in labs.itertuples(index=False):
         measurements[str(row.hospital_id)][str(row.analyte)].append(
@@ -475,33 +474,53 @@ def build_raw_video_source(output_dir, targets):
                 }
             )
             continue
-        timestamp_path = video_path + ".ts"
-        if not os.path.isfile(timestamp_path):
-            skip_counts["missing_video_timestamp_file"] += 1
-            audit_rows.append(
-                {
-                    "video_id": video_id,
-                    "hospital_id": hospital_id,
-                    "video_path": video_path,
-                    "status": "missing_video_timestamp_file",
-                }
+        try:
+            bounds = read_video_session(
+                video_path,
+                expected_local_id=lab_patient_id,
+                expected_hospital_id=hospital_id,
+                timezone=LAB_REPORT_TIMEZONE,
             )
-            continue
-        bounds = _read_video_time_bounds(timestamp_path)
-        if bounds is None:
-            skip_counts["invalid_video_timestamps"] += 1
+        except TimeAlignmentError as exc:
+            skip_counts[exc.code] += 1
             audit_rows.append(
                 {
                     "video_id": video_id,
                     "hospital_id": hospital_id,
                     "video_path": video_path,
-                    "status": "invalid_video_timestamps",
+                    "status": exc.code,
+                    "validation_error": str(exc),
                 }
             )
             continue
         start = bounds["capture_start_unix"]
         end = bounds["capture_end_unix"]
+        matched_episodes = [
+            episode for episode in episodes_by_patient.get(hospital_id, ())
+            if episode[0] <= start and end <= episode[1]
+        ]
+        if len(matched_episodes) != 1:
+            status = (
+                "session_outside_hospitalization"
+                if not matched_episodes
+                else "ambiguous_hospitalization_episode"
+            )
+            skip_counts[status] += 1
+            audit_rows.append({
+                "video_id": video_id,
+                "hospital_id": hospital_id,
+                "video_path": video_path,
+                "status": status,
+                **bounds,
+            })
+            continue
+        admission_unix, discharge_unix = matched_episodes[0]
         patient_events = all_event_times.get(hospital_id)
+        if patient_events is not None:
+            patient_events = patient_events[
+                (patient_events >= admission_unix)
+                & (patient_events <= discharge_unix)
+            ]
         if patient_events is None or not len(patient_events):
             skip_counts["patient_without_supported_lab"] += 1
             audit_rows.append(
@@ -545,13 +564,19 @@ def build_raw_video_source(output_dir, targets):
             "capture_time_unix": (start + end) / 2.0,
             "capture_start_unix": start,
             "capture_end_unix": end,
+            "admission_unix": admission_unix,
+            "discharge_unix": discharge_unix,
             "sex": sex,
         }
         available_targets = []
         for target in targets:
             analyte = TARGET_ANALYTES[target]
+            episode_measurements = [
+                item for item in measurements[hospital_id].get(analyte, ())
+                if admission_unix <= item[0] <= discharge_unix
+            ]
             nearest = _nearest_measurement(
-                measurements[hospital_id].get(analyte, ()), start, end
+                episode_measurements, start, end
             )
             prefix = analyte
             row[target] = np.nan
@@ -584,8 +609,21 @@ def build_raw_video_source(output_dir, targets):
                 "capture_time_unix": row["capture_time_unix"],
                 "capture_start_unix": start,
                 "capture_end_unix": end,
+                "session_time_local": bounds["session_time_local"],
+                "video_time_source": bounds["video_time_source"],
+                "frame_timestamp_start_unix": bounds["frame_timestamp_start_unix"],
+                "frame_timestamp_source_delta_seconds": bounds[
+                    "frame_timestamp_source_delta_seconds"
+                ],
+                "frame_timestamp_source_warning": bounds[
+                    "frame_timestamp_source_warning"
+                ],
                 "timestamp_rows": bounds["timestamp_rows"],
                 "invalid_timestamp_rows": bounds["invalid_timestamp_rows"],
+                "implausible_timestamp_rows": bounds["implausible_timestamp_rows"],
+                "timestamp_rows_outside_primary_segment": bounds[
+                    "timestamp_rows_outside_primary_segment"
+                ],
                 "nonmonotonic_steps": bounds["nonmonotonic_steps"],
                 "low_blood_pressure": low_bp,
                 "high_blood_pressure": high_bp,
@@ -632,17 +670,29 @@ def build_raw_video_source(output_dir, targets):
         "retained_24h_pool_patients": int(
             base_manifest["hospital_id"].nunique()
         ),
+        "retained_frame_timestamp_source_warnings": int(
+            video_summary["frame_timestamp_source_warning"].sum()
+        ),
+        "retained_implausible_frame_timestamp_rows_rejected": int(
+            video_summary["implausible_timestamp_rows"].sum()
+        ),
         "skips": dict(skip_counts),
         "targets": target_counts,
     }
     report = {
-        "schema_version": 2,
+        "schema_version": 3,
         "experiment": "exp2_raw_video_nearest_lab_source",
         "lab_report_time": upstream_quality["lab_report_time"],
         "video_match_policy": {
             "mode": "raw_video_interval_nearest_lab_per_target",
-            "video_time_source": "video.avi.ts",
-            "capture_interval": "[minimum valid frame timestamp, maximum valid frame timestamp]",
+            "video_time_source": "patient_info.txt Session Timestamp",
+            "capture_interval": "[Session Timestamp, Session Timestamp + robust frame-timestamp duration]",
+            "frame_timestamp_role": "duration_and_diagnostics_only; never used as clinical absolute time",
+            "session_validation": (
+                "patient_info local ID and embedded hospital ID must match the mapped IDs; "
+                "the complete session interval must belong to exactly one hospitalization"
+            ),
+            "source_clock_warning_threshold_seconds": 300,
             "maximum_delta_hours": LAB_MATCH_MAX_DELTA_HOURS,
             "interval_distance": (
                 "zero inside capture interval; otherwise distance to nearest boundary"
@@ -652,6 +702,8 @@ def build_raw_video_source(output_dir, targets):
                 "interval distance, then midpoint distance, then timestamp"
             ),
             "session_csv_required": False,
+            "session_timestamp_required": True,
+            "lab_episode_scope": "same hospitalization as the video session",
         },
         "analyte_source_policies": upstream_quality.get(
             "analyte_source_policies", {}

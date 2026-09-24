@@ -11,11 +11,15 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp, wasserstein_distance
 
+from study.common.time_alignment import (
+    TimeAlignmentError,
+    read_video_session,
+    unix_to_local_naive,
+)
 from study.exp2_lab_multimodal.build_dataset import (
     _normalize_hospital_id,
     _read_merged_patient_info,
 )
-from study.exp4.build_dataset import _session_timestamp, _unix_to_local_naive, _video_bounds
 from study.exp2_lab_longitudinal_statistics.run_analysis import _load_and_clean
 
 from .config import (
@@ -126,30 +130,40 @@ def build_video_inventory(episodes, require_paired=True):
         video_id = f"{mirror}_patient_{local_id:06d}"
         mapping = mappings.get((mirror, local_id), {})
         hospital_id = _normalize_hospital_id(mapping.get("Hospital_Patient_ID", ""))
-        bounds = _video_bounds(path_text + ".ts")
-        session = _session_timestamp(Path(path_text).with_name("patient_info.txt"))
         base = {
             "video_id": video_id, "mirror": mirror, "lab_patient_id": local_id,
             "hospital_id": hospital_id, "video_path": path_text,
         }
         if not hospital_id:
             status = "missing_patient_mapping"
-        elif bounds is None or pd.isna(session):
-            status = "missing_video_time"
         else:
-            start = _unix_to_local_naive(bounds["capture_start_unix"])
-            end = _unix_to_local_naive(bounds["capture_end_unix"])
-            midpoint = _unix_to_local_naive(
-                (bounds["capture_start_unix"] + bounds["capture_end_unix"]) / 2
-            )
-            base.update(bounds)
-            base.update({
-                "session_time": session, "capture_start_local": start,
-                "capture_end_local": end, "capture_midpoint_local": midpoint,
-                "time_source_delta_seconds": abs((session - start).total_seconds()),
-            })
-            if base["time_source_delta_seconds"] > MAX_TIME_SOURCE_DELTA_SECONDS:
-                status = "time_sources_disagree_gt_5min"
+            try:
+                timing = read_video_session(
+                    path_text,
+                    expected_local_id=local_id,
+                    expected_hospital_id=hospital_id,
+                    timezone=TIMEZONE,
+                )
+            except TimeAlignmentError as exc:
+                status = exc.code
+                base["validation_error"] = str(exc)
+                timing = None
+            if timing is not None:
+                start = unix_to_local_naive(timing["capture_start_unix"], TIMEZONE)
+                end = unix_to_local_naive(timing["capture_end_unix"], TIMEZONE)
+                midpoint = unix_to_local_naive(timing["capture_midpoint_unix"], TIMEZONE)
+                base.update(timing)
+                base.update({
+                    "session_time": timing["session_time_local"],
+                    "capture_start_local": start,
+                    "capture_end_local": end,
+                    "capture_midpoint_local": midpoint,
+                    "time_source_delta_seconds": timing[
+                        "frame_timestamp_source_abs_delta_seconds"
+                    ],
+                })
+            if timing is None:
+                pass
             elif hospital_id not in by_patient:
                 status = "no_cabg_episode"
             else:

@@ -40,43 +40,7 @@ sample_length_report_output.txt
 .vscode/
 .idea/
 
-# Exp2 shared data preparation and generated source tables
-/study/exp2_lab_multimodal/__pycache__/
-/study/exp2_face_only/outputs_aug20_24h/
-/study/exp2_face_only/__pycache__/
-
-# Exp2 shared ImageNet checkpoints
-/study/exp2_face_pretrained/pretrained_weights/*.pth
-/study/exp2_face_pretrained/__pycache__/
-
-# Exp2 binary 20-frame Head32, five-view experiment
-/study/exp2_face_pretrained_head32/outputs/
-/study/exp2_face_pretrained_head32/logs/
-/study/exp2_face_pretrained_head32/__pycache__/
-
-# Exp2 binary all-frame Head32, three-view primary experiment
-/study/exp2_face_pretrained_allframes_head32_views3/outputs/
-/study/exp2_face_pretrained_allframes_head32_views3/logs/
-/study/exp2_face_pretrained_allframes_head32_views3/__pycache__/
-
-# Exp2 single-task 20-frame Head32 abnormal-score regression
+# Shared ImageNet checkpoints and current Exp2 generated data
+/study/common/pretrained_weights/*.pth
 /study/exp2_face_pretrained_head32_regression/outputs/
 /study/exp2_face_pretrained_head32_regression/logs/
-/study/exp2_face_pretrained_head32_regression/__pycache__/
-
-# Exp2 multi-task all-frame Head32 abnormal-score regression
-/study/exp2_face_pretrained_allframes_head32_multitask_regression/outputs/
-/study/exp2_face_pretrained_allframes_head32_multitask_regression/logs/
-/study/exp2_face_pretrained_allframes_head32_multitask_regression/__pycache__/
-
-# Exp2 raw-video + ECG official Mamba single-task experiment
-/study/exp2_video_ecg_mamba/outputs/
-/study/exp2_video_ecg_mamba/outputs_smoke/
-/study/exp2_video_ecg_mamba/logs/
-/study/exp2_video_ecg_mamba/__pycache__/
-
-# Exp2 controlled native-video-only Mamba ablation
-/study/exp2_video_only_mamba_ablation/outputs/
-/study/exp2_video_only_mamba_ablation/outputs_smoke/
-/study/exp2_video_only_mamba_ablation/logs/
-/study/exp2_video_only_mamba_ablation/__pycache__/

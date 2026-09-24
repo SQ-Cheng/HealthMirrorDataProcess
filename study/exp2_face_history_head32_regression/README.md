@@ -3,7 +3,7 @@
 This controlled experiment uses the retained 20-frame Head32 regression setup
 with prior measurements of the same analyte. It trains one independent
 EfficientNet-B0 model for each of: oxyhemoglobin fraction, lactate, urea,
-troponin I, platelet count, hemoglobin, A/a PO2 ratio, and creatinine.
+total bilirubin, platelet count, hemoglobin, A/a PO2 ratio, and creatinine.
 
 ## Controlled Data
 
@@ -27,8 +27,7 @@ Exact accepted source fields are recorded in
 - Oxyhemoglobin: `氧合血红蛋白分数`, `氧合血红蛋白` (non-venous, `%`).
 - Lactate: `*乳酸浓度`, `乳酸浓度`, `乳酸` (`mmol/L`).
 - Urea: `*尿素(Urea)测定` (`mmol/L`).
-- Troponin I: hsTnI, whole-blood TnI, and high-sensitivity TnI exact aliases;
-  `pg/mL`, `ug/L`, and `ng/mL` are converted to `ng/L`.
+- Total bilirubin: blood or serum total bilirubin values in compatible units.
 - Platelets: `*血小板`, `血小板`; count units are harmonized to `10^9/L`.
 - Hemoglobin: `*血红蛋白`, `血红蛋白`, `总血红蛋白`; `g/dL` is converted to `g/L`.
 - A/a PO2 ratio: the percent field plus the validated unitless fraction field

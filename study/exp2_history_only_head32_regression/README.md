@@ -20,7 +20,7 @@ Prior measurements: (value feature, time feature), shape (N, L, 2)
 Parameter counts are reported by the runner. There is no image tensor, frame
 expansion, augmentation, pretrained weight, backbone, or fine-tuning stage.
 Each labelled video contributes exactly one history sequence and one loss term.
-Targets are oxyhemoglobin fraction, lactate, urea, troponin I, platelet count,
+Targets are oxyhemoglobin fraction, lactate, urea, total bilirubin, platelet count,
 hemoglobin, A/a PO2 ratio, and creatinine. Labels, histories,
 target scalers, and split assignments are byte-identical copies from the latest
 face-plus-history experiment. Predictions are inverse-transformed and reported

@@ -51,6 +51,12 @@ def validate_source_data(source_dir):
         raise RuntimeError(f"Corrected raw-video match policy is missing: {policy}")
     if policy.get("session_csv_required") is not False:
         raise RuntimeError("Raw-video source unexpectedly depends on session CSV files")
+    if policy.get("video_time_source") != "patient_info.txt Session Timestamp":
+        raise RuntimeError(f"Canonical Session Timestamp source is missing: {policy}")
+    if policy.get("session_timestamp_required") is not True:
+        raise RuntimeError(f"Session Timestamp validation is not enforced: {policy}")
+    if policy.get("lab_episode_scope") != "same hospitalization as the video session":
+        raise RuntimeError(f"Hospitalization-scoped lab matching is missing: {policy}")
     if float(policy.get("maximum_delta_hours", np.inf)) != 24.0:
         raise RuntimeError(f"Expected a 24-hour source window, found {policy}")
     return quality
