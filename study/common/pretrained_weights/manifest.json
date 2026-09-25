@@ -27,6 +27,15 @@
       "size_bytes": 21444401,
       "sha256": "7f5810bc96def8f7552d5b7e68d53c4786f81167d28291b21c0d90e1fca14934",
       "strict_load_verified": true
+    },
+    {
+      "architecture": "shufflenet_v2_x1_0",
+      "torchvision_weight": "ShuffleNet_V2_X1_0_Weights.IMAGENET1K_V1",
+      "source_url": "https://download.pytorch.org/models/shufflenetv2_x1-5666bf0f80.pth",
+      "local_file": "shufflenetv2_x1-5666bf0f80.pth",
+      "size_bytes": 9218294,
+      "sha256": "5666bf0f80d1e7f8fb61f6a65742b9c27c37f3208c1f087cdcd7c1ec1aa8b848",
+      "strict_load_verified": true
     }
   ]
 }

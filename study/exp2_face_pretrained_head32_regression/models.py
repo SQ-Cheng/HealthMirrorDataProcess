@@ -4,7 +4,9 @@ import os
 
 import torch
 import torch.nn as nn
-from torchvision.models import efficientnet_b0, mobilenet_v3_small, resnet18
+from torchvision.models import (
+    efficientnet_b0, mobilenet_v3_small, resnet18, shufflenet_v2_x1_0,
+)
 
 from .config import HEAD_HIDDEN_FEATURES
 
@@ -13,6 +15,7 @@ WEIGHT_FILES = {
     "resnet18": "resnet18-f37072fd.pth",
     "mobilenet_v3_small": "mobilenet_v3_small-047dcff4.pth",
     "efficientnet_b0": "efficientnet_b0_rwightman-7f5810bc.pth",
+    "shufflenet_v2_x1_0": "shufflenetv2_x1-5666bf0f80.pth",
 }
 
 
@@ -46,6 +49,8 @@ def build_pretrained_model(architecture, weights_dir):
         model = resnet18(weights=None)
     elif architecture == "mobilenet_v3_small":
         model = mobilenet_v3_small(weights=None)
+    elif architecture == "shufflenet_v2_x1_0":
+        model = shufflenet_v2_x1_0(weights=None)
     else:
         model = efficientnet_b0(weights=None)
     state_dict = torch.load(weight_path, map_location="cpu", weights_only=True)
@@ -59,6 +64,10 @@ def build_pretrained_model(architecture, weights_dir):
         in_features = model.classifier[0].in_features
         model.classifier = SingleTaskHead(in_features)
         head = model.classifier
+    elif architecture == "shufflenet_v2_x1_0":
+        in_features = model.fc.in_features
+        model.fc = SingleTaskHead(in_features)
+        head = model.fc
     else:
         in_features = model.classifier[1].in_features
         model.classifier = SingleTaskHead(in_features)
@@ -76,6 +85,15 @@ def freeze_encoder(model, head):
 def unfreeze_all(model):
     for parameter in model.parameters():
         parameter.requires_grad = True
+
+
+def unfreeze_efficientnet_tail(model, head):
+    """Train complete final feature stages (7 and 8), roughly 28% of the backbone."""
+    freeze_encoder(model, head)
+    for stage in model.features[7:]:
+        for parameter in stage.parameters():
+            parameter.requires_grad = True
+    return list(model.features[:7])
 
 
 def parameter_counts(model):

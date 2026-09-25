@@ -20,6 +20,7 @@ ARCHITECTURES = ("efficientnet_b0",)
 ARCHITECTURE_LABELS = {
     "mobilenet_v3_small": "MobileNetV3-Small",
     "efficientnet_b0": "EfficientNet-B0",
+    "shufflenet_v2_x1_0": "ShuffleNetV2 x1.0",
 }
 TASKS = (
     "oxyhemoglobin_fraction",
@@ -54,6 +55,7 @@ TASK_UNITS = {
 COLORS = {
     "mobilenet_v3_small": "#2878B5",
     "efficientnet_b0": "#D95F02",
+    "shufflenet_v2_x1_0": "#278245",
 }
 SPLIT_COLORS = {"train": "#4C78A8", "val": "#F2A541", "test": "#59A14F"}
 

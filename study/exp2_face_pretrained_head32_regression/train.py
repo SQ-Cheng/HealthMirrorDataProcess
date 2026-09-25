@@ -33,6 +33,8 @@ from .config import (
     BRIGHTNESS_DELTA,
     CONTRAST_DELTA,
     CROP_SCALE,
+    DIRECT_LEARNING_RATE,
+    DIRECT_PATIENCE,
     EVAL_BATCH_SIZES,
     FINETUNE_LEARNING_RATE,
     FINETUNE_MAX_EPOCHS,
@@ -63,6 +65,7 @@ from .models import (
     freeze_encoder,
     parameter_counts,
     unfreeze_all,
+    unfreeze_efficientnet_tail,
 )
 
 
@@ -104,7 +107,11 @@ def _sha256(path):
 
 
 def _loader(frame_index, records, views, architecture, shuffle):
-    interpolation = "bicubic" if architecture == "efficientnet_b0" else "bilinear"
+    interpolation = (
+        "bicubic"
+        if architecture in ("efficientnet_b0", "shufflenet_v2_x1_0")
+        else "bilinear"
+    )
     expand_all_views = shuffle and len(views) > 1
     batch_size = (
         TRAIN_SOURCE_BATCH_SIZES[architecture]
@@ -305,12 +312,15 @@ def _train_epoch(
     device,
     encoder_frozen,
     max_batches=None,
+    frozen_modules=(),
 ):
     if encoder_frozen:
         model.eval()
         head.train()
     else:
         model.train()
+        for module in frozen_modules:
+            module.eval()
     total_loss, batches, optimizer_steps, model_inputs = 0.0, 0, 0, 0
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
@@ -559,6 +569,7 @@ def _run_stage(
     target,
     max_batches,
     target_scaler,
+    frozen_modules=(),
 ):
     execution_model, execution_backend = _execution_model(
         model, architecture, target, stage, device
@@ -590,6 +601,7 @@ def _run_stage(
             device,
             encoder_frozen,
             max_batches=max_batches,
+            frozen_modules=frozen_modules,
         )
         train_eval = _evaluate(
             execution_model,
@@ -697,6 +709,7 @@ def train_task(
     head_patience=HEAD_PATIENCE,
     finetune_patience=FINETUNE_PATIENCE,
     max_batches=None,
+    training_protocol="two_stage_full",
 ):
     os.makedirs(run_dir, exist_ok=True)
     start_time = time.time()
@@ -757,80 +770,86 @@ def train_task(
         f"loss_weighting=none parameters={total_parameters}"
     )
 
-    freeze_encoder(model, head)
-    _, head_trainable = parameter_counts(model)
-    _log(
-        f"[stage-start] arch={architecture} task={target} stage=head "
-        f"lr={HEAD_LEARNING_RATE:.1e} trainable={head_trainable}"
-    )
-    head_state, head_score = _run_stage(
-        "head",
-        model,
-        head,
-        loaders,
-        datasets,
-        criterion,
-        device,
-        HEAD_LEARNING_RATE,
-        head_epochs,
-        head_patience,
-        history,
-        run_dir,
-        True,
-        architecture,
-        target,
-        max_batches,
-        target_scaler,
-    )
-    model.load_state_dict(head_state)
-    torch.save(
-        {
-            "model_state_dict": head_state,
-            "architecture": architecture,
-            "target": target,
-            "task_type": "robust_scaled_raw_value_regression",
-            "target_scaler": target_scaler.to_dict(),
-        },
-        os.path.join(run_dir, "stage_head_best.pt"),
-    )
+    if training_protocol == "one_stage_full":
+        unfreeze_all(model)
+        _, trainable = parameter_counts(model)
+        _log(
+            f"[stage-start] arch={architecture} task={target} stage=direct "
+            f"lr={DIRECT_LEARNING_RATE:.1e} trainable={trainable}"
+        )
+        selected_state, _ = _run_stage(
+            "direct", model, head, loaders, datasets, criterion, device,
+            DIRECT_LEARNING_RATE, head_epochs + finetune_epochs, DIRECT_PATIENCE,
+            history, run_dir, False, architecture, target, max_batches, target_scaler,
+        )
+        selected_stage = "direct"
+        torch.save(
+            {
+                "model_state_dict": selected_state,
+                "architecture": architecture,
+                "target": target,
+                "task_type": "robust_scaled_raw_value_regression",
+                "target_scaler": target_scaler.to_dict(),
+            },
+            os.path.join(run_dir, "stage_direct_best.pt"),
+        )
+    elif training_protocol in ("two_stage_full", "two_stage_tail30"):
+        freeze_encoder(model, head)
+        _, head_trainable = parameter_counts(model)
+        _log(
+            f"[stage-start] arch={architecture} task={target} stage=head "
+            f"lr={HEAD_LEARNING_RATE:.1e} trainable={head_trainable}"
+        )
+        head_state, head_score = _run_stage(
+            "head", model, head, loaders, datasets, criterion, device,
+            HEAD_LEARNING_RATE, head_epochs, head_patience, history, run_dir,
+            True, architecture, target, max_batches, target_scaler,
+        )
+        model.load_state_dict(head_state)
+        torch.save(
+            {
+                "model_state_dict": head_state,
+                "architecture": architecture,
+                "target": target,
+                "task_type": "robust_scaled_raw_value_regression",
+                "target_scaler": target_scaler.to_dict(),
+            },
+            os.path.join(run_dir, "stage_head_best.pt"),
+        )
 
-    unfreeze_all(model)
-    _, full_trainable = parameter_counts(model)
-    _log(
-        f"[stage-start] arch={architecture} task={target} stage=finetune "
-        f"lr={FINETUNE_LEARNING_RATE:.1e} trainable={full_trainable}"
-    )
-    finetune_state, finetune_score = _run_stage(
-        "finetune",
-        model,
-        head,
-        loaders,
-        datasets,
-        criterion,
-        device,
-        FINETUNE_LEARNING_RATE,
-        finetune_epochs,
-        finetune_patience,
-        history,
-        run_dir,
-        False,
-        architecture,
-        target,
-        max_batches,
-        target_scaler,
-    )
-    torch.save(
-        {
-            "model_state_dict": finetune_state,
-            "architecture": architecture,
-            "target": target,
-            "task_type": "robust_scaled_raw_value_regression",
-            "target_scaler": target_scaler.to_dict(),
-        },
-        os.path.join(run_dir, "stage_finetune_best.pt"),
-    )
-    selected_stage = "finetune" if finetune_score >= head_score else "head"
-    selected_state = finetune_state if selected_stage == "finetune" else head_state
+        frozen_modules = ()
+        if training_protocol == "two_stage_tail30":
+            if architecture != "efficientnet_b0":
+                raise ValueError("Tail-30 ablation requires EfficientNet-B0")
+            frozen_modules = unfreeze_efficientnet_tail(model, head)
+        else:
+            unfreeze_all(model)
+        _, finetune_trainable = parameter_counts(model)
+        _log(
+            f"[stage-start] arch={architecture} task={target} stage=finetune "
+            f"lr={FINETUNE_LEARNING_RATE:.1e} trainable={finetune_trainable} "
+            f"protocol={training_protocol}"
+        )
+        finetune_state, finetune_score = _run_stage(
+            "finetune", model, head, loaders, datasets, criterion, device,
+            FINETUNE_LEARNING_RATE, finetune_epochs, finetune_patience,
+            history, run_dir, False, architecture, target, max_batches,
+            target_scaler, frozen_modules=frozen_modules,
+        )
+        torch.save(
+            {
+                "model_state_dict": finetune_state,
+                "architecture": architecture,
+                "target": target,
+                "task_type": "robust_scaled_raw_value_regression",
+                "target_scaler": target_scaler.to_dict(),
+            },
+            os.path.join(run_dir, "stage_finetune_best.pt"),
+        )
+        selected_stage = "finetune" if finetune_score >= head_score else "head"
+        selected_state = finetune_state if selected_stage == "finetune" else head_state
+    else:
+        raise ValueError(f"Unknown training protocol: {training_protocol}")
     model.load_state_dict(selected_state)
 
     evaluations = {
@@ -903,6 +922,7 @@ def train_task(
         "architecture": architecture,
         "target": target,
         "selected_stage": selected_stage,
+        "training_protocol": training_protocol,
         "task_type": "robust_scaled_raw_value_regression",
         "target_scaler": target_scaler.to_dict(),
         "model_output": "(raw_value-train_median)/train_IQR",

@@ -10,9 +10,11 @@ from torchvision.models import (
     EfficientNet_B0_Weights,
     MobileNet_V3_Small_Weights,
     ResNet18_Weights,
+    ShuffleNet_V2_X1_0_Weights,
     efficientnet_b0,
     mobilenet_v3_small,
     resnet18,
+    shufflenet_v2_x1_0,
 )
 
 
@@ -24,6 +26,10 @@ WEIGHTS = {
         mobilenet_v3_small,
     ),
     "efficientnet_b0": (EfficientNet_B0_Weights.IMAGENET1K_V1, efficientnet_b0),
+    "shufflenet_v2_x1_0": (
+        ShuffleNet_V2_X1_0_Weights.IMAGENET1K_V1,
+        shufflenet_v2_x1_0,
+    ),
 }
 
 

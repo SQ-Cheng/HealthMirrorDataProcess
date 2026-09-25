@@ -63,10 +63,12 @@ SMOOTH_L1_BETA = 0.5
 TRAIN_SOURCE_BATCH_SIZES = {
     "mobilenet_v3_small": 128,
     "efficientnet_b0": 48,
+    "shufflenet_v2_x1_0": 48,
 }
 EVAL_BATCH_SIZES = {
     "mobilenet_v3_small": 1024,
     "efficientnet_b0": 512,
+    "shufflenet_v2_x1_0": 512,
 }
 TRAIN_NUM_WORKERS = 6
 EVAL_NUM_WORKERS = 2
@@ -78,11 +80,13 @@ JPEG_DECODER = "torchvision.io.decode_jpeg_cpu"
 
 HEAD_LEARNING_RATE = 2e-4
 FINETUNE_LEARNING_RATE = 1e-5
+DIRECT_LEARNING_RATE = 2e-5
 WEIGHT_DECAY = 1e-4
 HEAD_MAX_EPOCHS = 40
 FINETUNE_MAX_EPOCHS = 60
 HEAD_PATIENCE = 10
 FINETUNE_PATIENCE = 12
+DIRECT_PATIENCE = 12
 MIN_LEARNING_RATE = 1e-6
 GRAD_CLIP_NORM = 1.0
 

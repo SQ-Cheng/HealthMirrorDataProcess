@@ -86,3 +86,29 @@ For the current eight-target raw-value regressors, run
 This separately measures rise/fall recall on adjacent test lab events without
 retraining and writes figures and tables to
 `outputs/20frame/bidirectional_change_analysis/`.
+
+## Training/backbone ablations
+
+`launch_ablations_screen.sh` runs three new eight-target experiments sequentially
+on four GPUs without altering the completed EfficientNet-B0 baseline:
+
+1. Direct joint head+backbone training from ImageNet initialization at `2e-5`,
+   at most 100 epochs, patience 12.
+2. The baseline two-stage schedule, but fine-tune only EfficientNet
+   `features[7:9]` (about 28% of backbone parameters) and the head. Earlier
+   blocks and their BatchNorm running statistics stay frozen.
+3. The baseline two-stage schedule with an ImageNet-pretrained ShuffleNetV2
+   x1.0 backbone and the same 32-dimensional head. Source batch sizes and
+   bicubic preprocessing are held equal to EfficientNet for this comparison.
+
+All three use the saved baseline task records, train-only scalers, patient
+split, 20-frame byte-offset index, five training views and per-task random
+seeds. Each target has its own model. An unsuccessful job stops the sequence;
+successful completion creates per-variant figures and
+`outputs/ablations/comparison/figures/` with test-set comparisons. The baseline
+is read only. Weight files are in `study/common/pretrained_weights/`; obtain
+them with `python -m study.common.download_weights` on a new machine.
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_ablations_screen.sh
+```
