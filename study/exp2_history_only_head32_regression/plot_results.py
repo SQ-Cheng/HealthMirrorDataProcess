@@ -100,55 +100,46 @@ def _comparison(output_dir, face_history_dir, face_only_dir):
 
 
 def _plot_training(history, figure_dir):
+    rows, columns = target_grid_shape(len(TARGETS))
     figure, axes = plt.subplots(
-        len(TARGETS), 2, figsize=(13, 3.2 * len(TARGETS)), squeeze=False
+        rows, columns, figsize=(5.8 * columns, 4.4 * rows), squeeze=False
     )
-    for row, target in enumerate(TARGETS):
+    for axis, target in zip(axes.flat, TARGETS):
         selected = history.loc[history["target"].eq(target)].sort_values("global_epoch")
-        r_axis = axes[row, 1].twinx()
-        for stage, group in selected.groupby("stage", sort=False):
-            axes[row, 0].plot(
-                group.global_epoch, group.train_eval_loss, label=f"{stage} train"
-            )
-            axes[row, 0].plot(
-                group.global_epoch, group.val_loss, linestyle="--", label=f"{stage} val"
-            )
-            axes[row, 1].plot(
-                group.global_epoch, group.train_mae, label=f"{stage} train"
-            )
-            axes[row, 1].plot(
-                group.global_epoch, group.val_mae, linestyle="--", label=f"{stage} val"
-            )
-            r_axis.plot(
-                group.global_epoch, group.train_pearson_r,
-                linestyle=":", label=f"{stage} train r"
-            )
-            r_axis.plot(
-                group.global_epoch, group.val_pearson_r,
-                linestyle="-.", label=f"{stage} val r"
-            )
-        axes[row, 0].set_ylabel("SmoothL1 loss")
-        axes[row, 1].set_ylabel(f"MAE ({TARGET_UNITS[target]})")
+        epochs = selected["global_epoch"].to_numpy()
+        axis.plot(epochs, selected["train_eval_loss"], color="#2878B5", label="Train loss")
+        axis.plot(epochs, selected["val_loss"], color="#E15759", label="Validation loss")
+        axis.set_ylabel("SmoothL1 loss")
+        score_axis = axis.twinx()
+        score_axis.plot(epochs, selected["val_mae"], color="#F2A541", label="Validation MAE")
+        score_axis.set_ylabel(f"MAE ({TARGET_UNITS[target]})", color="#A96810")
+        r_axis = axis.twinx()
+        r_axis.spines["right"].set_position(("axes", 1.16))
+        r_axis.plot(epochs, selected["val_pearson_r"], color="#278245", label="Validation r")
         r_axis.set_ylabel("Pearson r")
-        r_values = selected[["train_pearson_r", "val_pearson_r"]].to_numpy(float)
+        r_values = selected["val_pearson_r"].to_numpy(float)
         r_values = r_values[np.isfinite(r_values)]
         if len(r_values):
             low, high = float(r_values.min()), float(r_values.max())
             pad = max((high - low) * 0.12, 0.04)
             r_axis.set_ylim(max(-1.0, low - pad), min(1.0, high + pad))
-        for column in range(2):
-            axes[row, column].set_xlabel("Global epoch")
-            if column == 0:
-                axes[row, column].set_title(TARGET_LABELS[target])
-            axes[row, column].grid(alpha=0.22)
-            if column == 1:
-                handles, labels = axes[row, column].get_legend_handles_labels()
-                r_handles, r_labels = r_axis.get_legend_handles_labels()
-                axes[row, column].legend(handles + r_handles, labels + r_labels, fontsize=7)
-            else:
-                axes[row, column].legend(fontsize=7)
+        stage_change = selected.loc[selected["stage"].eq("finetune"), "global_epoch"]
+        if not stage_change.empty:
+            axis.axvline(stage_change.min() - 0.5, color="#666666", linestyle=":", linewidth=1)
+        axis.set_xlabel("Global epoch")
+        axis.set_title(TARGET_LABELS[target])
+        axis.grid(alpha=0.22)
+        handles, labels = axis.get_legend_handles_labels()
+        for overlay in (score_axis, r_axis):
+            overlay_handles, overlay_labels = overlay.get_legend_handles_labels()
+            handles.extend(overlay_handles)
+            labels.extend(overlay_labels)
+        axis.legend(handles, labels, loc="best", fontsize=7)
+    for axis in axes.flat[len(TARGETS):]:
+        axis.axis("off")
     figure.suptitle("History-only Head32 raw-value regression", fontsize=14)
-    figure.tight_layout(rect=(0, 0, 1, 0.985))
+    figure.subplots_adjust(left=0.06, right=0.90, bottom=0.10, top=0.90,
+                           wspace=0.85, hspace=0.50)
     figure.savefig(figure_dir / "training_curves.png", dpi=180, bbox_inches="tight")
     plt.close(figure)
 
