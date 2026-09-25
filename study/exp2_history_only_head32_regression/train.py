@@ -216,7 +216,7 @@ def _sha256(path):
     return digest.hexdigest()
 
 
-def _plot_history(history, path, target):
+def _plot_history(history, path, target, architecture=MODEL_NAME):
     frame = pd.DataFrame(history)
     figure, axes = plt.subplots(1, 3, figsize=(17, 4.5))
     for stage, group in frame.groupby("stage", sort=False):
@@ -229,7 +229,10 @@ def _plot_history(history, path, target):
             group.global_epoch, group.val_mae, linestyle="--", label=f"{stage} val"
         )
         axes[2].plot(
-            group.global_epoch, group.val_pearson_r, label=f"{stage} val r"
+            group.global_epoch, group.train_pearson_r, label=f"{stage} train r"
+        )
+        axes[2].plot(
+            group.global_epoch, group.val_pearson_r, linestyle="--", label=f"{stage} val r"
         )
     axes[0].set_title("SmoothL1 loss")
     axes[1].set_title("Raw-value MAE")
@@ -238,8 +241,14 @@ def _plot_history(history, path, target):
         axis.set_xlabel("Global epoch")
         axis.grid(alpha=0.25)
         axis.legend(fontsize=8)
-    axes[2].set_ylim(-1.05, 1.05)
-    figure.suptitle(f"History-only Head32 | {target}")
+    r_values = frame[["train_pearson_r", "val_pearson_r"]].to_numpy(float)
+    r_values = r_values[np.isfinite(r_values)]
+    if len(r_values):
+        low, high = float(r_values.min()), float(r_values.max())
+        pad = max((high - low) * 0.12, 0.04)
+        axes[2].set_ylim(max(-1.0, low - pad), min(1.0, high + pad))
+    axes[2].set_ylabel("Pearson r (zoomed)")
+    figure.suptitle(f"{architecture} | {target}")
     figure.tight_layout()
     figure.savefig(path, dpi=160, bbox_inches="tight")
     plt.close(figure)
@@ -259,6 +268,7 @@ def _run_stage(
     history_rows,
     run_dir,
     target,
+    architecture=MODEL_NAME,
 ):
     optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
     scheduler = CosineAnnealingLR(
@@ -304,7 +314,7 @@ def _run_stage(
         )[0]
         current_lr = float(optimizer.param_groups[0]["lr"])
         row = {
-            "architecture": MODEL_NAME,
+            "architecture": architecture,
             "target": target,
             "stage": stage,
             "stage_epoch": stage_epoch,

@@ -105,6 +105,7 @@ def _plot_training(history, figure_dir):
     )
     for row, target in enumerate(TARGETS):
         selected = history.loc[history["target"].eq(target)].sort_values("global_epoch")
+        r_axis = axes[row, 1].twinx()
         for stage, group in selected.groupby("stage", sort=False):
             axes[row, 0].plot(
                 group.global_epoch, group.train_eval_loss, label=f"{stage} train"
@@ -118,15 +119,36 @@ def _plot_training(history, figure_dir):
             axes[row, 1].plot(
                 group.global_epoch, group.val_mae, linestyle="--", label=f"{stage} val"
             )
+            r_axis.plot(
+                group.global_epoch, group.train_pearson_r,
+                linestyle=":", label=f"{stage} train r"
+            )
+            r_axis.plot(
+                group.global_epoch, group.val_pearson_r,
+                linestyle="-.", label=f"{stage} val r"
+            )
         axes[row, 0].set_ylabel("SmoothL1 loss")
         axes[row, 1].set_ylabel(f"MAE ({TARGET_UNITS[target]})")
+        r_axis.set_ylabel("Pearson r")
+        r_values = selected[["train_pearson_r", "val_pearson_r"]].to_numpy(float)
+        r_values = r_values[np.isfinite(r_values)]
+        if len(r_values):
+            low, high = float(r_values.min()), float(r_values.max())
+            pad = max((high - low) * 0.12, 0.04)
+            r_axis.set_ylim(max(-1.0, low - pad), min(1.0, high + pad))
         for column in range(2):
             axes[row, column].set_xlabel("Global epoch")
-            axes[row, column].set_title(TARGET_LABELS[target])
+            if column == 0:
+                axes[row, column].set_title(TARGET_LABELS[target])
             axes[row, column].grid(alpha=0.22)
-            axes[row, column].legend(fontsize=7)
+            if column == 1:
+                handles, labels = axes[row, column].get_legend_handles_labels()
+                r_handles, r_labels = r_axis.get_legend_handles_labels()
+                axes[row, column].legend(handles + r_handles, labels + r_labels, fontsize=7)
+            else:
+                axes[row, column].legend(fontsize=7)
     figure.suptitle("History-only Head32 raw-value regression", fontsize=14)
-    figure.tight_layout()
+    figure.tight_layout(rect=(0, 0, 1, 0.985))
     figure.savefig(figure_dir / "training_curves.png", dpi=180, bbox_inches="tight")
     plt.close(figure)
 

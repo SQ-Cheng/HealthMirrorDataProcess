@@ -89,3 +89,12 @@ bash study/exp2_face_history_head32_regression/launch_screen.sh \
 This path builds a local canonical lab timeseries and compact frame-offset index;
 it does not depend on the historical `exp2_face_only` lab cache or another
 experiment's frame index.
+
+## Bidirectional change check
+
+Run `python -m study.exp2_face_history_head32_regression.analyze_bidirectional_change`
+to compare consecutive, distinct test lab events from the same admission for
+all three trained regression models. It uses saved predictions only. Each event
+averages predictions from videos assigned to that lab time; actual ties are
+excluded. Rise and fall recall, patient-bootstrap intervals, pair-level CSVs,
+and plots are saved under each model's `bidirectional_change_analysis/` directory.

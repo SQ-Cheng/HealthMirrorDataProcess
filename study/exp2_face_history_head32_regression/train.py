@@ -562,7 +562,15 @@ def _plot_history(history, path, architecture, target):
         axis.set_xlabel("Global epoch")
         axis.grid(alpha=0.3)
         axis.legend(fontsize=7)
-    axes[2].set_ylim(-1.05, 1.05)
+    r_values = frame[[
+        "train_pearson_r", "val_pearson_r", "train_spearman_r", "val_spearman_r"
+    ]].to_numpy(float)
+    r_values = r_values[np.isfinite(r_values)]
+    if len(r_values):
+        low, high = float(r_values.min()), float(r_values.max())
+        pad = max((high - low) * 0.12, 0.04)
+        axes[2].set_ylim(max(-1.0, low - pad), min(1.0, high + pad))
+    axes[2].set_ylabel("Correlation (zoomed; Pearson and Spearman)")
     figure.suptitle(f"{architecture} / {target}")
     figure.tight_layout()
     figure.savefig(path, dpi=150, bbox_inches="tight")

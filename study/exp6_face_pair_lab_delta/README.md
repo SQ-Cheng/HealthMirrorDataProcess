@@ -40,6 +40,26 @@ The launcher dynamically schedules one task on each of four GPUs and assigns a
 new task whenever a GPU finishes. Figures are generated automatically after all
 tasks complete.
 
+## Three-view shared-backbone variant
+
+`shared_views3` reuses the existing prepared pairs, patient splits, train-only
+scalers, frame index, shared EfficientNet-B0 model, and two-stage training
+schedule. It applies only original, horizontal-flip, and center-crop views to
+both faces in each training pair. Validation and test still use original frames.
+Results, checkpoints, histories, predictions, and the three standard figures
+are written under `outputs/shared_views3/`; the existing outputs are untouched.
+
+Launch it in screen with:
+
+```bash
+screen -L \
+  -Logfile /root/autodl-tmp/HealthMirrorDataProcess/study/exp6_face_pair_lab_delta/logs/shared_views3.log \
+  -dmS exp6_shared_views3 bash -lc \
+  'cd /root/autodl-tmp/HealthMirrorDataProcess && \
+   CUDA_VISIBLE_DEVICES=0,1,2,3 MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 \
+   exec bash study/exp6_face_pair_lab_delta/launch_views3_screen.sh'
+```
+
 ## Independent-backbone variant
 
 The controlled variant keeps the same prepared pairs, patient splits, target

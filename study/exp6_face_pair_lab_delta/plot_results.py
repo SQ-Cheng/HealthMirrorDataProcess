@@ -64,25 +64,38 @@ def plot_results(output_dir):
         targets = list(history.target.drop_duplicates())
         rows, columns = target_grid_shape(len(targets))
         figure, axes = plt.subplots(
-            rows, columns, figsize=target_grid_figsize(rows, columns), squeeze=False
+            rows, columns, figsize=target_grid_figsize(rows, columns),
+            squeeze=False,
         )
         for axis, target in zip(axes.flat, targets):
             subset = history.loc[history.target.eq(target)]
-            axis.plot(subset.global_epoch, subset.train_mae, label="train")
-            axis.plot(subset.global_epoch, subset.val_mae, label="validation")
+            axis.plot(subset.global_epoch, subset.train_mae, label="Train MAE", color="#2878B5")
+            axis.plot(subset.global_epoch, subset.val_mae, label="Validation MAE", color="#E15759")
+            r_axis = axis.twinx()
+            r_axis.plot(subset.global_epoch, subset.train_pearson_r, label="Train r", color="#278245", linestyle=":")
+            r_axis.plot(subset.global_epoch, subset.val_pearson_r, label="Validation r", color="#8C4B99", linestyle="-.")
             for boundary in subset.loc[
                 subset.stage.ne(subset.stage.shift()), "global_epoch"
             ].iloc[1:]:
                 axis.axvline(boundary - 0.5, color="#777777", linestyle=":")
             axis.set_title(DISPLAY.get(target, target))
-            axis.set_xlabel("Epoch")
             axis.set_ylabel("MAE (raw unit)")
+            r_axis.set_ylabel("Pearson r")
+            r_values = subset[["train_pearson_r", "val_pearson_r"]].to_numpy(float)
+            r_values = r_values[np.isfinite(r_values)]
+            if len(r_values):
+                low, high = float(r_values.min()), float(r_values.max())
+                pad = max((high - low) * 0.12, 0.04)
+                r_axis.set_ylim(max(-1.0, low - pad), min(1.0, high + pad))
+            axis.set_xlabel("Epoch")
             axis.grid(alpha=0.2)
-            axis.legend(fontsize=8)
+            handles, labels = axis.get_legend_handles_labels()
+            r_handles, r_labels = r_axis.get_legend_handles_labels()
+            axis.legend(handles + r_handles, labels + r_labels, fontsize=7)
         for axis in axes.flat[len(targets):]:
             axis.axis("off")
         figure.suptitle("Exp6 training histories")
-        figure.tight_layout()
+        figure.tight_layout(rect=(0, 0, 1, 0.975))
         figure.savefig(figure_dir / "training_histories.png", dpi=180, bbox_inches="tight")
         plt.close(figure)
 

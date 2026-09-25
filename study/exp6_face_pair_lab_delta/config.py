@@ -50,6 +50,7 @@ FRAMES_PER_VIDEO = 20
 SOURCE_IMAGE_SIZE = 128
 IMAGE_SIZE = 224
 VIEWS = ("original", "hflip", "center_crop", "brightness", "contrast")
+VIEWS_3 = ("original", "hflip", "center_crop")
 CROP_SCALE = 0.90
 BRIGHTNESS_DELTA = 0.06
 CONTRAST_DELTA = 0.08

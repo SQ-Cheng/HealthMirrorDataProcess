@@ -98,9 +98,8 @@ def _validate_complete_results(metrics):
 
 def plot_training_curves(history):
     figure, axes = plt.subplots(
-        len(TASKS),
-        len(ARCHITECTURES),
-        figsize=(7.5 * len(ARCHITECTURES), max(8, 3.8 * len(TASKS))),
+        len(TASKS), len(ARCHITECTURES),
+        figsize=(8.5 * len(ARCHITECTURES), max(8, 3.8 * len(TASKS))),
         squeeze=False,
     )
     for row, target in enumerate(TASKS):
@@ -111,62 +110,36 @@ def plot_training_curves(history):
                 & history["target"].eq(target)
             ].sort_values("global_epoch")
             epochs = selected["global_epoch"].to_numpy()
-            axis.plot(
-                epochs,
-                selected["train_eval_loss"],
-                color="#2878B5",
-                linewidth=1.3,
-                label="Train evaluation loss",
-            )
-            axis.plot(
-                epochs,
-                selected["val_loss"],
-                color="#E15759",
-                linewidth=1.3,
-                label="Validation loss",
-            )
+            axis.plot(epochs, selected["train_eval_loss"], color="#2878B5", label="Train loss")
+            axis.plot(epochs, selected["val_loss"], color="#E15759", label="Validation loss")
             axis.set_ylabel("SmoothL1 loss")
             score_axis = axis.twinx()
-            score_axis.plot(
-                epochs,
-                selected["val_mae"],
-                color="#F2A541",
-                linewidth=1.1,
-                label="Validation MAE",
-            )
-            score_axis.plot(
-                epochs,
-                selected["val_pearson_r"],
-                color="#59A14F",
-                linewidth=1.1,
-                label="Validation Pearson r",
-            )
-            score_axis.set_ylabel(
-                f"Raw-unit MAE ({TASK_UNITS[target]}) / correlation"
-            )
+            score_axis.plot(epochs, selected["val_mae"], color="#F2A541", label="Validation MAE")
+            score_axis.set_ylabel(f"MAE ({TASK_UNITS[target]})", color="#A96810")
+            r_axis = axis.twinx()
+            r_axis.spines["right"].set_position(("axes", 1.15))
+            r_axis.plot(epochs, selected["val_pearson_r"], color="#278245", label="Validation r")
+            r_axis.set_ylabel("Pearson r", color="#278245")
+            r_values = selected["val_pearson_r"].to_numpy(float)
+            r_values = r_values[np.isfinite(r_values)]
+            if len(r_values):
+                low, high = float(r_values.min()), float(r_values.max())
+                pad = max((high - low) * 0.12, 0.04)
+                r_axis.set_ylim(max(-1.0, low - pad), min(1.0, high + pad))
+            axis.set_xlabel("Epoch")
+            axis.set_title(f"{TASK_LABELS[target]} | {ARCHITECTURE_LABELS[architecture]}")
+            axis.grid(axis="y", alpha=0.22)
             stage_change = selected.loc[selected["stage"].eq("finetune"), "global_epoch"]
             if not stage_change.empty:
-                axis.axvline(
-                    stage_change.min() - 0.5,
-                    color="#666666",
-                    linestyle=":",
-                    linewidth=1,
-                )
-            axis.axhline(0, color="#888888", linewidth=0.6)
-            axis.grid(axis="y", alpha=0.22)
-            axis.set_xlabel("Epoch")
-            axis.set_title(
-                f"{TASK_LABELS[target]} | {ARCHITECTURE_LABELS[architecture]}"
-            )
-            handles_a, labels_a = axis.get_legend_handles_labels()
-            handles_b, labels_b = score_axis.get_legend_handles_labels()
-            axis.legend(handles_a + handles_b, labels_a + labels_b, loc="best")
-    figure.suptitle(
-        f"{EXPERIMENT_LABEL}: training history",
-        fontsize=15,
-        y=1.002,
-    )
-    figure.tight_layout()
+                axis.axvline(stage_change.min() - 0.5, color="#666666", linestyle=":", linewidth=1)
+            handles, labels = axis.get_legend_handles_labels()
+            for overlay in (score_axis, r_axis):
+                overlay_handles, overlay_labels = overlay.get_legend_handles_labels()
+                handles.extend(overlay_handles)
+                labels.extend(overlay_labels)
+            axis.legend(handles, labels, loc="best", fontsize=7)
+    figure.suptitle(f"{EXPERIMENT_LABEL}: training history", fontsize=15)
+    figure.tight_layout(rect=(0, 0, 0.83, 0.985))
     figure.savefig(
         FIGURE_DIR / "training_curves.png", dpi=180, bbox_inches="tight"
     )

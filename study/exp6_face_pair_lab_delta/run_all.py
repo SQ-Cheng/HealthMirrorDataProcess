@@ -25,6 +25,8 @@ from .config import (
     OUTPUT_DIR,
     SEED,
     TARGETS,
+    VIEWS,
+    VIEWS_3,
 )
 from .plot_results import plot_results
 from .train import train_task
@@ -64,6 +66,7 @@ def _worker_train(job):
         seed=job_seed, head_epochs=job["head_epochs"],
         finetune_epochs=job["finetune_epochs"], max_batches=job["max_batches"],
         model_variant=job["model_variant"],
+        train_views=job["train_views"],
     )
     return {"target": job["target"], "gpu": _GPU_ID, "metrics": metrics}
 
@@ -89,7 +92,7 @@ def _validate_records(records_by_target):
     return patient_splits
 
 
-def _smoke(records, scalers, frame_index, target, device, output_dir, model_variant):
+def _smoke(records, scalers, frame_index, target, device, output_dir, model_variant, train_views):
     sample = records[target].groupby("split", group_keys=False).head(2).copy()
     # Keep all three split names while constraining each loader to a tiny sample.
     smoke_dir = output_dir / "smoke" / target
@@ -98,7 +101,7 @@ def _smoke(records, scalers, frame_index, target, device, output_dir, model_vari
         target=target, records=sample, scaler=scalers[target],
         frame_index=frame_index, device_id=device, run_dir=smoke_dir,
         seed=SEED, head_epochs=1, finetune_epochs=1, max_batches=1,
-        model_variant=model_variant,
+        model_variant=model_variant, train_views=train_views,
     )
     checkpoint = torch.load(smoke_dir / "model.pt", map_location="cpu", weights_only=True)
     if checkpoint.get("target") != target or not checkpoint.get("model_state_dict"):
@@ -127,7 +130,7 @@ def _load_prepared(targets):
     return records, {target: scalers[target] for target in targets}, FrameOffsetIndex.load(index_path)
 
 
-def _write_variant_manifest(output_dir, targets, records_by_target):
+def _write_variant_manifest(output_dir, targets, records_by_target, variant, train_views):
     source_manifest = OUTPUT_DIR / "experiment_manifest.json"
     task_fingerprints = {}
     for target in targets:
@@ -140,15 +143,18 @@ def _write_variant_manifest(output_dir, targets, records_by_target):
         }
     manifest = {
         "schema_version": 1,
-        "experiment": "exp6_paired_face_lab_delta_independent_backbones",
-        "model_variant": "independent_backbones",
+        "experiment": f"exp6_paired_face_lab_delta_{variant}",
+        "model_variant": "shared" if variant == "shared_views3" else variant,
+        "training_views": list(train_views),
         "controlled_difference": (
+            "training uses original, horizontal flip, and center crop only"
+            if variant == "shared_views3" else
             "early and late faces use separately parameterized EfficientNet-B0 "
             "backbones initialized from the same ImageNet checkpoint"
         ),
         "unchanged": [
             "task records", "patient split", "train-only target scaler",
-            "20 selected frames", "five synchronized views", "difference fusion",
+            "20 selected frames", "synchronized views", "difference fusion",
             "32-dimensional head", "optimizer", "learning rates", "early stopping",
         ],
         "source_experiment_manifest": {
@@ -175,7 +181,8 @@ def main():
     parser.add_argument("--finetune-epochs", type=int, default=FINETUNE_MAX_EPOCHS)
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument(
-        "--variant", choices=("shared", "independent_backbones"), default="shared"
+        "--variant", choices=("shared", "independent_backbones", "shared_views3"),
+        default="shared"
     )
     args = parser.parse_args()
     targets = _parse_csv(args.targets)
@@ -188,15 +195,21 @@ def main():
         output_dir = OUTPUT_DIR
     else:
         records_by_target, scalers, frame_index = _load_prepared(targets)
-        output_dir = OUTPUT_DIR / "independent_backbones"
-        _write_variant_manifest(output_dir, targets, records_by_target)
+        output_dir = OUTPUT_DIR / args.variant
+        train_views = VIEWS_3 if args.variant == "shared_views3" else VIEWS
+        _write_variant_manifest(
+            output_dir, targets, records_by_target, args.variant, train_views
+        )
+    if args.variant == "shared":
+        train_views = VIEWS
+    model_variant = "shared" if args.variant == "shared_views3" else args.variant
     _validate_records(records_by_target)
     if args.prepare_only:
         return
     if args.smoke:
         _smoke(
             records_by_target, scalers, frame_index, targets[0], args.device,
-            output_dir, args.variant,
+            output_dir, model_variant, train_views,
         )
         return
 
@@ -216,7 +229,8 @@ def main():
         "head_epochs": args.head_epochs,
         "finetune_epochs": args.finetune_epochs,
         "max_batches": args.max_batches,
-        "model_variant": args.variant,
+        "model_variant": model_variant,
+        "train_views": train_views,
     } for target in targets]
     gpu_count = torch.cuda.device_count()
     if gpu_count < 1:

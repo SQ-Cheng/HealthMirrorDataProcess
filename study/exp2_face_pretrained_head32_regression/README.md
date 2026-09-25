@@ -80,3 +80,9 @@ Patient-cluster bootstrap confidence intervals and patient-level permutation tes
 account for repeated transitions within a patient. Human-readable figures and the
 report are separated from machine-readable CSV tables under
 `outputs/20frame/longitudinal_test`.
+
+For the current eight-target raw-value regressors, run
+`python -m study.exp2_face_history_head32_regression.analyze_bidirectional_change`.
+This separately measures rise/fall recall on adjacent test lab events without
+retraining and writes figures and tables to
+`outputs/20frame/bidirectional_change_analysis/`.

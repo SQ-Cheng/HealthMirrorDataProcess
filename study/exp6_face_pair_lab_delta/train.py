@@ -60,11 +60,11 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = True
 
 
-def _loader(frame_index, records, train):
+def _loader(frame_index, records, train, train_views=VIEWS):
     dataset = PairedFrameDataset(
         frame_index,
         records,
-        views=VIEWS if train else ("original",),
+        views=train_views if train else ("original",),
         expand_views=train,
     )
     workers = TRAIN_NUM_WORKERS if train else EVAL_NUM_WORKERS
@@ -347,7 +347,7 @@ def _stage(
 def train_task(
     target, records, scaler, frame_index, device_id, run_dir, seed,
     head_epochs=HEAD_MAX_EPOCHS, finetune_epochs=FINETUNE_MAX_EPOCHS,
-    max_batches=None, model_variant="shared",
+    max_batches=None, model_variant="shared", train_views=VIEWS,
 ):
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -360,7 +360,7 @@ def train_task(
         for name in ("train", "val", "test")
     }
     train_augmented, train_augmented_loader = _loader(
-        frame_index, split_records["train"], True
+        frame_index, split_records["train"], True, train_views
     )
     datasets, loaders = {}, {"train_augmented": train_augmented_loader}
     for split in ("train", "val", "test"):
@@ -454,7 +454,7 @@ def train_task(
         "head_parameters": sum(p.numel() for p in model.head.parameters()),
         "selected_stage": selected_stage,
         "scaler": scaler,
-        "views": list(VIEWS),
+        "views": list(train_views),
         "frames_per_video": 20,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     print(
