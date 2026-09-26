@@ -82,3 +82,15 @@ GRAD_CLIP_NORM = 1.0
 SMOOTH_L1_BETA = 0.5
 TORCH_COMPILE_ENABLED = True
 TORCH_COMPILE_MODE = "reduce-overhead"
+
+PATIENT_DIVERSE_30_40 = {
+    "head_learning_rate": 1e-4,
+    "head_min_learning_rate": 1e-6,
+    "head_epochs": 30,
+    "head_patience": 8,
+    "finetune_learning_rate": 3e-6,
+    "finetune_min_learning_rate": 1e-7,
+    "finetune_epochs": 40,
+    "finetune_patience": 8,
+    "train_batch_policy": "patient_diverse",
+}

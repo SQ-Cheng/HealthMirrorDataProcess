@@ -48,7 +48,7 @@ from .config import (
     VIEWS,
     WEIGHT_DECAY,
 )
-from .data import ChunkShuffleSampler, PairedFrameDataset
+from .data import ChunkShuffleSampler, PairedFrameDataset, PatientDiversePairSampler
 from .models import build_model, freeze_backbone, parameter_counts, unfreeze_all
 
 
@@ -60,7 +60,8 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = True
 
 
-def _loader(frame_index, records, train, train_views=VIEWS):
+def _loader(frame_index, records, train, train_views=VIEWS,
+            train_batch_policy="chunk"):
     dataset = PairedFrameDataset(
         frame_index,
         records,
@@ -68,10 +69,19 @@ def _loader(frame_index, records, train, train_views=VIEWS):
         expand_views=train,
     )
     workers = TRAIN_NUM_WORKERS if train else EVAL_NUM_WORKERS
+    if train_batch_policy not in ("chunk", "patient_diverse"):
+        raise ValueError(f"Unknown batch policy: {train_batch_policy}")
+    sampler = None
+    if train:
+        sampler = (
+            PatientDiversePairSampler(dataset, TRAIN_SOURCE_BATCH_SIZE)
+            if train_batch_policy == "patient_diverse"
+            else ChunkShuffleSampler(dataset)
+        )
     return dataset, DataLoader(
         dataset,
         batch_size=TRAIN_SOURCE_BATCH_SIZE if train else EVAL_BATCH_SIZE,
-        sampler=ChunkShuffleSampler(dataset) if train else None,
+        sampler=sampler,
         shuffle=False,
         num_workers=workers,
         pin_memory=True,
@@ -285,10 +295,11 @@ def _clone(model):
 def _stage(
     stage, raw_model, datasets, loaders, target, device, run_dir, scaler,
     history, epochs, patience_limit, optimizer, max_batches,
+    minimum_learning_rate=MIN_LEARNING_RATE,
 ):
     execution, backend = _compile(raw_model, target, stage)
     amp_scaler = torch.amp.GradScaler("cuda", init_scale=1024)
-    scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=MIN_LEARNING_RATE)
+    scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=minimum_learning_rate)
     best_state, best_mae, patience, offset = None, np.inf, 0, len(history)
     for epoch in range(1, epochs + 1):
         step = _train_epoch(
@@ -348,6 +359,11 @@ def train_task(
     target, records, scaler, frame_index, device_id, run_dir, seed,
     head_epochs=HEAD_MAX_EPOCHS, finetune_epochs=FINETUNE_MAX_EPOCHS,
     max_batches=None, model_variant="shared", train_views=VIEWS,
+    train_batch_policy="chunk", head_learning_rate=HEAD_LEARNING_RATE,
+    finetune_learning_rate=FINETUNE_LEARNING_RATE,
+    head_min_learning_rate=MIN_LEARNING_RATE,
+    finetune_min_learning_rate=MIN_LEARNING_RATE,
+    head_patience=HEAD_PATIENCE, finetune_patience=FINETUNE_PATIENCE,
 ):
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -360,7 +376,8 @@ def train_task(
         for name in ("train", "val", "test")
     }
     train_augmented, train_augmented_loader = _loader(
-        frame_index, split_records["train"], True, train_views
+        frame_index, split_records["train"], True, train_views,
+        train_batch_policy=train_batch_policy,
     )
     datasets, loaders = {}, {"train_augmented": train_augmented_loader}
     for split in ("train", "val", "test"):
@@ -380,34 +397,44 @@ def train_task(
         f"{split_records['test'].hospital_id.nunique()} "
         f"frames={len(datasets['train'])}/{len(datasets['val'])}/"
         f"{len(datasets['test'])} train_inputs={train_augmented.model_input_count} "
+        f"source_batch={TRAIN_SOURCE_BATCH_SIZE} "
+        f"effective_pair_batch={TRAIN_SOURCE_BATCH_SIZE * len(train_views)} "
+        f"batch_policy={train_batch_policy} "
         f"parameters={total} head_trainable={trainable}", flush=True,
     )
     history = []
     optimizer = AdamW(
         [p for p in model.parameters() if p.requires_grad],
-        lr=HEAD_LEARNING_RATE, weight_decay=WEIGHT_DECAY,
+        lr=head_learning_rate, weight_decay=WEIGHT_DECAY,
     )
     print(
-        f"[stage-start] target={target} stage=head lr={HEAD_LEARNING_RATE:.1e}",
+        f"[stage-start] target={target} stage=head "
+        f"lr={head_learning_rate:.1e} lr_min={head_min_learning_rate:.1e} "
+        f"epochs={head_epochs} patience={head_patience}",
         flush=True,
     )
     head_state, head_mae = _stage(
         "head", model, datasets, loaders, target, device, run_dir, scaler,
-        history, head_epochs, HEAD_PATIENCE, optimizer, max_batches,
+        history, head_epochs, head_patience, optimizer, max_batches,
+        minimum_learning_rate=head_min_learning_rate,
     )
     model.load_state_dict(head_state)
     unfreeze_all(model)
     _, trainable = parameter_counts(model)
     optimizer = AdamW(
-        model.parameters(), lr=FINETUNE_LEARNING_RATE, weight_decay=WEIGHT_DECAY
+        model.parameters(), lr=finetune_learning_rate, weight_decay=WEIGHT_DECAY
     )
     print(
         f"[stage-start] target={target} stage=finetune "
-        f"lr={FINETUNE_LEARNING_RATE:.1e} trainable={trainable}", flush=True,
+        f"lr={finetune_learning_rate:.1e} "
+        f"lr_min={finetune_min_learning_rate:.1e} "
+        f"epochs={finetune_epochs} patience={finetune_patience} "
+        f"trainable={trainable}", flush=True,
     )
     fine_state, fine_mae = _stage(
         "finetune", model, datasets, loaders, target, device, run_dir, scaler,
-        history, finetune_epochs, FINETUNE_PATIENCE, optimizer, max_batches,
+        history, finetune_epochs, finetune_patience, optimizer, max_batches,
+        minimum_learning_rate=finetune_min_learning_rate,
     )
     selected_stage, selected_state = (
         ("finetune", fine_state) if fine_mae <= head_mae else ("head", head_state)
@@ -445,6 +472,15 @@ def train_task(
         "model_state_dict": selected_state,
         "pretrained_weight_path": str(weight_path),
         "seed": seed,
+        "train_batch_policy": train_batch_policy,
+        "head_learning_rate": head_learning_rate,
+        "finetune_learning_rate": finetune_learning_rate,
+        "head_min_learning_rate": head_min_learning_rate,
+        "finetune_min_learning_rate": finetune_min_learning_rate,
+        "head_max_epochs": head_epochs,
+        "finetune_max_epochs": finetune_epochs,
+        "head_patience": head_patience,
+        "finetune_patience": finetune_patience,
     }, run_dir / "model.pt")
     (run_dir / "run_manifest.json").write_text(json.dumps({
         "target": target,
@@ -456,6 +492,15 @@ def train_task(
         "scaler": scaler,
         "views": list(train_views),
         "frames_per_video": 20,
+        "train_batch_policy": train_batch_policy,
+        "head_learning_rate": head_learning_rate,
+        "finetune_learning_rate": finetune_learning_rate,
+        "head_min_learning_rate": head_min_learning_rate,
+        "finetune_min_learning_rate": finetune_min_learning_rate,
+        "head_max_epochs": head_epochs,
+        "finetune_max_epochs": finetune_epochs,
+        "head_patience": head_patience,
+        "finetune_patience": finetune_patience,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     print(
         f"[job-complete] target={target} selected_stage={selected_stage} "

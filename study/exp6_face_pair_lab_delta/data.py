@@ -1,6 +1,6 @@
 """Streaming paired-frame input without decoded-frame persistence."""
 
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 import numpy as np
 import torch
@@ -134,3 +134,42 @@ class ChunkShuffleSampler(Sampler):
             frame_order = torch.randperm(20).tolist()
             for offset in frame_order:
                 yield start + offset
+
+
+class PatientDiversePairSampler(Sampler):
+    """Use every frame pair once while mixing patients in each source batch."""
+
+    def __init__(self, dataset, source_batch_size, frames_per_group=2):
+        if (frames_per_group < 1 or 20 % frames_per_group
+                or source_batch_size < frames_per_group
+                or source_batch_size % frames_per_group):
+            raise ValueError("Frame groups must divide 20 and the source batch size")
+        self.dataset = dataset
+        self.groups_per_batch = source_batch_size // frames_per_group
+        self.groups = []
+        for pair_row, patient_id in enumerate(dataset.records.hospital_id.astype(str)):
+            start = pair_row * 20
+            for offset in range(0, 20, frames_per_group):
+                self.groups.append((patient_id, range(start + offset, start + offset + frames_per_group)))
+
+    def __iter__(self):
+        pending = deque(torch.randperm(len(self.groups)).tolist())
+        while pending:
+            chosen, patients = [], set()
+            for _ in range(len(pending)):
+                if len(chosen) == self.groups_per_batch:
+                    break
+                group_index = pending.popleft()
+                patient_id = self.groups[group_index][0]
+                if patient_id in patients:
+                    pending.append(group_index)
+                else:
+                    chosen.append(group_index)
+                    patients.add(patient_id)
+            while pending and len(chosen) < self.groups_per_batch:
+                chosen.append(pending.popleft())
+            for group_index in chosen:
+                yield from self.groups[group_index][1]
+
+    def __len__(self):
+        return len(self.dataset)

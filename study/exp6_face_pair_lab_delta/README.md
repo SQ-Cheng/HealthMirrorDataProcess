@@ -40,6 +40,24 @@ The launcher dynamically schedules one task on each of four GPUs and assigns a
 new task whenever a GPU finishes. Figures are generated automatically after all
 tasks complete.
 
+## Patient-diverse 30/40 ablation
+
+`shared_patient_diverse_30_40` keeps the same nine pair records, patient split,
+target scalers, frame index, shared pretrained backbone, 20 frame pairs, five
+synchronized views, patient-weighted loss, and validation/test protocol as the
+main experiment. Relative to the main run, each 24-source-pair training batch
+mixes up to 12 patients (two frame pairs per patient); every source frame pair
+is still used once per epoch. The head runs for at most 30 epochs at `1e-4`
+with patience 8 and a `1e-6` cosine floor. Full-backbone fine-tuning runs for
+at most 40 epochs at `3e-6` with patience 8 and a `1e-7` floor. This matches
+the controlled changes in Exp2 `patient_diverse_schedule_30_40`.
+
+Launch with `bash study/exp6_face_pair_lab_delta/launch_patient_diverse_30_40_screen.sh`.
+The script starts a detached four-GPU screen session. All outputs go to
+`outputs/shared_patient_diverse_30_40/`; at completion it writes the standard
+figures, per-task baseline comparisons, and `baseline_comparison.csv` without
+changing the main experiment outputs.
+
 ## Three-view shared-backbone variant
 
 `shared_views3` reuses the existing prepared pairs, patient splits, train-only
