@@ -16,8 +16,8 @@ import torch
 from .config import (
     DIRECT_LEARNING_RATE, DIRECT_PATIENCE, FINETUNE_LEARNING_RATE,
     FINETUNE_MAX_EPOCHS, FINETUNE_PATIENCE, HEAD_LEARNING_RATE,
-    HEAD_MAX_EPOCHS, HEAD_PATIENCE, REFERENCE_INDEX_DIR, SEED, TARGETS,
-    VIEW_NAMES, WEIGHTS_DIR,
+    HEAD_MAX_EPOCHS, HEAD_PATIENCE, MIN_LEARNING_RATE, REFERENCE_INDEX_DIR, SEED, TARGETS,
+    VIEW_NAMES, WEIGHTS_DIR, WEIGHT_DECAY,
 )
 from .frame_index import FrameOffsetIndex
 from .models import WEIGHT_FILES
@@ -117,15 +117,26 @@ def _run_job(job):
         frame_index=_FRAME_INDEX, records=records,
         target_scaler=RobustTargetScaler(**job["scaler"]),
         weights_dir=WEIGHTS_DIR, run_dir=job["run_dir"],
-        head_epochs=HEAD_MAX_EPOCHS, finetune_epochs=FINETUNE_MAX_EPOCHS,
-        head_patience=HEAD_PATIENCE, finetune_patience=FINETUNE_PATIENCE,
+        head_epochs=job["stage_config"]["head_max_epochs"],
+        finetune_epochs=job["stage_config"]["finetune_max_epochs"],
+        head_patience=job["stage_config"]["head_patience"],
+        finetune_patience=job["stage_config"]["finetune_patience"],
+        head_learning_rate=job["stage_config"]["head_learning_rate"],
+        finetune_learning_rate=job["stage_config"]["finetune_learning_rate"],
+        head_min_learning_rate=job["stage_config"]["head_min_learning_rate"],
+        finetune_min_learning_rate=job["stage_config"]["finetune_min_learning_rate"],
+        weight_decay=job["weight_decay"],
+        freeze_batchnorm_stats=job["freeze_batchnorm_stats"],
         training_protocol=job["protocol"],
+        train_batch_policy=job.get("train_batch_policy", "chunked"),
     )
     return metrics, seed
 
 
 def _run_variant(name, architecture, protocol, records_paths, scalers,
-                 index_path, source_hashes):
+                 index_path, source_hashes, train_batch_policy="chunked",
+                 stage_config=None, weight_decay=WEIGHT_DECAY,
+                 freeze_batchnorm_stats=False):
     output_dir = ABLATION_DIR / name
     if output_dir.exists():
         raise FileExistsError(f"Ablation output already exists: {output_dir}")
@@ -133,11 +144,29 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
     weight_path = Path(WEIGHTS_DIR) / WEIGHT_FILES[architecture]
     if not weight_path.is_file():
         raise FileNotFoundError(weight_path)
+    schedule = {
+        "head_learning_rate": HEAD_LEARNING_RATE,
+        "finetune_learning_rate": FINETUNE_LEARNING_RATE,
+        "head_min_learning_rate": MIN_LEARNING_RATE,
+        "finetune_min_learning_rate": MIN_LEARNING_RATE,
+        "head_max_epochs": HEAD_MAX_EPOCHS,
+        "finetune_max_epochs": FINETUNE_MAX_EPOCHS,
+        "head_patience": HEAD_PATIENCE,
+        "finetune_patience": FINETUNE_PATIENCE,
+    }
+    if stage_config:
+        unknown = set(stage_config) - set(schedule)
+        if unknown:
+            raise ValueError(f"Unknown stage settings: {sorted(unknown)}")
+        schedule.update(stage_config)
     manifest = {
         "schema_version": 1,
         "variant": name,
         "architecture": architecture,
         "training_protocol": protocol,
+        "train_batch_policy": train_batch_policy,
+        "weight_decay": weight_decay,
+        "batchnorm_running_stats_frozen": freeze_batchnorm_stats,
         "targets": list(TARGETS),
         "baseline_output": str(BASE_DIR),
         "baseline_source_sha256": source_hashes,
@@ -145,14 +174,16 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
         "frame_policy": "20 non-adjacent source frames per video; saved shared index",
         "training_views": list(VIEW_NAMES),
         "head_hidden_features": 32,
-        "head_learning_rate": HEAD_LEARNING_RATE if protocol != "one_stage_full" else None,
-        "finetune_learning_rate": FINETUNE_LEARNING_RATE if protocol != "one_stage_full" else None,
+        "head_learning_rate": schedule["head_learning_rate"] if protocol != "one_stage_full" else None,
+        "finetune_learning_rate": schedule["finetune_learning_rate"] if protocol != "one_stage_full" else None,
+        "head_min_learning_rate": schedule["head_min_learning_rate"] if protocol != "one_stage_full" else None,
+        "finetune_min_learning_rate": schedule["finetune_min_learning_rate"] if protocol != "one_stage_full" else None,
         "direct_learning_rate": DIRECT_LEARNING_RATE if protocol == "one_stage_full" else None,
-        "head_max_epochs": HEAD_MAX_EPOCHS if protocol != "one_stage_full" else None,
-        "finetune_max_epochs": FINETUNE_MAX_EPOCHS if protocol != "one_stage_full" else None,
-        "direct_max_epochs": HEAD_MAX_EPOCHS + FINETUNE_MAX_EPOCHS if protocol == "one_stage_full" else None,
-        "head_patience": HEAD_PATIENCE if protocol != "one_stage_full" else None,
-        "finetune_patience": FINETUNE_PATIENCE if protocol != "one_stage_full" else None,
+        "head_max_epochs": schedule["head_max_epochs"] if protocol != "one_stage_full" else None,
+        "finetune_max_epochs": schedule["finetune_max_epochs"] if protocol != "one_stage_full" else None,
+        "direct_max_epochs": schedule["head_max_epochs"] + schedule["finetune_max_epochs"] if protocol == "one_stage_full" else None,
+        "head_patience": schedule["head_patience"] if protocol != "one_stage_full" else None,
+        "finetune_patience": schedule["finetune_patience"] if protocol != "one_stage_full" else None,
         "direct_patience": DIRECT_PATIENCE if protocol == "one_stage_full" else None,
         "partial_unfreeze": "EfficientNet features[7:9] plus head; features[0:7] frozen with BN eval"
         if protocol == "two_stage_tail30" else None,
@@ -164,6 +195,10 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
     jobs = [
         {
             "architecture": architecture, "target": target, "protocol": protocol,
+            "train_batch_policy": train_batch_policy,
+            "weight_decay": weight_decay,
+            "freeze_batchnorm_stats": freeze_batchnorm_stats,
+            "stage_config": schedule,
             "records_path": str(records_paths[target]), "scaler": scalers[target],
             "run_dir": str(output_dir / "runs" / architecture / target),
         }
@@ -193,7 +228,11 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
                     checkpoint = torch.load(run_dir / "model.pt", map_location="cpu", weights_only=True)
                     if (checkpoint.get("architecture") != architecture
                             or checkpoint.get("target") != job["target"]
-                            or checkpoint.get("training_protocol") != protocol):
+                            or checkpoint.get("training_protocol") != protocol
+                            or checkpoint.get("train_batch_policy") != train_batch_policy
+                            or checkpoint.get("weight_decay") != weight_decay
+                            or checkpoint.get("batchnorm_running_stats_frozen")
+                            != freeze_batchnorm_stats):
                         raise AssertionError(f"Wrong checkpoint identity: {run_dir}")
                     metrics_frames.append(metrics)
                     status, reason = "ok", ""

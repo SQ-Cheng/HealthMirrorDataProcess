@@ -1,6 +1,6 @@
 """Balanced video tasks and streaming selected-frame image loading."""
 
-from collections import OrderedDict
+from collections import OrderedDict, deque
 import hashlib
 import json
 import os
@@ -14,6 +14,7 @@ from torchvision.io import ImageReadMode, decode_jpeg
 
 from .config import (
     DECODE_CACHE_FRAMES,
+    FRAMES_PER_VIDEO,
     FRAME_SHUFFLE_CHUNK_SIZE,
     MAX_OPEN_FILES_PER_WORKER,
     MIN_PATIENTS_PER_CLASS,
@@ -729,6 +730,81 @@ class GroupedFrameViewSampler(Sampler):
 
     def __len__(self):
         return len(self.dataset)
+
+
+class PatientDiverseFrameSampler(Sampler):
+    """Group source frames while maximizing distinct patients per batch."""
+
+    def __init__(self, dataset, source_batch_size, frames_per_group=4):
+        if source_batch_size % frames_per_group:
+            raise ValueError("Source batch size must be divisible by frames per group")
+        self.dataset = dataset
+        self.groups_per_batch = source_batch_size // frames_per_group
+        counts = np.bincount(
+            dataset.frame_video_rows, minlength=len(dataset.video_records)
+        )
+        if np.any(counts != FRAMES_PER_VIDEO) or FRAMES_PER_VIDEO % frames_per_group:
+            raise ValueError("Patient-diverse sampling requires divisible fixed frame counts")
+        self.groups = []
+        offset = 0
+        for video_row, count in enumerate(counts):
+            patient_id = str(dataset.video_records.iloc[video_row]["hospital_id"])
+            for start in range(offset, offset + int(count), frames_per_group):
+                self.groups.append((patient_id, range(start, start + frames_per_group)))
+            offset += int(count)
+
+    def __iter__(self):
+        pending = deque(torch.randperm(len(self.groups)).tolist())
+        while pending:
+            chosen, patients = [], set()
+            for _ in range(len(pending)):
+                if len(chosen) == self.groups_per_batch:
+                    break
+                group_index = pending.popleft()
+                patient_id = self.groups[group_index][0]
+                if patient_id in patients:
+                    pending.append(group_index)
+                else:
+                    chosen.append(group_index)
+                    patients.add(patient_id)
+            while pending and len(chosen) < self.groups_per_batch:
+                chosen.append(pending.popleft())
+            for group_index in chosen:
+                yield from self.groups[group_index][1]
+
+    def __len__(self):
+        return self.dataset.frame_count
+
+
+class InterleavedPatientViewBatchSampler(Sampler):
+    """Place each frame's five views in different patient-diverse batches."""
+
+    def __init__(self, dataset, batch_size):
+        if dataset.expand_all_views or len(dataset.views) < 2:
+            raise ValueError("Interleaved views require individually indexed views")
+        self.dataset = dataset
+        self.batch_size = int(batch_size)
+        self.frame_sampler = PatientDiverseFrameSampler(
+            dataset, source_batch_size=self.batch_size, frames_per_group=1
+        )
+
+    def __iter__(self):
+        view_count = len(self.dataset.views)
+        for pass_index in range(view_count):
+            batch = []
+            for frame_index in self.frame_sampler:
+                view_index = (frame_index + pass_index) % view_count
+                batch.append(frame_index * view_count + view_index)
+                if len(batch) == self.batch_size:
+                    yield batch
+                    batch = []
+            if batch:
+                yield batch
+
+    def __len__(self):
+        return len(self.dataset.views) * (
+            (self.dataset.frame_count + self.batch_size - 1) // self.batch_size
+        )
 
 
 class AllFramesDataset(Dataset):

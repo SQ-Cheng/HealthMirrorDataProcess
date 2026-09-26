@@ -112,3 +112,62 @@ them with `python -m study.common.download_weights` on a new machine.
 ```bash
 bash study/exp2_face_pretrained_head32_regression/launch_ablations_screen.sh
 ```
+
+## Patient-diverse batch ablation
+
+This ablation changes only the training sampler. Each 48-source-frame batch
+draws four frames per video block and tries to use 12 distinct patients;
+when too few distinct patients remain, it fills the batch from the remaining
+blocks. Every selected frame appears exactly once per epoch and still expands
+to all five views. Evaluation order, saved records, split, scaler, seeds,
+model, optimizer, schedule and early stopping remain unchanged. Training
+outputs are isolated under `outputs/ablations/patient_diverse_batches/`.
+Completion automatically generates baseline comparison tables and figures
+there, in addition to the normal per-task result figures.
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_patient_diverse_screen.sh
+```
+
+The schedule-only follow-up keeps the completed patient-diverse data and
+sampler unchanged. It uses head LR `1e-4`, at most 30 epochs and patience 8;
+fine-tune LR `3e-6` decaying toward `1e-7`, at most 40 epochs and patience 8.
+The head-stage LR floor remains `1e-6`. Its independent output
+is `outputs/ablations/patient_diverse_schedule_30_40/`, including automatic
+paired test and validation-history figures against the original patient-diverse
+schedule.
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_patient_diverse_schedule_screen.sh
+```
+
+Two further independent regularization ablations use that completed 30/40
+run as their control. One changes only AdamW weight decay from `1e-4` to
+`1e-2` in both stages. The other keeps `1e-4` and fixes EfficientNet-B0
+BatchNorm running statistics in both stages; its BatchNorm affine parameters
+remain trainable during fine-tuning. They run sequentially, with four dynamic
+GPU workers per variant. Each variant generates its normal figures and a
+paired control comparison; after both finish, three-way figures and test
+metrics appear under `outputs/ablations/patient_diverse_regularization_comparison/`.
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_patient_diverse_regularization_screen.sh
+```
+
+The interleaved-view batch ablation uses the same 30/40 schedule, seed, split,
+model, optimizer and five views. It changes only batch construction: each
+240-image batch contains at most one view of each source frame, favoring
+different patients before using additional frames from the same patient.
+Each frame still contributes all five views once per epoch, so the training
+sample inventory is unchanged. Five per-view passes can add up to two partial
+optimizer steps per epoch compared with the grouped-view control. Repeated
+JPEG decoding can lower throughput, but no persistent image cache is created.
+It automatically saves the usual figures plus paired test and validation
+comparisons against `patient_diverse_schedule_30_40`.
+
+The following starts a detached monitor. After both regularization ablations
+finish, it automatically runs the interleaved-view experiment on four GPUs:
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_interleaved_after_regularization_screen.sh
+```

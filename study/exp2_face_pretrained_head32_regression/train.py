@@ -59,7 +59,10 @@ from .config import (
     VIEW_NAMES,
     WEIGHT_DECAY,
 )
-from .data import AllFramesDataset, GroupedFrameViewSampler
+from .data import (
+    AllFramesDataset, GroupedFrameViewSampler, InterleavedPatientViewBatchSampler,
+    PatientDiverseFrameSampler,
+)
 from .models import (
     build_pretrained_model,
     freeze_encoder,
@@ -106,19 +109,23 @@ def _sha256(path):
     return digest.hexdigest()
 
 
-def _loader(frame_index, records, views, architecture, shuffle):
+def _loader(frame_index, records, views, architecture, shuffle, train_batch_policy="chunked"):
     interpolation = (
         "bicubic"
         if architecture in ("efficientnet_b0", "shufflenet_v2_x1_0")
         else "bilinear"
     )
-    expand_all_views = shuffle and len(views) > 1
+    if train_batch_policy not in ("chunked", "patient_diverse", "interleaved_views"):
+        raise ValueError(f"Unknown train batch policy: {train_batch_policy}")
+    interleaved_views = shuffle and train_batch_policy == "interleaved_views"
+    expand_all_views = shuffle and len(views) > 1 and not interleaved_views
     batch_size = (
         TRAIN_SOURCE_BATCH_SIZES[architecture]
-        if expand_all_views
+        * (len(views) if interleaved_views else 1)
+        if shuffle
         else EVAL_BATCH_SIZES[architecture]
     )
-    num_workers = TRAIN_NUM_WORKERS if expand_all_views else EVAL_NUM_WORKERS
+    num_workers = TRAIN_NUM_WORKERS if shuffle else EVAL_NUM_WORKERS
     dataset = AllFramesDataset(
         frame_index,
         records,
@@ -126,17 +133,27 @@ def _loader(frame_index, records, views, architecture, shuffle):
         interpolation=interpolation,
         expand_all_views=expand_all_views,
     )
-    sampler = GroupedFrameViewSampler(dataset) if shuffle else None
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        sampler=sampler,
-        num_workers=num_workers,
-        pin_memory=torch.cuda.is_available(),
-        persistent_workers=num_workers > 0,
-        prefetch_factor=PREFETCH_FACTOR if num_workers > 0 else None,
-    )
+    sampler = None
+    if shuffle and not interleaved_views:
+        sampler = (
+            PatientDiverseFrameSampler(dataset, batch_size)
+            if train_batch_policy == "patient_diverse"
+            else GroupedFrameViewSampler(dataset)
+        )
+    loader_kwargs = {
+        "dataset": dataset,
+        "num_workers": num_workers,
+        "pin_memory": torch.cuda.is_available(),
+        "persistent_workers": num_workers > 0,
+        "prefetch_factor": PREFETCH_FACTOR if num_workers > 0 else None,
+    }
+    if interleaved_views:
+        loader_kwargs["batch_sampler"] = InterleavedPatientViewBatchSampler(
+            dataset, batch_size
+        )
+    else:
+        loader_kwargs.update(batch_size=batch_size, shuffle=False, sampler=sampler)
+    loader = DataLoader(**loader_kwargs)
     return dataset, loader
 
 
@@ -302,6 +319,12 @@ def _prepare_images(images, view_codes, interpolation, device):
     return ((output - mean) / std).contiguous(memory_format=torch.channels_last)
 
 
+def _freeze_batchnorm_running_stats(model):
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.eval()
+
+
 def _train_epoch(
     model,
     head,
@@ -313,6 +336,7 @@ def _train_epoch(
     encoder_frozen,
     max_batches=None,
     frozen_modules=(),
+    freeze_batchnorm_stats=False,
 ):
     if encoder_frozen:
         model.eval()
@@ -321,6 +345,8 @@ def _train_epoch(
         model.train()
         for module in frozen_modules:
             module.eval()
+        if freeze_batchnorm_stats:
+            _freeze_batchnorm_running_stats(model)
     total_loss, batches, optimizer_steps, model_inputs = 0.0, 0, 0, 0
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
@@ -570,14 +596,17 @@ def _run_stage(
     max_batches,
     target_scaler,
     frozen_modules=(),
+    minimum_learning_rate=MIN_LEARNING_RATE,
+    weight_decay=WEIGHT_DECAY,
+    freeze_batchnorm_stats=False,
 ):
     execution_model, execution_backend = _execution_model(
         model, architecture, target, stage, device
     )
     parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
-    optimizer = AdamW(parameters, lr=learning_rate, weight_decay=WEIGHT_DECAY)
+    optimizer = AdamW(parameters, lr=learning_rate, weight_decay=weight_decay)
     scheduler = CosineAnnealingLR(
-        optimizer, T_max=max(max_epochs, 1), eta_min=MIN_LEARNING_RATE
+        optimizer, T_max=max(max_epochs, 1), eta_min=minimum_learning_rate
     )
     scaler = torch.amp.GradScaler(
         "cuda", enabled=device.type == "cuda", init_scale=1024.0
@@ -602,6 +631,7 @@ def _run_stage(
             encoder_frozen,
             max_batches=max_batches,
             frozen_modules=frozen_modules,
+            freeze_batchnorm_stats=freeze_batchnorm_stats,
         )
         train_eval = _evaluate(
             execution_model,
@@ -710,6 +740,13 @@ def train_task(
     finetune_patience=FINETUNE_PATIENCE,
     max_batches=None,
     training_protocol="two_stage_full",
+    train_batch_policy="chunked",
+    head_learning_rate=HEAD_LEARNING_RATE,
+    finetune_learning_rate=FINETUNE_LEARNING_RATE,
+    head_min_learning_rate=MIN_LEARNING_RATE,
+    finetune_min_learning_rate=MIN_LEARNING_RATE,
+    weight_decay=WEIGHT_DECAY,
+    freeze_batchnorm_stats=False,
 ):
     os.makedirs(run_dir, exist_ok=True)
     start_time = time.time()
@@ -718,7 +755,8 @@ def train_task(
         for name in ("train", "val", "test")
     }
     train_augmented_dataset, train_augmented_loader = _loader(
-        frame_index, records_by_split["train"], VIEW_NAMES, architecture, True
+        frame_index, records_by_split["train"], VIEW_NAMES, architecture, True,
+        train_batch_policy=train_batch_policy,
     )
     datasets, loaders = {}, {"train_augmented": train_augmented_loader}
     for split in ("train", "val", "test"):
@@ -756,7 +794,13 @@ def train_task(
     criterion = nn.SmoothL1Loss(beta=SMOOTH_L1_BETA, reduction="none")
     total_parameters, _ = parameter_counts(model)
     history = []
-    source_batch_size = TRAIN_SOURCE_BATCH_SIZES[architecture]
+    source_batch_size = TRAIN_SOURCE_BATCH_SIZES[architecture] * (
+        len(VIEW_NAMES) if train_batch_policy == "interleaved_views" else 1
+    )
+    effective_batch_size = (
+        source_batch_size if train_batch_policy == "interleaved_views"
+        else source_batch_size * len(VIEW_NAMES)
+    )
     _log(
         f"[job-start] arch={architecture} task={target} device={device} "
         f"train/val/test videos={len(records_by_split['train'])}/"
@@ -765,7 +809,9 @@ def train_task(
         f"{datasets['val'].frame_count}/{datasets['test'].frame_count} "
         f"train_inputs={train_augmented_dataset.model_input_count} "
         f"source_batch={source_batch_size} effective_batch="
-        f"{source_batch_size * len(VIEW_NAMES)} views={len(VIEW_NAMES)} "
+        f"{effective_batch_size} views={len(VIEW_NAMES)} "
+        f"batch_policy={train_batch_policy} "
+        f"weight_decay={weight_decay:.1e} "
         f"normal/abnormal/boundary_frames={n_normal}/{n_abnormal}/{n_boundary} "
         f"loss_weighting=none parameters={total_parameters}"
     )
@@ -781,6 +827,8 @@ def train_task(
             "direct", model, head, loaders, datasets, criterion, device,
             DIRECT_LEARNING_RATE, head_epochs + finetune_epochs, DIRECT_PATIENCE,
             history, run_dir, False, architecture, target, max_batches, target_scaler,
+            weight_decay=weight_decay,
+            freeze_batchnorm_stats=freeze_batchnorm_stats,
         )
         selected_stage = "direct"
         torch.save(
@@ -798,12 +846,15 @@ def train_task(
         _, head_trainable = parameter_counts(model)
         _log(
             f"[stage-start] arch={architecture} task={target} stage=head "
-            f"lr={HEAD_LEARNING_RATE:.1e} trainable={head_trainable}"
+            f"lr={head_learning_rate:.1e} lr_min={head_min_learning_rate:.1e} "
+            f"trainable={head_trainable}"
         )
         head_state, head_score = _run_stage(
             "head", model, head, loaders, datasets, criterion, device,
-            HEAD_LEARNING_RATE, head_epochs, head_patience, history, run_dir,
+            head_learning_rate, head_epochs, head_patience, history, run_dir,
             True, architecture, target, max_batches, target_scaler,
+            minimum_learning_rate=head_min_learning_rate,
+            weight_decay=weight_decay,
         )
         model.load_state_dict(head_state)
         torch.save(
@@ -827,14 +878,20 @@ def train_task(
         _, finetune_trainable = parameter_counts(model)
         _log(
             f"[stage-start] arch={architecture} task={target} stage=finetune "
-            f"lr={FINETUNE_LEARNING_RATE:.1e} trainable={finetune_trainable} "
+            f"lr={finetune_learning_rate:.1e} "
+            f"lr_min={finetune_min_learning_rate:.1e} "
+            f"trainable={finetune_trainable} "
+            f"bn_stats={'frozen' if freeze_batchnorm_stats else 'updating'} "
             f"protocol={training_protocol}"
         )
         finetune_state, finetune_score = _run_stage(
             "finetune", model, head, loaders, datasets, criterion, device,
-            FINETUNE_LEARNING_RATE, finetune_epochs, finetune_patience,
+            finetune_learning_rate, finetune_epochs, finetune_patience,
             history, run_dir, False, architecture, target, max_batches,
             target_scaler, frozen_modules=frozen_modules,
+            minimum_learning_rate=finetune_min_learning_rate,
+            weight_decay=weight_decay,
+            freeze_batchnorm_stats=freeze_batchnorm_stats,
         )
         torch.save(
             {
@@ -923,6 +980,17 @@ def train_task(
         "target": target,
         "selected_stage": selected_stage,
         "training_protocol": training_protocol,
+        "train_batch_policy": train_batch_policy,
+        "weight_decay": weight_decay,
+        "batchnorm_running_stats_frozen": freeze_batchnorm_stats,
+        "head_learning_rate": head_learning_rate,
+        "finetune_learning_rate": finetune_learning_rate,
+        "head_min_learning_rate": head_min_learning_rate,
+        "finetune_min_learning_rate": finetune_min_learning_rate,
+        "head_max_epochs": head_epochs,
+        "finetune_max_epochs": finetune_epochs,
+        "head_patience": head_patience,
+        "finetune_patience": finetune_patience,
         "task_type": "robust_scaled_raw_value_regression",
         "target_scaler": target_scaler.to_dict(),
         "model_output": "(raw_value-train_median)/train_IQR",
