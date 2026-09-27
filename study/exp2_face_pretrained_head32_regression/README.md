@@ -141,6 +141,23 @@ schedule.
 bash study/exp2_face_pretrained_head32_regression/launch_patient_diverse_schedule_screen.sh
 ```
 
+The warmup follow-up changes only the learning-rate timing relative to the
+completed patient-diverse 30/40 run. Each stage adds two linear warmup epochs:
+50% then 100% of its original initial LR. The unchanged cosine schedule then
+runs for the original 30 head or 40 fine-tune epochs, with the original
+`T_max`, LR floor, and patience. Total stage limits are 32 and 42 epochs.
+Its independent output is
+`outputs/ablations/patient_diverse_schedule_30_40_warmup2/`; normal result
+figures and paired comparisons against 30/40 are generated automatically.
+
+The following script starts a detached screen monitor that waits for the
+face-only binary patient-diverse 30/40 experiment to complete before running
+this four-GPU warmup ablation:
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_warmup_monitor_screen.sh
+```
+
 Two further independent regularization ablations use that completed 30/40
 run as their control. One changes only AdamW weight decay from `1e-4` to
 `1e-2` in both stages. The other keeps `1e-4` and fixes EfficientNet-B0

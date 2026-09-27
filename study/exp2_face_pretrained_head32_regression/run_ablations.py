@@ -125,6 +125,8 @@ def _run_job(job):
         finetune_learning_rate=job["stage_config"]["finetune_learning_rate"],
         head_min_learning_rate=job["stage_config"]["head_min_learning_rate"],
         finetune_min_learning_rate=job["stage_config"]["finetune_min_learning_rate"],
+        head_warmup_epochs=job["stage_config"]["head_warmup_epochs"],
+        finetune_warmup_epochs=job["stage_config"]["finetune_warmup_epochs"],
         weight_decay=job["weight_decay"],
         freeze_batchnorm_stats=job["freeze_batchnorm_stats"],
         training_protocol=job["protocol"],
@@ -153,6 +155,8 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
         "finetune_max_epochs": FINETUNE_MAX_EPOCHS,
         "head_patience": HEAD_PATIENCE,
         "finetune_patience": FINETUNE_PATIENCE,
+        "head_warmup_epochs": 0,
+        "finetune_warmup_epochs": 0,
     }
     if stage_config:
         unknown = set(stage_config) - set(schedule)
@@ -178,6 +182,10 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
         "finetune_learning_rate": schedule["finetune_learning_rate"] if protocol != "one_stage_full" else None,
         "head_min_learning_rate": schedule["head_min_learning_rate"] if protocol != "one_stage_full" else None,
         "finetune_min_learning_rate": schedule["finetune_min_learning_rate"] if protocol != "one_stage_full" else None,
+        "head_warmup_epochs": schedule["head_warmup_epochs"] if protocol != "one_stage_full" else None,
+        "finetune_warmup_epochs": schedule["finetune_warmup_epochs"] if protocol != "one_stage_full" else None,
+        "head_cosine_epochs": schedule["head_max_epochs"] - schedule["head_warmup_epochs"] if protocol != "one_stage_full" else None,
+        "finetune_cosine_epochs": schedule["finetune_max_epochs"] - schedule["finetune_warmup_epochs"] if protocol != "one_stage_full" else None,
         "direct_learning_rate": DIRECT_LEARNING_RATE if protocol == "one_stage_full" else None,
         "head_max_epochs": schedule["head_max_epochs"] if protocol != "one_stage_full" else None,
         "finetune_max_epochs": schedule["finetune_max_epochs"] if protocol != "one_stage_full" else None,
@@ -231,6 +239,8 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
                             or checkpoint.get("training_protocol") != protocol
                             or checkpoint.get("train_batch_policy") != train_batch_policy
                             or checkpoint.get("weight_decay") != weight_decay
+                            or checkpoint.get("head_warmup_epochs") != schedule["head_warmup_epochs"]
+                            or checkpoint.get("finetune_warmup_epochs") != schedule["finetune_warmup_epochs"]
                             or checkpoint.get("batchnorm_running_stats_frozen")
                             != freeze_batchnorm_stats):
                         raise AssertionError(f"Wrong checkpoint identity: {run_dir}")

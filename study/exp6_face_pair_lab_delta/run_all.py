@@ -24,6 +24,7 @@ from .config import (
     HEAD_MAX_EPOCHS,
     OUTPUT_DIR,
     PATIENT_DIVERSE_30_40,
+    SCHEDULE_ONLY_30_40,
     SEED,
     TARGETS,
     VIEWS,
@@ -36,6 +37,8 @@ from .train import train_task
 _FRAME_INDEX = None
 _GPU_ID = None
 BATCH_ABLATION_VARIANT = "shared_patient_diverse_30_40"
+SCHEDULE_ABLATION_VARIANT = "shared_schedule_30_40"
+SCHEDULE_VARIANTS = (BATCH_ABLATION_VARIANT, SCHEDULE_ABLATION_VARIANT)
 
 
 def _parse_csv(value):
@@ -99,16 +102,19 @@ def _validate_records(records_by_target):
     return patient_splits
 
 
-def _smoke(records, scalers, frame_index, target, device, output_dir, model_variant, train_views):
+def _smoke(records, scalers, frame_index, target, device, output_dir,
+           model_variant, train_views, training_options):
     sample = records[target].groupby("split", group_keys=False).head(2).copy()
     # Keep all three split names while constraining each loader to a tiny sample.
     smoke_dir = output_dir / "smoke" / target
     shutil.rmtree(smoke_dir.parent, ignore_errors=True)
+    smoke_options = {**training_options, "head_epochs": 1, "finetune_epochs": 1}
     train_task(
         target=target, records=sample, scaler=scalers[target],
         frame_index=frame_index, device_id=device, run_dir=smoke_dir,
-        seed=SEED, head_epochs=1, finetune_epochs=1, max_batches=1,
+        seed=SEED, max_batches=1,
         model_variant=model_variant, train_views=train_views,
+        **smoke_options,
     )
     checkpoint = torch.load(smoke_dir / "model.pt", map_location="cpu", weights_only=True)
     if checkpoint.get("target") != target or not checkpoint.get("model_state_dict"):
@@ -175,7 +181,7 @@ def _write_variant_manifest(output_dir, targets, records_by_target, variant,
     manifest = {
         "schema_version": 1,
         "experiment": f"exp6_paired_face_lab_delta_{variant}",
-        "model_variant": "shared" if variant in ("shared_views3", BATCH_ABLATION_VARIANT) else variant,
+        "model_variant": "shared" if variant in ("shared_views3", *SCHEDULE_VARIANTS) else variant,
         "training_views": list(train_views),
         "controlled_difference": (
             "training uses original, horizontal flip, and center crop only"
@@ -184,6 +190,10 @@ def _write_variant_manifest(output_dir, targets, records_by_target, variant,
             "per patient; head/fine-tune learning rates, cosine floors, epoch "
             "limits, and patience match Exp2 patient_diverse_schedule_30_40"
             if variant == BATCH_ABLATION_VARIANT else
+            "baseline chunk-shuffled training batches; only head/fine-tune "
+            "learning rates, cosine floors, epoch limits, and patience match "
+            "the patient-diverse 30/40 variant"
+            if variant == SCHEDULE_ABLATION_VARIANT else
             "early and late faces use separately parameterized EfficientNet-B0 "
             "backbones initialized from the same ImageNet checkpoint"
         ),
@@ -191,7 +201,7 @@ def _write_variant_manifest(output_dir, targets, records_by_target, variant,
             ["task records", "patient split", "train-only target scaler",
              "20 selected frames", "synchronized five views", "difference fusion",
              "32-dimensional head", "AdamW and weight decay", "loss weighting"]
-            if variant == BATCH_ABLATION_VARIANT else
+            if variant in SCHEDULE_VARIANTS else
             ["task records", "patient split", "train-only target scaler",
              "20 selected frames", "synchronized views", "difference fusion",
              "32-dimensional head", "optimizer", "learning rates", "early stopping"]
@@ -228,7 +238,7 @@ def main():
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument(
         "--variant", choices=("shared", "independent_backbones", "shared_views3",
-                              BATCH_ABLATION_VARIANT),
+                              *SCHEDULE_VARIANTS),
         default="shared"
     )
     args = parser.parse_args()
@@ -236,8 +246,8 @@ def main():
     unknown = sorted(set(targets) - set(TARGETS))
     if unknown:
         raise ValueError(f"Unknown targets: {unknown}")
-    if args.variant == BATCH_ABLATION_VARIANT and set(targets) != set(TARGETS):
-        raise ValueError("The patient-diverse comparison requires all nine baseline targets")
+    if args.variant in SCHEDULE_VARIANTS and set(targets) != set(TARGETS):
+        raise ValueError("The 30/40 comparison requires all nine baseline targets")
 
     if args.variant == "shared":
         records_by_target, scalers, frame_index = prepare(targets)
@@ -245,14 +255,15 @@ def main():
     else:
         records_by_target, scalers, frame_index = _load_prepared(targets)
         output_dir = OUTPUT_DIR / args.variant
-        if args.variant == BATCH_ABLATION_VARIANT:
+        if args.variant in SCHEDULE_VARIANTS:
             _validate_against_baseline(records_by_target)
             if output_dir.exists() and not args.overwrite:
                 raise FileExistsError(f"Ablation output already exists: {output_dir}")
         train_views = VIEWS_3 if args.variant == "shared_views3" else VIEWS
-        training_options = (
-            PATIENT_DIVERSE_30_40 if args.variant == BATCH_ABLATION_VARIANT else {}
-        )
+        training_options = {
+            BATCH_ABLATION_VARIANT: PATIENT_DIVERSE_30_40,
+            SCHEDULE_ABLATION_VARIANT: SCHEDULE_ONLY_30_40,
+        }.get(args.variant, {})
         _write_variant_manifest(
             output_dir, targets, records_by_target, args.variant, train_views,
             training_options,
@@ -261,7 +272,7 @@ def main():
         train_views = VIEWS
         training_options = {}
     model_variant = (
-        "shared" if args.variant in ("shared_views3", BATCH_ABLATION_VARIANT)
+        "shared" if args.variant in ("shared_views3", *SCHEDULE_VARIANTS)
         else args.variant
     )
     _validate_records(records_by_target)
@@ -270,7 +281,7 @@ def main():
     if args.smoke:
         _smoke(
             records_by_target, scalers, frame_index, targets[0], args.device,
-            output_dir, model_variant, train_views,
+            output_dir, model_variant, train_views, training_options,
         )
         return
 
@@ -353,9 +364,25 @@ def main():
         raise RuntimeError(f"{len(failures)} Exp6 jobs failed")
     (output_dir / "failures.json").unlink(missing_ok=True)
     plot_results(output_dir)
-    if args.variant == BATCH_ABLATION_VARIANT:
+    if args.variant in SCHEDULE_VARIANTS:
         from .plot_patient_diverse_comparison import plot_comparison
-        plot_comparison(OUTPUT_DIR, output_dir, targets)
+        plot_comparison(
+            OUTPUT_DIR, output_dir, targets,
+            variant_key=("patient_diverse_30_40" if args.variant == BATCH_ABLATION_VARIANT
+                         else "schedule_30_40"),
+            variant_label=("Patient diverse 30/40" if args.variant == BATCH_ABLATION_VARIANT
+                           else "Schedule 30/40"),
+        )
+        if args.variant == SCHEDULE_ABLATION_VARIANT:
+            diverse_dir = OUTPUT_DIR / BATCH_ABLATION_VARIANT
+            if not (diverse_dir / "COMPLETE").is_file():
+                raise RuntimeError("The patient-diverse 30/40 comparison is incomplete")
+            plot_comparison(
+                diverse_dir, output_dir, targets,
+                variant_key="schedule_30_40", variant_label="Schedule 30/40",
+                baseline_key="patient_diverse_30_40",
+                baseline_label="Patient diverse 30/40",
+            )
         (output_dir / "COMPLETE").write_text("ok\n", encoding="ascii")
     print(
         f"[experiment-complete] variant={args.variant} "

@@ -5,7 +5,8 @@ import unittest
 import pandas as pd
 import torch
 
-from .data import PatientDiversePairSampler
+from .config import PATIENT_DIVERSE_30_40, SCHEDULE_ONLY_30_40
+from .data import ChunkShuffleSampler, PatientDiversePairSampler
 
 
 class _Dataset:
@@ -33,6 +34,23 @@ class PatientDiversePairSamplerTest(unittest.TestCase):
     def test_rejects_invalid_group_size(self):
         with self.assertRaises(ValueError):
             PatientDiversePairSampler(_Dataset(["p0"]), 24, frames_per_group=3)
+
+    def test_schedule_only_keeps_chunked_pair_batches(self):
+        self.assertEqual(
+            {key: value for key, value in SCHEDULE_ONLY_30_40.items()
+             if key != "train_batch_policy"},
+            {key: value for key, value in PATIENT_DIVERSE_30_40.items()
+             if key != "train_batch_policy"},
+        )
+        self.assertEqual(SCHEDULE_ONLY_30_40["train_batch_policy"], "chunk")
+        dataset = _Dataset([f"p{i:02d}" for i in range(6)])
+        torch.manual_seed(7)
+        order = list(ChunkShuffleSampler(dataset))
+        self.assertEqual(sorted(order), list(range(len(dataset))))
+        for start in range(0, len(order), 24):
+            batch = order[start:start + 24]
+            if len(batch) == 24:
+                self.assertEqual(len({row // 20 for row in batch}), 2)
 
 
 if __name__ == "__main__":

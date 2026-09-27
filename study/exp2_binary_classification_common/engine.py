@@ -103,7 +103,8 @@ def _set_binary_labels(dataset) -> None:
         dataset.weights_by_video = np.ones(len(labels), dtype=np.float32)
 
 
-def _image_loader(modality, frame_index, records, history, train):
+def _image_loader(modality, frame_index, records, history, train,
+                  train_batch_policy="chunked"):
     views = base_config.VIEW_NAMES if train else ("original",)
     if modality == "face_history":
         dataset, loader = face_history_train._loader(
@@ -111,7 +112,8 @@ def _image_loader(modality, frame_index, records, history, train):
         )
     else:
         dataset, loader = face_train._loader(
-            frame_index, records, views, "efficientnet_b0", train
+            frame_index, records, views, "efficientnet_b0", train,
+            train_batch_policy=train_batch_policy,
         )
     _set_binary_labels(dataset)
     return dataset, loader
@@ -345,12 +347,18 @@ def _plot_history(history, path, modality, target):
 def _run_stage(
     stage, model, head, datasets, loaders, modality, target, device, criterion,
     learning_rate, epochs, patience_limit, history, run_dir, compile_enabled,
+    minimum_learning_rate=base_config.MIN_LEARNING_RATE,
 ):
     _set_stage(model, head, modality, stage)
     parameters = [p for p in model.parameters() if p.requires_grad]
     optimizer = AdamW(parameters, lr=learning_rate, weight_decay=base_config.WEIGHT_DECAY)
     scheduler = CosineAnnealingLR(
-        optimizer, T_max=max(epochs, 1), eta_min=base_config.MIN_LEARNING_RATE
+        optimizer, T_max=max(epochs, 1), eta_min=minimum_learning_rate
+    )
+    print(
+        f"[stage-start] modality={modality} task={target} stage={stage} "
+        f"lr={learning_rate:.1e} lr_min={minimum_learning_rate:.1e} "
+        f"epochs={epochs} patience={patience_limit}", flush=True,
     )
     execution, backend = _compile(model, modality, target, stage, compile_enabled)
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda", init_scale=1024)
@@ -413,14 +421,34 @@ def _run_stage(
 def train_task(
     modality: str, target: str, device_id: int, seed: int,
     smoke: bool = False,
+    output_dir: Path | None = None,
+    train_batch_policy: str = "chunked",
+    stage_config: dict | None = None,
 ):
     if modality not in MODALITIES:
         raise ValueError(modality)
+    if modality != "face_only" and train_batch_policy != "chunked":
+        raise ValueError("Patient-diverse batches are only supported for face_only")
+    schedule = {
+        "head_learning_rate": base_config.HEAD_LEARNING_RATE,
+        "head_min_learning_rate": base_config.MIN_LEARNING_RATE,
+        "head_max_epochs": base_config.HEAD_MAX_EPOCHS,
+        "head_patience": base_config.HEAD_PATIENCE,
+        "finetune_learning_rate": base_config.FINETUNE_LEARNING_RATE,
+        "finetune_min_learning_rate": base_config.MIN_LEARNING_RATE,
+        "finetune_max_epochs": base_config.FINETUNE_MAX_EPOCHS,
+        "finetune_patience": base_config.FINETUNE_PATIENCE,
+    }
+    if stage_config:
+        unknown = set(stage_config) - set(schedule)
+        if unknown:
+            raise ValueError(f"Unknown stage configuration: {sorted(unknown)}")
+        schedule.update(stage_config)
     seed_everything(seed)
     torch.cuda.set_device(device_id)
     torch.set_num_threads(4)
     device = torch.device(f"cuda:{device_id}")
-    output_dir = EXPERIMENT_DIRS[modality] / "outputs"
+    output_dir = Path(output_dir) if output_dir is not None else EXPERIMENT_DIRS[modality] / "outputs"
     run_dir = output_dir / "runs" / (
         Path("efficientnet_b0") / target if modality != "history_only" else Path(target)
     )
@@ -442,7 +470,8 @@ def train_task(
             )
     else:
         datasets["train_augmented"], loaders["train_augmented"] = _image_loader(
-            modality, frame_index, split_records["train"], history_store, True
+            modality, frame_index, split_records["train"], history_store, True,
+            train_batch_policy=train_batch_policy,
         )
         for split in ("train", "val", "test"):
             datasets[split], loaders[split] = _image_loader(
@@ -470,23 +499,27 @@ def train_task(
         f"train/val/test videos={len(split_records['train'])}/"
         f"{len(split_records['val'])}/{len(split_records['test'])} "
         f"train_neg/pos={negatives}/{positives} pos_weight={pos_weight:.6f} "
-        f"train_inputs={train_inputs} parameters={total_parameters}", flush=True,
+        f"train_inputs={train_inputs} "
+        f"source_batch={loaders['train_augmented'].batch_size} "
+        f"batch_policy={train_batch_policy} parameters={total_parameters}", flush=True,
     )
     history = []
-    head_epochs = 1 if smoke else base_config.HEAD_MAX_EPOCHS
-    fine_epochs = 1 if smoke else base_config.FINETUNE_MAX_EPOCHS
-    head_patience = 1 if smoke else base_config.HEAD_PATIENCE
-    fine_patience = 1 if smoke else base_config.FINETUNE_PATIENCE
+    head_epochs = 1 if smoke else schedule["head_max_epochs"]
+    fine_epochs = 1 if smoke else schedule["finetune_max_epochs"]
+    head_patience = 1 if smoke else schedule["head_patience"]
+    fine_patience = 1 if smoke else schedule["finetune_patience"]
     head_state, head_score = _run_stage(
         "head", model, head, datasets, loaders, modality, target, device,
-        criterion, base_config.HEAD_LEARNING_RATE, head_epochs, head_patience,
+        criterion, schedule["head_learning_rate"], head_epochs, head_patience,
         history, run_dir, not smoke,
+        minimum_learning_rate=schedule["head_min_learning_rate"],
     )
     model.load_state_dict(head_state)
     fine_state, fine_score = _run_stage(
         "finetune", model, head, datasets, loaders, modality, target, device,
-        criterion, base_config.FINETUNE_LEARNING_RATE, fine_epochs, fine_patience,
+        criterion, schedule["finetune_learning_rate"], fine_epochs, fine_patience,
         history, run_dir, not smoke,
+        minimum_learning_rate=schedule["finetune_min_learning_rate"],
     )
     selected_stage, state = (
         ("finetune", fine_state) if fine_score >= head_score else ("head", head_state)
@@ -518,6 +551,8 @@ def train_task(
         "loss": "BCEWithLogitsLoss", "pos_weight": pos_weight,
         "decision_threshold": 0.5,
         "pretrained_weight_path": str(weight_path) if weight_path else None,
+        "train_batch_policy": train_batch_policy,
+        "stage_config": schedule,
     }, run_dir / "model.pt")
     (run_dir / "run_manifest.json").write_text(json.dumps({
         "schema_version": 1, "task_type": "true_binary_classification",
@@ -534,6 +569,9 @@ def train_task(
         "head_hidden_features": base_config.HEAD_HIDDEN_FEATURES,
         "frames_per_video": base_config.FRAMES_PER_VIDEO,
         "training_views": list(base_config.VIEW_NAMES) if modality != "history_only" else [],
+        "train_batch_policy": train_batch_policy,
+        "stage_config": schedule,
+        "source_batch_size": loaders["train_augmented"].batch_size,
     }, indent=2), encoding="utf-8")
     test = metric_rows[-1]
     print(

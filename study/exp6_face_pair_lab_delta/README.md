@@ -58,6 +58,22 @@ The script starts a detached four-GPU screen session. All outputs go to
 figures, per-task baseline comparisons, and `baseline_comparison.csv` without
 changing the main experiment outputs.
 
+## Schedule-only 30/40 ablation
+
+`shared_schedule_30_40` applies the same head/fine-tune learning rates, cosine
+floors, epoch limits, and patience as `shared_patient_diverse_30_40`, but keeps
+the main experiment's `chunk` sampler. A full source batch consists of 24
+paired frame rows from two consecutive shuffled laboratory-event pairs: 20
+rows from one pair and 4 from the next, or the corresponding residual split.
+Each source row expands to five synchronized face-pair views on the GPU, giving
+120 model examples (240 face images) per full batch. There is no patient
+diversity constraint; the two event pairs may belong to one or two patients.
+
+Launch with `bash study/exp6_face_pair_lab_delta/launch_schedule_30_40_screen.sh`.
+Its separate `outputs/shared_schedule_30_40/` directory receives checkpoints,
+histories, predictions, standard figures, and comparisons with both the main
+experiment and patient-diverse 30/40 variant.
+
 ## Three-view shared-backbone variant
 
 `shared_views3` reuses the existing prepared pairs, patient splits, train-only

@@ -94,3 +94,8 @@ PATIENT_DIVERSE_30_40 = {
     "finetune_patience": 8,
     "train_batch_policy": "patient_diverse",
 }
+
+SCHEDULE_ONLY_30_40 = {
+    **PATIENT_DIVERSE_30_40,
+    "train_batch_policy": "chunk",
+}

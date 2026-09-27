@@ -599,14 +599,17 @@ def _run_stage(
     minimum_learning_rate=MIN_LEARNING_RATE,
     weight_decay=WEIGHT_DECAY,
     freeze_batchnorm_stats=False,
+    warmup_epochs=0,
 ):
+    if warmup_epochs < 0 or warmup_epochs >= max_epochs:
+        raise ValueError("Warmup epochs must be nonnegative and shorter than the stage")
     execution_model, execution_backend = _execution_model(
         model, architecture, target, stage, device
     )
     parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
     optimizer = AdamW(parameters, lr=learning_rate, weight_decay=weight_decay)
     scheduler = CosineAnnealingLR(
-        optimizer, T_max=max(max_epochs, 1), eta_min=minimum_learning_rate
+        optimizer, T_max=max_epochs - warmup_epochs, eta_min=minimum_learning_rate
     )
     scaler = torch.amp.GradScaler(
         "cuda", enabled=device.type == "cuda", init_scale=1024.0
@@ -614,6 +617,9 @@ def _run_stage(
     best_score, best_state, patience = -np.inf, None, 0
     start_global_epoch = len(history)
     for stage_epoch in range(1, max_epochs + 1):
+        if stage_epoch <= warmup_epochs:
+            for group in optimizer.param_groups:
+                group["lr"] = learning_rate * stage_epoch / warmup_epochs
         (
             train_loss,
             optimizer_steps,
@@ -683,6 +689,7 @@ def _run_stage(
             "val_sign_bacc": val_metrics["sign_balanced_accuracy"],
             "val_sign_auc": val_metrics["sign_roc_auc"],
             "learning_rate": current_lr,
+            "lr_phase": "warmup" if stage_epoch <= warmup_epochs else "cosine",
             "optimizer_steps": optimizer_steps,
             "train_model_inputs": train_inputs,
             "train_seconds": train_seconds,
@@ -712,9 +719,9 @@ def _run_stage(
             f"peak_mem={peak_gpu_memory_gb:.2f}GiB "
             f"patience={patience}/{patience_limit}{marker}"
         )
-        if optimizer_steps > 0:
+        if optimizer_steps > 0 and stage_epoch > warmup_epochs:
             scheduler.step()
-        else:
+        elif optimizer_steps == 0:
             _log(f"[no-update] arch={architecture} task={target} stage={stage} "
                  "all optimizer steps were skipped by GradScaler")
         if patience >= patience_limit:
@@ -747,6 +754,8 @@ def train_task(
     finetune_min_learning_rate=MIN_LEARNING_RATE,
     weight_decay=WEIGHT_DECAY,
     freeze_batchnorm_stats=False,
+    head_warmup_epochs=0,
+    finetune_warmup_epochs=0,
 ):
     os.makedirs(run_dir, exist_ok=True)
     start_time = time.time()
@@ -847,6 +856,8 @@ def train_task(
         _log(
             f"[stage-start] arch={architecture} task={target} stage=head "
             f"lr={head_learning_rate:.1e} lr_min={head_min_learning_rate:.1e} "
+            f"warmup_epochs={head_warmup_epochs} "
+            f"cosine_epochs={head_epochs - head_warmup_epochs} "
             f"trainable={head_trainable}"
         )
         head_state, head_score = _run_stage(
@@ -855,6 +866,7 @@ def train_task(
             True, architecture, target, max_batches, target_scaler,
             minimum_learning_rate=head_min_learning_rate,
             weight_decay=weight_decay,
+            warmup_epochs=head_warmup_epochs,
         )
         model.load_state_dict(head_state)
         torch.save(
@@ -880,6 +892,8 @@ def train_task(
             f"[stage-start] arch={architecture} task={target} stage=finetune "
             f"lr={finetune_learning_rate:.1e} "
             f"lr_min={finetune_min_learning_rate:.1e} "
+            f"warmup_epochs={finetune_warmup_epochs} "
+            f"cosine_epochs={finetune_epochs - finetune_warmup_epochs} "
             f"trainable={finetune_trainable} "
             f"bn_stats={'frozen' if freeze_batchnorm_stats else 'updating'} "
             f"protocol={training_protocol}"
@@ -892,6 +906,7 @@ def train_task(
             minimum_learning_rate=finetune_min_learning_rate,
             weight_decay=weight_decay,
             freeze_batchnorm_stats=freeze_batchnorm_stats,
+            warmup_epochs=finetune_warmup_epochs,
         )
         torch.save(
             {
@@ -991,6 +1006,8 @@ def train_task(
         "finetune_max_epochs": finetune_epochs,
         "head_patience": head_patience,
         "finetune_patience": finetune_patience,
+        "head_warmup_epochs": head_warmup_epochs,
+        "finetune_warmup_epochs": finetune_warmup_epochs,
         "task_type": "robust_scaled_raw_value_regression",
         "target_scaler": target_scaler.to_dict(),
         "model_output": "(raw_value-train_median)/train_IQR",

@@ -38,14 +38,18 @@ def _check_pairs(baseline_dir, variant_dir, target):
         raise AssertionError(f"Comparison frame count differs: {target}")
 
 
-def _plot_test_metric(table, targets, column, title, filename, figure_dir):
+def _plot_test_metric(table, targets, column, title, filename, figure_dir,
+                      variant_key, variant_label, baseline_key, baseline_label):
     rows, cols = target_grid_shape(len(targets))
     fig, axes = plt.subplots(rows, cols, figsize=target_grid_figsize(rows, cols), squeeze=False)
     for axis, target in zip(axes.flat, targets):
-        values = [table.loc[target, f"baseline_{column}"],
-                  table.loc[target, f"patient_diverse_30_40_{column}"]]
+        values = [table.loc[target, f"{baseline_key}_{column}"],
+                  table.loc[target, f"{variant_key}_{column}"]]
         axis.bar([0, 1], values, color=["#73808a", "#257f77"], width=0.62)
-        axis.set_xticks([0, 1], ["Baseline", "Patient diverse\n30/40"])
+        axis.set_xticks(
+            [0, 1], [baseline_label.replace(" 30/40", "\n30/40"),
+                     variant_label.replace(" 30/40", "\n30/40")],
+        )
         axis.set_title(DISPLAY.get(target, target))
         axis.grid(axis="y", alpha=0.2)
         axis.tick_params(axis="x", labelsize=8)
@@ -61,7 +65,10 @@ def _plot_test_metric(table, targets, column, title, filename, figure_dir):
     plt.close(fig)
 
 
-def plot_comparison(baseline_dir, variant_dir, targets):
+def plot_comparison(baseline_dir, variant_dir, targets,
+                    variant_key="patient_diverse_30_40",
+                    variant_label="Patient diverse 30/40",
+                    baseline_key="baseline", baseline_label="Baseline"):
     baseline_dir, variant_dir = Path(baseline_dir), Path(variant_dir)
     targets = tuple(targets)
     for root in (baseline_dir, variant_dir):
@@ -81,25 +88,28 @@ def plot_comparison(baseline_dir, variant_dir, targets):
         "test_pairs": baseline.n.to_numpy(int),
     }).set_index("target")
     for column in columns:
-        table[f"baseline_{column}"] = baseline[column]
-        table[f"patient_diverse_30_40_{column}"] = variant[column]
+        table[f"{baseline_key}_{column}"] = baseline[column]
+        table[f"{variant_key}_{column}"] = variant[column]
         table[f"delta_{column}"] = variant[column] - baseline[column]
-    table.reset_index().to_csv(variant_dir / "baseline_comparison.csv", index=False)
+    table.reset_index().to_csv(
+        variant_dir / f"{baseline_key}_comparison.csv", index=False
+    )
 
     figure_dir = variant_dir / "figures"
     figure_dir.mkdir(parents=True, exist_ok=True)
     for metric, title, filename in (
-        ("mae", "Exp6 test MAE (lower is better)", "baseline_vs_patient_diverse_test_mae.png"),
-        ("pearson_r", "Exp6 test Pearson r (higher is better)", "baseline_vs_patient_diverse_test_r.png"),
-        ("r2", "Exp6 test R2 (higher is better)", "baseline_vs_patient_diverse_test_r2.png"),
+        ("mae", "Exp6 test MAE (lower is better)", f"{baseline_key}_vs_{variant_key}_test_mae.png"),
+        ("pearson_r", "Exp6 test Pearson r (higher is better)", f"{baseline_key}_vs_{variant_key}_test_r.png"),
+        ("r2", "Exp6 test R2 (higher is better)", f"{baseline_key}_vs_{variant_key}_test_r2.png"),
     ):
-        _plot_test_metric(table, targets, metric, title, filename, figure_dir)
+        _plot_test_metric(table, targets, metric, title, filename, figure_dir,
+                          variant_key, variant_label, baseline_key, baseline_label)
 
     rows, cols = target_grid_shape(len(targets))
     fig, axes = plt.subplots(rows, cols, figsize=target_grid_figsize(rows, cols), squeeze=False)
     for axis, target in zip(axes.flat, targets):
-        for root, label, color in ((baseline_dir, "Baseline", "#73808a"),
-                                   (variant_dir, "Patient diverse 30/40", "#257f77")):
+        for root, label, color in ((baseline_dir, baseline_label, "#73808a"),
+                                   (variant_dir, variant_label, "#257f77")):
             history = pd.read_csv(root / "runs" / target / "history.csv")
             axis.plot(history.global_epoch, history.val_mae, color=color, label=label)
             boundary = history.loc[history.stage.ne(history.stage.shift()), "global_epoch"].iloc[1:]
@@ -112,9 +122,9 @@ def plot_comparison(baseline_dir, variant_dir, targets):
         axis.legend(fontsize=7)
     for axis in axes.flat[len(targets):]:
         axis.axis("off")
-    fig.suptitle("Exp6 validation histories: baseline vs patient-diverse 30/40")
+    fig.suptitle(f"Exp6 validation histories: {baseline_label} vs {variant_label}")
     fig.tight_layout(rect=(0, 0, 1, 0.975))
-    fig.savefig(figure_dir / "baseline_vs_patient_diverse_val_history.png",
+    fig.savefig(figure_dir / f"{baseline_key}_vs_{variant_key}_val_history.png",
                 dpi=180, bbox_inches="tight")
     plt.close(fig)
     print(f"[comparison-complete] directory={figure_dir}", flush=True)
