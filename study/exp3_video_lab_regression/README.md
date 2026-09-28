@@ -76,6 +76,44 @@ weights and derived indexes are local prerequisites and are ignored by Git.
 The pretrained weight metadata and expected input conventions are documented
 in [torchvision's R3D-18 documentation](https://docs.pytorch.org/vision/main/models/generated/torchvision.models.video.r3d_18.html).
 
+## Two independent ablations
+
+Run both ablations sequentially in a detached four-GPU screen session:
+
+```bash
+bash study/exp3_video_lab_regression/launch_ablations_screen.sh
+```
+
+- `outputs/ablations/patient_diverse_schedule_30_40/`: identical 16-frame
+  clips, labels, split and architecture; batches maximize distinct patients
+  while visiting each video once per epoch. Head: LR `1e-4`, minimum `1e-6`,
+  at most 30 epochs, patience 8. Fine-tune: LR `3e-6`, minimum `1e-7`, at most
+  40 epochs, patience 8. Both stages use cosine annealing without warmup.
+- `outputs/ablations/middle48/`: original batch policy and learning schedule;
+  one strictly central, continuous 48-frame clip per source video. The index
+  lives in `cache/middle48_index/`. Videos shorter than 48 valid frames are
+  excluded. The baseline split assignments and train-only scaler are reused.
+
+Each variant writes the same metrics, checkpoints and figures as the baseline.
+After both complete, `outputs/ablations/comparison/` contains paired test
+metrics and figures calculated only on videos present in all three runs.
+
+The independent `middle10s_low_lr_20_30` ablation uses one strictly central
+10-second clip (300 contiguous frames at the source videos' verified 30 fps),
+while keeping the original random-video batch policy, labels, split, scaler,
+architecture and other training settings. Head LR is `1e-4` for at most 20
+epochs; full fine-tuning LR is `1e-6` for at most 30 epochs. Stage patience and
+cosine floors remain at their baseline values. Launch it with:
+
+```bash
+bash study/exp3_video_lab_regression/launch_middle10s_screen.sh
+```
+
+Its index uses only byte offsets in `cache/middle10s_index/`. Its result
+figures are generated automatically under
+`outputs/ablations/middle10s_low_lr_20_30/figures/`, with four-way paired
+comparison under `outputs/ablations/comparison_including_10s/`.
+
 ## Scope of the inference
 
 The video clip is not synchronized to the blood draw. The existing video to

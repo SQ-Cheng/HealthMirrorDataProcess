@@ -1,6 +1,6 @@
 """Index and stream short, temporally contiguous MJPEG clips without frame files."""
 
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from io import BytesIO
 import json
@@ -44,8 +44,8 @@ def _jpeg_ranges(mapped):
     return ranges
 
 
-def _select_clips(mapped, ranges):
-    if len(ranges) < CLIP_FRAMES:
+def _select_clips(mapped, ranges, clip_frames=CLIP_FRAMES, positions=CLIP_POSITIONS):
+    if len(ranges) < clip_frames:
         return []
     valid = {}
 
@@ -64,8 +64,8 @@ def _select_clips(mapped, ranges):
         return valid[index]
 
     chosen = []
-    last_start = len(ranges) - CLIP_FRAMES
-    for quantile in CLIP_POSITIONS:
+    last_start = len(ranges) - clip_frames
+    for quantile in positions:
         target = round(quantile * last_start)
         for distance in range(last_start + 1):
             options = (target,) if distance == 0 else (target - distance, target + distance)
@@ -73,10 +73,10 @@ def _select_clips(mapped, ranges):
             for start in options:
                 if start < 0 or start > last_start:
                     continue
-                if any(start < other + CLIP_FRAMES and other < start + CLIP_FRAMES
+                if any(start < other + clip_frames and other < start + clip_frames
                        for other in chosen):
                     continue
-                if all(frame_valid(i) for i in range(start, start + CLIP_FRAMES)):
+                if all(frame_valid(i) for i in range(start, start + clip_frames)):
                     selected = start
                     break
             if selected is not None:
@@ -99,7 +99,7 @@ class ClipIndex:
         if (len(self.video_ptr) != len(self.video_ids) + 1
                 or self.starts.shape != self.ends.shape
                 or self.starts.shape != self.source_indices.shape
-                or self.starts.ndim != 2 or self.starts.shape[1] != CLIP_FRAMES
+                or self.starts.ndim != 2 or self.starts.shape[1] < 1
                 or self.video_ptr[-1] != len(self.starts)
                 or not np.all(np.diff(self.source_indices, axis=1) == 1)):
             raise ValueError("Invalid contiguous-clip index")
@@ -117,7 +117,8 @@ class ClipIndex:
         return int(self.video_ptr[position]), int(self.video_ptr[position + 1])
 
 
-def build_or_reuse_index(video_records, index_dir=INDEX_DIR):
+def build_or_reuse_index(video_records, index_dir=INDEX_DIR,
+                         clip_frames=CLIP_FRAMES, positions=CLIP_POSITIONS):
     index_dir = Path(index_dir)
     index_path = index_dir / "clip_offsets.npz"
     manifest_path = index_dir / "index_manifest.json"
@@ -130,8 +131,8 @@ def build_or_reuse_index(video_records, index_dir=INDEX_DIR):
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             if (manifest["schema_version"] == 1
-                    and manifest["clip_frames"] == CLIP_FRAMES
-                    and manifest["positions"] == list(CLIP_POSITIONS)
+                    and manifest["clip_frames"] == clip_frames
+                    and manifest["positions"] == list(positions)
                     and manifest["requested_video_ids"] == expected_ids
                     and all(
                         Path(item["path"]).stat().st_size == item["size_bytes"]
@@ -161,12 +162,12 @@ def build_or_reuse_index(video_records, index_dir=INDEX_DIR):
                 with mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
                     ranges = _jpeg_ranges(mapped)
                     frame_count = len(ranges)
-                    windows = _select_clips(mapped, ranges)
+                    windows = _select_clips(mapped, ranges, clip_frames, positions)
                     for start in windows:
-                        offsets = ranges[start:start + CLIP_FRAMES]
+                        offsets = ranges[start:start + clip_frames]
                         starts.append([span[0] for span in offsets])
                         ends.append([span[1] for span in offsets])
-                        source_indices.append(list(range(start, start + CLIP_FRAMES)))
+                        source_indices.append(list(range(start, start + clip_frames)))
         if windows:
             video_ids.append(str(row.video_id))
             video_paths.append(str(path))
@@ -194,8 +195,8 @@ def build_or_reuse_index(video_records, index_dir=INDEX_DIR):
     os.replace(temporary_path, index_path)
     pd.DataFrame(summaries).to_csv(index_dir / "video_clip_summary.csv", index=False)
     manifest_path.write_text(json.dumps({
-        "schema_version": 1, "clip_frames": CLIP_FRAMES,
-        "positions": list(CLIP_POSITIONS), "requested_video_ids": expected_ids,
+        "schema_version": 1, "clip_frames": clip_frames,
+        "positions": list(positions), "requested_video_ids": expected_ids,
         "source_files": source_files,
         "storage": "JPEG byte offsets only; decoded frames are never persisted",
     }, indent=2), encoding="utf-8")
@@ -278,3 +279,37 @@ class OneClipPerVideoSampler(Sampler):
         for video_row in torch.randperm(len(self.dataset.video_clips)).tolist():
             candidates = self.dataset.video_clips[video_row]
             yield candidates[int(torch.randint(len(candidates), (1,)).item())]
+
+
+class PatientDiverseClipBatchSampler(Sampler):
+    """Visit each video once while maximizing distinct patients per batch."""
+
+    def __init__(self, dataset, batch_size):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.patients = dataset.records.hospital_id.astype(str).tolist()
+
+    def __len__(self):
+        return (len(self.dataset.records) + self.batch_size - 1) // self.batch_size
+
+    def __iter__(self):
+        pending = deque(torch.randperm(len(self.dataset.records)).tolist())
+        while pending:
+            rows, patients = [], set()
+            for _ in range(len(pending)):
+                if len(rows) == self.batch_size:
+                    break
+                row = pending.popleft()
+                patient = self.patients[row]
+                if patient in patients:
+                    pending.append(row)
+                else:
+                    rows.append(row)
+                    patients.add(patient)
+            while pending and len(rows) < self.batch_size:
+                rows.append(pending.popleft())
+            batch = []
+            for row in rows:
+                candidates = self.dataset.video_clips[row]
+                batch.append(candidates[int(torch.randint(len(candidates), (1,)).item())])
+            yield batch

@@ -15,7 +15,8 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
-from .clips import OneClipPerVideoSampler, VideoClipDataset
+from .clips import (OneClipPerVideoSampler, PatientDiverseClipBatchSampler,
+                    VideoClipDataset)
 from .config import (
     EVAL_BATCH_SIZE, EVAL_WORKERS, FINETUNE_EPOCHS, FINETUNE_LR,
     FINETUNE_MIN_LR, FINETUNE_PATIENCE, GRAD_CLIP_NORM,
@@ -34,19 +35,27 @@ def _seed(seed):
     torch.backends.cudnn.benchmark = True
 
 
-def _loader(index, records, train):
+def _loader(index, records, train, batch_policy="random_video"):
     dataset = VideoClipDataset(index, records, train=train)
     workers = TRAIN_WORKERS if train else EVAL_WORKERS
-    return dataset, DataLoader(
-        dataset,
-        batch_size=TRAIN_BATCH_SIZE if train else EVAL_BATCH_SIZE,
-        sampler=OneClipPerVideoSampler(dataset) if train else None,
-        shuffle=False,
-        num_workers=workers,
-        pin_memory=True,
-        persistent_workers=workers > 0,
-        prefetch_factor=PREFETCH_FACTOR if workers > 0 else None,
-    )
+    kwargs = {
+        "dataset": dataset, "num_workers": workers, "pin_memory": True,
+        "persistent_workers": workers > 0,
+        "prefetch_factor": PREFETCH_FACTOR if workers > 0 else None,
+    }
+    if train and batch_policy == "patient_diverse":
+        kwargs["batch_sampler"] = PatientDiverseClipBatchSampler(
+            dataset, TRAIN_BATCH_SIZE
+        )
+    elif batch_policy == "random_video" or not train:
+        kwargs.update(
+            batch_size=TRAIN_BATCH_SIZE if train else EVAL_BATCH_SIZE,
+            sampler=OneClipPerVideoSampler(dataset) if train else None,
+            shuffle=False,
+        )
+    else:
+        raise ValueError(f"Unknown batch policy: {batch_policy}")
+    return dataset, DataLoader(**kwargs)
 
 
 def _normalize(clips, device):
@@ -199,7 +208,8 @@ def _stage(stage, model, datasets, loaders, target, device, run_dir, scaler,
     return best_state, best_mae
 
 
-def train_task(target, records, scaler, index, device_id, run_dir, seed):
+def train_task(target, records, scaler, index, device_id, run_dir, seed,
+               batch_policy="random_video", schedule=None, variant="baseline"):
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     _seed(seed)
@@ -212,7 +222,7 @@ def train_task(target, records, scaler, index, device_id, run_dir, seed):
     }
     datasets, loaders = {}, {}
     datasets["train_sampled"], loaders["train_sampled"] = _loader(
-        index, split_records["train"], True
+        index, split_records["train"], True, batch_policy
     )
     for split in ("train", "val", "test"):
         datasets[split], loaders[split] = _loader(index, split_records[split], False)
@@ -232,15 +242,24 @@ def train_task(target, records, scaler, index, device_id, run_dir, seed):
           f"{len(datasets['test'])} parameters={parameter_count} "
           f"head_trainable={trainable_head}", flush=True)
     history = []
+    schedule = schedule or {
+        "head_epochs": HEAD_EPOCHS, "head_patience": HEAD_PATIENCE,
+        "head_lr": HEAD_LR, "head_min_lr": HEAD_MIN_LR,
+        "finetune_epochs": FINETUNE_EPOCHS,
+        "finetune_patience": FINETUNE_PATIENCE,
+        "finetune_lr": FINETUNE_LR, "finetune_min_lr": FINETUNE_MIN_LR,
+    }
     head_state, head_mae = _stage(
         "head", model, datasets, loaders, target, device, run_dir, scaler,
-        history, HEAD_EPOCHS, HEAD_PATIENCE, HEAD_LR, HEAD_MIN_LR,
+        history, schedule["head_epochs"], schedule["head_patience"],
+        schedule["head_lr"], schedule["head_min_lr"],
     )
     model.load_state_dict(head_state)
     unfreeze_all(model)
     fine_state, fine_mae = _stage(
         "finetune", model, datasets, loaders, target, device, run_dir, scaler,
-        history, FINETUNE_EPOCHS, FINETUNE_PATIENCE, FINETUNE_LR, FINETUNE_MIN_LR,
+        history, schedule["finetune_epochs"], schedule["finetune_patience"],
+        schedule["finetune_lr"], schedule["finetune_min_lr"],
     )
     selected_stage, selected_state = (
         ("finetune", fine_state) if fine_mae <= head_mae else ("head", head_state)
@@ -263,19 +282,19 @@ def train_task(target, records, scaler, index, device_id, run_dir, seed):
         "architecture": "kinetics_r3d18_head32", "target": target,
         "model_state_dict": selected_state, "selected_stage": selected_stage,
         "target_scaler": scaler, "seed": seed,
+        "variant": variant, "batch_policy": batch_policy,
+        "clip_frames": int(index.starts.shape[1]), "schedule": schedule,
         "pretrained_weight_sha256": weight_sha256,
     }, run_dir / "model.pt")
     (run_dir / "run_manifest.json").write_text(json.dumps({
         "target": target, "seed": seed, "selected_stage": selected_stage,
+        "variant": variant, "batch_policy": batch_policy,
         "architecture": "kinetics_r3d18_head32",
         "head_parameters": trainable_head, "total_parameters": parameter_count,
-        "scaler": scaler, "clip_frames": 16,
-        "train_policy": "one random indexed clip per video each epoch",
+        "scaler": scaler, "clip_frames": int(index.starts.shape[1]),
+        "train_policy": "one indexed clip per video each epoch",
         "eval_policy": "mean predictions over all indexed clips per video",
-        "head_lr": HEAD_LR, "head_epochs": HEAD_EPOCHS,
-        "head_patience": HEAD_PATIENCE,
-        "finetune_lr": FINETUNE_LR, "finetune_epochs": FINETUNE_EPOCHS,
-        "finetune_patience": FINETUNE_PATIENCE,
+        "schedule": schedule,
         "weight_decay": WEIGHT_DECAY,
     }, indent=2), encoding="utf-8")
     test = next(item for item in metrics if item["split"] == "test")

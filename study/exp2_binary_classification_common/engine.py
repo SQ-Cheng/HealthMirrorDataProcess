@@ -424,6 +424,7 @@ def train_task(
     output_dir: Path | None = None,
     train_batch_policy: str = "chunked",
     stage_config: dict | None = None,
+    records_path: Path | None = None,
 ):
     if modality not in MODALITIES:
         raise ValueError(modality)
@@ -454,6 +455,21 @@ def train_task(
     )
     run_dir.mkdir(parents=True, exist_ok=True)
     records, history_store = load_task(target)
+    if records_path is not None:
+        folded = pd.read_csv(
+            records_path, dtype={"hospital_id": str, "video_id": str}
+        )
+        identity = ("video_id", "hospital_id", "source_sample_id",
+                    "binary_label", "raw_value")
+        original = records.sort_values("video_id").reset_index(drop=True)
+        candidate = folded.sort_values("video_id").reset_index(drop=True)
+        pd.testing.assert_frame_equal(
+            candidate[list(identity)], original[list(identity)],
+            check_dtype=False, check_exact=True,
+        )
+        if candidate.groupby("hospital_id").split.nunique().max() != 1:
+            raise AssertionError(f"Patient leakage in folded records: {target}")
+        records = folded
     split_records = {
         split: records[records.split.eq(split)].reset_index(drop=True)
         for split in ("train", "val", "test")
@@ -557,12 +573,20 @@ def train_task(
     (run_dir / "run_manifest.json").write_text(json.dumps({
         "schema_version": 1, "task_type": "true_binary_classification",
         "modality": modality, "target": target, "seed": seed,
-        "reference_records": str(
+        "reference_records": str(records_path) if records_path is not None else str(
+            (PREPARED_DIR if target == "total_bilirubin_high" else REFERENCE_DIR)
+            / "task_records" / f"{target}.csv"
+        ),
+        "source_records": str(
             (PREPARED_DIR if target == "total_bilirubin_high" else REFERENCE_DIR)
             / "task_records" / f"{target}.csv"
         ),
         "time_alignment_contract": str(PREPARED_DIR / "time_alignment_contract.json"),
-        "split_policy": "exact reuse of the patient-disjoint regression split",
+        "split_policy": (
+            "shared patient-disjoint five-fold assignment"
+            if records_path is not None else
+            "exact reuse of the patient-disjoint regression split"
+        ),
         "loss": "BCEWithLogitsLoss",
         "pos_weight": pos_weight, "decision_threshold": 0.5,
         "selected_stage": selected_stage,
