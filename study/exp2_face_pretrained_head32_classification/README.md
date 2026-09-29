@@ -31,3 +31,28 @@ bash study/exp2_face_pretrained_head32_classification/launch_patient_diverse_sch
 After all eight jobs, the runner automatically writes a baseline comparison
 CSV and 4-by-2 test-metric and validation-history figures in the variant's
 `figures/` directory. Existing binary results are not overwritten.
+
+## Lab/video matching-window ablations
+
+The 12-hour and 6-hour binary variants use the completed regression
+matching-window cohorts and their independently searched, patient-disjoint
+splits. Their videos and labels are exact time-filtered subsets of the 24-hour
+binary source. All eight targets use the unchanged EfficientNet-B0 Head32
+classifier, 20 indexed frames, five training views, two-stage learning rates,
+batch policy, early stopping and per-task seed. Each variant recalculates
+`pos_weight` from its own training videos. Results stay in
+`outputs/ablations/lab_match_12h/` and `lab_match_6h/`.
+
+Run once to attach a detached screen. It waits until both 12-hour and 6-hour
+regression patient-diverse 30/40 tasks and their comparison figures are
+complete, then trains the two classification variants sequentially on four
+GPUs. The log is `logs/ablations/match_windows/run.log`.
+
+```bash
+bash study/exp2_face_pretrained_head32_classification/launch_match_window_monitor_screen.sh
+```
+
+Each completed variant automatically writes `full_test_comparison.csv` and
+`shared_test_comparison.csv` plus bACC/AUROC bar charts under `figures/`.
+Full-cohort comparisons have different test sets and are descriptive; the
+shared-test analysis compares predictions for the exact same held-out videos.

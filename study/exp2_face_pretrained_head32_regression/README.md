@@ -89,6 +89,50 @@ retraining and writes figures and tables to
 
 ## Training/backbone ablations
 
+### 12-hour lab/video matching window
+
+`launch_match_12h_screen.sh` repeats the baseline eight-target EfficientNet-B0
+regression experiment with only the maximum lab-to-video-interval distance
+reduced from 24 to 12 hours. It rebuilds the raw-video nearest-lab source,
+reruns the 512-candidate patient-disjoint distribution search for each target,
+refits train-only robust scalers, and reuses the validated 20-frame byte-offset
+index. Architecture, five views, optimizer, two training stages, and early
+stopping remain unchanged. Outputs and the continuous log are isolated under
+`outputs/ablations/lab_match_12h/` and `logs/ablations/lab_match_12h/`.
+On successful completion, it generates its own result figures plus
+`match_window_comparison.csv`, `shared_test_comparison.csv`, and matching
+comparison figures against `outputs/20frame/`. The two independently searched
+splits have different full test cohorts; their full-cohort comparison is
+descriptive. A separate common-video analysis evaluates both models on the
+same patients' videos held out from both training sets.
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_match_12h_screen.sh
+```
+
+The matching-window workflow also supports a 6-hour limit, with independent
+source matching, split search, training, and results under
+`outputs/ablations/lab_match_6h/` and `logs/ablations/lab_match_6h/`:
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_match_6h_screen.sh
+```
+
+To apply the existing patient-diverse 30/40 two-stage schedule to each
+matching window, run `launch_window_schedule_monitor_screen.sh`. Its detached
+screen waits for the 6-hour baseline screen to finish successfully, then runs
+the 12-hour and 6-hour variants sequentially on four GPUs. Each variant uses
+its window's saved 20-frame records, patient split, train-only scalers and
+five views. Results and checkpoints are kept in
+`outputs/ablations/lab_match_{12,6}h_patient_diverse_schedule_30_40/`, with
+per-window test comparisons to the matching-window baseline in each variant's
+`figures/schedule_comparison.png` and `schedule_comparison.csv`. The monitor
+log is `logs/ablations/match_window_schedule_30_40/run.log`.
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_window_schedule_monitor_screen.sh
+```
+
 `launch_ablations_screen.sh` runs three new eight-target experiments sequentially
 on four GPUs without altering the completed EfficientNet-B0 baseline:
 

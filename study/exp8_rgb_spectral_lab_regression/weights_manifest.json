@@ -1,0 +1,14 @@
+{
+  "architecture": "MST++",
+  "source_repository": "https://github.com/caiyuanhao1998/MST-plus-plus",
+  "source_commit": "dabb1a1e2053ad319e6c6c71107aa0db48359059",
+  "checkpoint_google_drive_id": "18X6RkcQaIuiV5gRbswo7GLv7WJG9M_WM",
+  "checkpoint_local_path": "study/common/pretrained_weights/mst_plus_plus_ntire2022.pth",
+  "checkpoint_sha256": "d285430cc688d08434582eee71bae2d82661be7997af1a68d6636ec25f7a3421",
+  "pretraining_data": "NTIRE 2022 spectral reconstruction, not patient facial spectra",
+  "output_bands": 31,
+  "wavelength_start_nm": 400,
+  "wavelength_step_nm": 10,
+  "wavelength_end_nm": 700,
+  "vendor_license": "MIT"
+}

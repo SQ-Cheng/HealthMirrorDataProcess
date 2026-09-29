@@ -52,8 +52,9 @@ def _job_seed(target):
     return (SEED + offset) % (2**31 - 1)
 
 
-def _prepare_sources():
-    baseline = pd.read_csv(BASE_DIR / "run_index.csv")
+def _prepare_sources(baseline_dir=BASE_DIR):
+    baseline_dir = Path(baseline_dir)
+    baseline = pd.read_csv(baseline_dir / "run_index.csv")
     expected = {("efficientnet_b0", target) for target in TARGETS}
     actual = set(baseline[["architecture", "target"]].itertuples(index=False, name=None))
     if actual != expected or not baseline.status.eq("ok").all():
@@ -61,13 +62,13 @@ def _prepare_sources():
     for row in baseline.itertuples():
         if int(row.job_seed) != _job_seed(row.target):
             raise AssertionError(f"Baseline job seed mismatch: {row.target}")
-    with open(BASE_DIR / "target_scalers.json", encoding="utf-8") as handle:
+    with open(baseline_dir / "target_scalers.json", encoding="utf-8") as handle:
         scalers = json.load(handle)["targets"]
     index_path = Path(REFERENCE_INDEX_DIR) / "frame_offsets.npz"
     index = FrameOffsetIndex.load(index_path)
     records_paths = {}
     for target in TARGETS:
-        path = BASE_DIR / "task_records" / f"{target}.csv"
+        path = baseline_dir / "task_records" / f"{target}.csv"
         records = pd.read_csv(path, dtype={"hospital_id": str, "video_id": str})
         if set(records.split) != {"train", "val", "test"}:
             raise AssertionError(f"Missing split for {target}")
@@ -86,8 +87,8 @@ def _prepare_sources():
             raise AssertionError(f"Patient leakage across splits for {target}")
         records_paths[target] = path
     source_hashes = {
-        "run_index": _sha256(BASE_DIR / "run_index.csv"),
-        "target_scalers": _sha256(BASE_DIR / "target_scalers.json"),
+        "run_index": _sha256(baseline_dir / "run_index.csv"),
+        "target_scalers": _sha256(baseline_dir / "target_scalers.json"),
         "frame_index": _sha256(index_path),
         "task_records": {target: _sha256(path) for target, path in records_paths.items()},
     }
@@ -166,7 +167,7 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
                  index_path, source_hashes, train_batch_policy="chunked",
                  stage_config=None, weight_decay=WEIGHT_DECAY,
                  freeze_batchnorm_stats=False, density_weighting=False,
-                 simclr_pretraining=False):
+                 simclr_pretraining=False, baseline_dir=BASE_DIR):
     if density_weighting and simclr_pretraining:
         raise ValueError("The two ablations must change one factor at a time")
     output_dir = ABLATION_DIR / name
@@ -204,7 +205,7 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
         "density_weighting": density_weighting,
         "simclr_pretraining": simclr_pretraining,
         "targets": list(TARGETS),
-        "baseline_output": str(BASE_DIR),
+        "baseline_output": str(baseline_dir),
         "baseline_source_sha256": source_hashes,
         "job_seeds": {target: _job_seed(target) for target in TARGETS},
         "frame_policy": "20 non-adjacent source frames per video; saved shared index",

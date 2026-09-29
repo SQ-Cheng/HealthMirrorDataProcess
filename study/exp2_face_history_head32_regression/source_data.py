@@ -1,4 +1,4 @@
-"""Build one nearest 24-hour lab label per current raw video and target."""
+"""Build one nearest in-window lab label per current raw video and target."""
 
 from collections import Counter, defaultdict
 import glob
@@ -328,12 +328,12 @@ def _interval_delta_seconds(timestamp, start, end):
     return 0.0
 
 
-def _nearest_measurement(measurements, start, end):
+def _nearest_measurement(measurements, start, end, max_delta_hours=LAB_MATCH_MAX_DELTA_HOURS):
     midpoint = (start + end) / 2.0
     candidates = []
     for source_order, (timestamp, value) in enumerate(measurements):
         delta = _interval_delta_seconds(timestamp, start, end)
-        if delta <= LAB_MATCH_MAX_DELTA_HOURS * 3600.0:
+        if delta <= max_delta_hours * 3600.0:
             candidates.append(
                 (delta, abs(timestamp - midpoint), timestamp, source_order, value)
             )
@@ -399,8 +399,11 @@ def validate_analyte_source_policies(quality, targets):
             )
 
 
-def build_raw_video_source(output_dir, targets):
+def build_raw_video_source(output_dir, targets, max_delta_hours=LAB_MATCH_MAX_DELTA_HOURS):
     """Write the current all-video pool and one nearest value per target."""
+    if not 0 < max_delta_hours <= LAB_MATCH_MAX_DELTA_HOURS:
+        raise ValueError(f"Invalid maximum lab/video interval: {max_delta_hours}")
+    window_label = f"{max_delta_hours:g}h"
     os.makedirs(output_dir, exist_ok=True)
     unknown = sorted(set(targets) - set(TARGET_ANALYTES))
     if unknown:
@@ -539,14 +542,14 @@ def build_raw_video_source(output_dir, targets):
             np.where(patient_events > end, patient_events - end, 0.0),
         )
         nearest_any_delta_h = float(deltas.min() / 3600.0)
-        if nearest_any_delta_h > LAB_MATCH_MAX_DELTA_HOURS:
-            skip_counts["supported_lab_outside_24h"] += 1
+        if nearest_any_delta_h > max_delta_hours:
+            skip_counts[f"supported_lab_outside_{window_label}"] += 1
             audit_rows.append(
                 {
                     "video_id": video_id,
                     "hospital_id": hospital_id,
                     "video_path": video_path,
-                    "status": "supported_lab_outside_24h",
+                    "status": f"supported_lab_outside_{window_label}",
                     "nearest_any_lab_delta_h": nearest_any_delta_h,
                     **bounds,
                 }
@@ -576,7 +579,7 @@ def build_raw_video_source(output_dir, targets):
                 if admission_unix <= item[0] <= discharge_unix
             ]
             nearest = _nearest_measurement(
-                episode_measurements, start, end
+                episode_measurements, start, end, max_delta_hours
             )
             prefix = analyte
             row[target] = np.nan
@@ -635,7 +638,7 @@ def build_raw_video_source(output_dir, targets):
                 "video_id": video_id,
                 "hospital_id": hospital_id,
                 "video_path": video_path,
-                "status": "retained_24h_pool",
+                "status": f"retained_{window_label}_pool",
                 "nearest_any_lab_delta_h": nearest_any_delta_h,
                 "available_targets": ",".join(available_targets),
                 **bounds,
@@ -666,8 +669,8 @@ def build_raw_video_source(output_dir, targets):
     retained_count = int(len(base_manifest))
     counts = {
         "raw_video_files": int(len(raw_paths)),
-        "retained_24h_pool_videos": retained_count,
-        "retained_24h_pool_patients": int(
+        f"retained_{window_label}_pool_videos": retained_count,
+        f"retained_{window_label}_pool_patients": int(
             base_manifest["hospital_id"].nunique()
         ),
         "retained_frame_timestamp_source_warnings": int(
@@ -693,7 +696,7 @@ def build_raw_video_source(output_dir, targets):
                 "the complete session interval must belong to exactly one hospitalization"
             ),
             "source_clock_warning_threshold_seconds": 300,
-            "maximum_delta_hours": LAB_MATCH_MAX_DELTA_HOURS,
+            "maximum_delta_hours": max_delta_hours,
             "interval_distance": (
                 "zero inside capture interval; otherwise distance to nearest boundary"
             ),
@@ -741,7 +744,8 @@ def build_raw_video_source(output_dir, targets):
         json.dump(report, handle, ensure_ascii=False, indent=2)
     print(
         f"Built raw-video source: pool={retained_count} "
-        f"patients={counts['retained_24h_pool_patients']} targets={target_counts}",
+        f"patients={counts[f'retained_{window_label}_pool_patients']} "
+        f"targets={target_counts}",
         flush=True,
     )
     return base_manifest, video_summary, report

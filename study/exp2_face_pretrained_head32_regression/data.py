@@ -35,7 +35,7 @@ from .config import (
 )
 
 
-def validate_source_data(source_dir):
+def validate_source_data(source_dir, expected_max_delta_hours=24.0):
     required = ("base_manifest.csv", "data_quality_report.json", "video_summary.csv")
     missing = [name for name in required if not os.path.exists(os.path.join(source_dir, name))]
     if missing:
@@ -58,8 +58,10 @@ def validate_source_data(source_dir):
         raise RuntimeError(f"Session Timestamp validation is not enforced: {policy}")
     if policy.get("lab_episode_scope") != "same hospitalization as the video session":
         raise RuntimeError(f"Hospitalization-scoped lab matching is missing: {policy}")
-    if float(policy.get("maximum_delta_hours", np.inf)) != 24.0:
-        raise RuntimeError(f"Expected a 24-hour source window, found {policy}")
+    if float(policy.get("maximum_delta_hours", np.inf)) != expected_max_delta_hours:
+        raise RuntimeError(
+            f"Expected a {expected_max_delta_hours:g}-hour source window, found {policy}"
+        )
     return quality
 
 

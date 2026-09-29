@@ -455,13 +455,20 @@ def train_task(
     )
     run_dir.mkdir(parents=True, exist_ok=True)
     records, history_store = load_task(target)
+    source_subset = False
     if records_path is not None:
         folded = pd.read_csv(
             records_path, dtype={"hospital_id": str, "video_id": str}
         )
         identity = ("video_id", "hospital_id", "source_sample_id",
                     "binary_label", "raw_value")
-        original = records.sort_values("video_id").reset_index(drop=True)
+        if folded.video_id.duplicated().any() or not set(folded.video_id).issubset(
+            set(records.video_id)
+        ):
+            raise AssertionError(f"Unknown or duplicate source video: {target}")
+        original = records.set_index("video_id").loc[
+            folded.sort_values("video_id").video_id
+        ].reset_index()
         candidate = folded.sort_values("video_id").reset_index(drop=True)
         pd.testing.assert_frame_equal(
             candidate[list(identity)], original[list(identity)],
@@ -469,6 +476,7 @@ def train_task(
         )
         if candidate.groupby("hospital_id").split.nunique().max() != 1:
             raise AssertionError(f"Patient leakage in folded records: {target}")
+        source_subset = len(candidate) < len(records)
         records = folded
     split_records = {
         split: records[records.split.eq(split)].reset_index(drop=True)
@@ -583,6 +591,8 @@ def train_task(
         ),
         "time_alignment_contract": str(PREPARED_DIR / "time_alignment_contract.json"),
         "split_policy": (
+            "patient-disjoint matching-window split on a strict source subset"
+            if source_subset else
             "shared patient-disjoint five-fold assignment"
             if records_path is not None else
             "exact reuse of the patient-disjoint regression split"

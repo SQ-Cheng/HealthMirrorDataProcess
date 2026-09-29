@@ -28,6 +28,7 @@ from .config import (
     EVAL_BATCH_SIZES,
     EVAL_NUM_WORKERS,
     JPEG_DECODER,
+    LAB_MATCH_MAX_DELTA_HOURS,
     OUTPUT_DIRS,
     REFERENCE_INDEX_DIR,
     REFERENCE_OUTPUT_DIR,
@@ -153,7 +154,7 @@ def _worker_train(job):
     }
 
 
-def _validate_time_alignment(manifest, targets):
+def _validate_time_alignment(manifest, targets, max_delta_hours=LAB_MATCH_MAX_DELTA_HOURS):
     for target in targets:
         prefix = LAB_TARGET_PREFIXES.get(target)
         if prefix is None:
@@ -167,11 +168,14 @@ def _validate_time_alignment(manifest, targets):
             delta.isna()
             | signed.isna()
             | delta.lt(0.0)
-            | delta.gt(24.0 + 1e-6)
+            | delta.gt(max_delta_hours + 1e-6)
             | ~np.isclose(delta.to_numpy(), np.abs(signed.to_numpy()), atol=1e-7)
         )
         if invalid.any():
-            raise ValueError(f"Invalid 24-hour alignment for {target}: {int(invalid.sum())}")
+            raise ValueError(
+                f"Invalid {max_delta_hours:g}-hour alignment for {target}: "
+                f"{int(invalid.sum())}"
+            )
 
 
 def _validate_weights(weights_dir, architectures):
@@ -265,6 +269,9 @@ def main():
         default="20frame",
     )
     parser.add_argument("--source-dir", default=None)
+    parser.add_argument(
+        "--match-max-delta-hours", type=float, default=LAB_MATCH_MAX_DELTA_HOURS
+    )
     parser.add_argument("--weights-dir", default=WEIGHTS_DIR)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--index-dir", default=None)
@@ -288,6 +295,8 @@ def main():
         help="Train only --targets and preserve completed targets in this output.",
     )
     args = parser.parse_args()
+    if not 0 < args.match_max_delta_hours <= LAB_MATCH_MAX_DELTA_HOURS:
+        parser.error("--match-max-delta-hours must be in (0, 24]")
     args.output_dir = args.output_dir or OUTPUT_DIRS[args.frame_policy]
     args.source_dir = args.source_dir or os.path.join(args.output_dir, "source_data")
     args.index_dir = args.index_dir or (
@@ -350,8 +359,12 @@ def main():
         shutil.rmtree(args.output_dir)
     os.makedirs(os.path.join(args.output_dir, "runs"), exist_ok=True)
     _set_seed(args.seed)
-    build_raw_video_source(args.source_dir, preparation_targets)
-    source_quality = validate_source_data(args.source_dir)
+    build_raw_video_source(
+        args.source_dir, preparation_targets, args.match_max_delta_hours
+    )
+    source_quality = validate_source_data(
+        args.source_dir, args.match_max_delta_hours
+    )
     validate_analyte_source_policies(source_quality, preparation_targets)
     weight_manifest = _validate_weights(args.weights_dir, architectures)
     base_manifest = pd.read_csv(
@@ -361,7 +374,9 @@ def main():
         os.path.join(args.source_dir, "video_summary.csv"),
         dtype={"hospital_id": str},
     )
-    _validate_time_alignment(base_manifest, preparation_targets)
+    _validate_time_alignment(
+        base_manifest, preparation_targets, args.match_max_delta_hours
+    )
     candidate_mask = base_manifest[list(preparation_targets)].notna().any(axis=1)
     candidate_videos = base_manifest.loc[candidate_mask].drop_duplicates("video_id")
     frame_index = build_or_reuse_frame_index(
@@ -453,6 +468,7 @@ def main():
             f"exp2_raw_video_{args.frame_policy}_head32_regression_balanced_split"
         ),
         "result_variant": args.frame_policy,
+        "lab_match_max_delta_hours": args.match_max_delta_hours,
         "source_dir": os.path.abspath(args.source_dir),
         "source_data_quality_report": source_quality,
         "architectures": list(manifest_architectures),
@@ -661,8 +677,8 @@ def main():
                 "metric_space": "inverse-transformed raw value",
                 "clinical_thresholds_for_secondary_sign_metrics": SCORE_DEFINITIONS,
                 "event_policy": (
-                    "retain one closest lab measurement within 24 hours for each "
-                    "raw video and target"
+                    f"retain one closest lab measurement within "
+                    f"{args.match_max_delta_hours:g} hours for each raw video and target"
                 ),
             },
             handle,

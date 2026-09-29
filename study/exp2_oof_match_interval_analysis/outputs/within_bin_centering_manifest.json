@@ -1,0 +1,68 @@
+{
+  "source": "24h five-fold held-out OOF predictions",
+  "source_sha256": {
+    "experiment_manifest": "8eeebe93c7e14ce0c12270dfb46e2bc8ce589144a4c0143e03dd9f24aa1079ec",
+    "oof_predictions": "661a2a549ee5f54f9c1a30402eb4cb4607cf386302e83b07e60dc8dcb7ab193c",
+    "splits": {
+      "oxyhemoglobin_fraction_fold0": "99db66403c06df0b4f7edd15e8774b9d3b7c422eca6a2df3022d6c815883bd1f",
+      "oxyhemoglobin_fraction_fold1": "c79c541e6c56cc0ebc1f5fb7bb83cf24e5f582166f506d79aa31c579ed4456b3",
+      "oxyhemoglobin_fraction_fold2": "c95c89480cbebe56f05683e7fd807772338bb04b638d8dbb01a0e710dffed988",
+      "oxyhemoglobin_fraction_fold3": "2e62468842eb0f43de0542904b4e4e62fea56c138e5d03c57498c94ac8b56a30",
+      "oxyhemoglobin_fraction_fold4": "3df29ffd311ef9bec46a80ec129946ece88490f4d5a230b28388cfffb643968b",
+      "lactate_high_fold0": "2254b6735133343df0825b7d1ed7171d8b422b7704335ae431f8fde49eae1726",
+      "lactate_high_fold1": "4a46859a17d3e1987acd8d1277f7dad6c4229ad8433066b3bb50af16aceb4b97",
+      "lactate_high_fold2": "b77dededfdbb3972b45d1df7e8b816359a9a77b60bd7d9136c74b058771c98d0",
+      "lactate_high_fold3": "3ff2318d57c0477852b233502f5100e46262cf4230c985f9a727b70500c481d9",
+      "lactate_high_fold4": "06de7706ee6d07eec6f15d8f5391daea404b84f3bf6fc7d5ea9c9d91067fbe05",
+      "urea_high_fold0": "eda85dcfe434570ff8b8e84d235321ae5769cc7856010ca8e394bc9aed1e3fef",
+      "urea_high_fold1": "cedb6855064ee63600536925b72cedd18f0bc0bd69fbac3b99d753c776eec79d",
+      "urea_high_fold2": "30ecd9c64afd5d989c935f0099ab7ac3752fc9096f613fc3bee332b81139161f",
+      "urea_high_fold3": "c95539a65fceba28825544945c53a979b12fa6a4966696f0b4d5a036e1d4ded7",
+      "urea_high_fold4": "9a747303e9b150a0b63d084c051cac72dcb3dc00a6ee406b706c72c74e65d5c3",
+      "total_bilirubin_high_fold0": "07da3fe5b09875f84eb6e09987e52f9c05edeb6b6b8dbdf1ab6daf116a7a43dd",
+      "total_bilirubin_high_fold1": "73a3a70c3ba89b915bbe3feff481af5f0486a9328313e8018d83c3581145ed77",
+      "total_bilirubin_high_fold2": "9766e29b0625fecb6e47a7e91d5d40c438db294098faabfeecc353fa8ea27c98",
+      "total_bilirubin_high_fold3": "f1474899a018e2645a7924039bc48a30abd183ab67724139993cee79348bc7f3",
+      "total_bilirubin_high_fold4": "4624d020739cd3d5cde4d4df1d0c28625dcf616d308e70aea148abd80ad1258b",
+      "platelet_count_low_fold0": "18d061f17891820ef1ac51f53d6f038b1d128210bf579687e6ee21874da78562",
+      "platelet_count_low_fold1": "6010bbe50b79d66953d0145f89da3d9b175ac1a7351686dd02ac8588030692e3",
+      "platelet_count_low_fold2": "445e66fb2a928477847752246e99a16b3a48a5e5890044577580caecd5b50c4f",
+      "platelet_count_low_fold3": "f44fd8551b28a0d62bc3c0fafec3428e2e0478bd30cf065b886ebfb4b3502670",
+      "platelet_count_low_fold4": "d6b1524ab97b654d8a4dcc490c676c1d71185c0be3ddbd0dd56d6f91d42c233a",
+      "hemoglobin_low_fold0": "c6b43190336b0bc71a25b24ed74fe0eab787ec0a1a6c5786a24d772f694f0390",
+      "hemoglobin_low_fold1": "8023952ca79639217f939cce47f2b27775ef14fc45728cd4abdea058f99ee9ad",
+      "hemoglobin_low_fold2": "165154978bc1f04428222b64313a258127efbef5855eb85e5283a222af9c340f",
+      "hemoglobin_low_fold3": "3a7ac074d2dd569c42f4f8a3f6874a7ed64878c8d7282ebd18904f92e536d439",
+      "hemoglobin_low_fold4": "3dd6e49ceb90074efd08665c825b51808e41b0d376c9a5aa4fa349a57b9804d6",
+      "aa_po2_ratio_low_fold0": "b57b32a9681bd2b9c8e443f5036400c81c35e2bb0f4570d05315a3a0b97b04bd",
+      "aa_po2_ratio_low_fold1": "b8c7299c755f19c1cf900cf44dcab93f6aea9222829b3e222ba8a1cf71d0906e",
+      "aa_po2_ratio_low_fold2": "7ce1f340106cec1069d06f20cd36090a6d4c23d10b696b371f93df0bfc976da0",
+      "aa_po2_ratio_low_fold3": "4688aaca95155db0c8448547ea1bd6112b9b79501d73f6573188491e3e8c65fd",
+      "aa_po2_ratio_low_fold4": "211831d9e72ff93067cb7cd2825f37c3fd24ada346bc7381dc01a9cf4c77e250",
+      "creatinine_high_fold0": "53c3850a575b45d00bdcb9ea8035a5243d342724ae9798d765bcfa7a6586f82b",
+      "creatinine_high_fold1": "4d686ea69c1382e050d34e866c667930681dae6735deb76db8432d63888c2b08",
+      "creatinine_high_fold2": "d1626f0b98b0c90edfde9f940c00de3acf72ecc3ad34bb741f4fec070d1dd6ea",
+      "creatinine_high_fold3": "6714b512721409d4aec746e90cf79bfb65f2281212ef9efa1687d693403c5452",
+      "creatinine_high_fold4": "c78ae8840f04618b5b28e8f43d1f5bff8676f5caf4dc5c7addb0fc40db3ad9ba"
+    }
+  },
+  "analysis_unit": "one held-out video/lab pair per target; all five folds pooled",
+  "centering_groups": [
+    "target",
+    "time_bin"
+  ],
+  "centering": "subtract separate within-bin means from y_true and y_pred",
+  "windows_hours": {
+    "6": [
+      "0-3h",
+      "3-6h"
+    ],
+    "12": [
+      "0-3h",
+      "3-6h",
+      "6-12h"
+    ]
+  },
+  "window_policy": "6h and 12h are post-hoc subsets of the same 24h OOF predictions; no retraining",
+  "n_centered_video_predictions": 6938
+}
