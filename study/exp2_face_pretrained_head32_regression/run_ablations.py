@@ -112,6 +112,31 @@ def _run_job(job):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     records = pd.read_csv(job["records_path"], dtype={"hospital_id": str, "video_id": str})
+    run_dir = Path(job["run_dir"])
+    train_records = records.loc[records.split.eq("train")].reset_index(drop=True)
+    train_video_weights = None
+    if job.get("density_weighting"):
+        from .density_weighting import make_density_weights
+
+        train_video_weights, audit = make_density_weights(train_records)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "density_weight_audit.json").write_text(
+            json.dumps(audit, indent=2), encoding="utf-8"
+        )
+        print(
+            f"[density-weights] task={job['target']} "
+            f"range={audit['weight_min']:.3f}-{audit['weight_max']:.3f} "
+            f"effective_videos={audit['effective_video_count']:.1f}", flush=True,
+        )
+    pretrain_path = None
+    if job.get("simclr_pretraining"):
+        from .label_simclr import pretrain_encoder
+
+        pretrain_path = pretrain_encoder(_FRAME_INDEX, train_records, run_dir)
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
     metrics = train_task(
         architecture=job["architecture"], target=job["target"],
         frame_index=_FRAME_INDEX, records=records,
@@ -131,6 +156,8 @@ def _run_job(job):
         freeze_batchnorm_stats=job["freeze_batchnorm_stats"],
         training_protocol=job["protocol"],
         train_batch_policy=job.get("train_batch_policy", "chunked"),
+        train_video_weights=train_video_weights,
+        initial_encoder_state_path=pretrain_path,
     )
     return metrics, seed
 
@@ -138,7 +165,10 @@ def _run_job(job):
 def _run_variant(name, architecture, protocol, records_paths, scalers,
                  index_path, source_hashes, train_batch_policy="chunked",
                  stage_config=None, weight_decay=WEIGHT_DECAY,
-                 freeze_batchnorm_stats=False):
+                 freeze_batchnorm_stats=False, density_weighting=False,
+                 simclr_pretraining=False):
+    if density_weighting and simclr_pretraining:
+        raise ValueError("The two ablations must change one factor at a time")
     output_dir = ABLATION_DIR / name
     if output_dir.exists():
         raise FileExistsError(f"Ablation output already exists: {output_dir}")
@@ -171,6 +201,8 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
         "train_batch_policy": train_batch_policy,
         "weight_decay": weight_decay,
         "batchnorm_running_stats_frozen": freeze_batchnorm_stats,
+        "density_weighting": density_weighting,
+        "simclr_pretraining": simclr_pretraining,
         "targets": list(TARGETS),
         "baseline_output": str(BASE_DIR),
         "baseline_source_sha256": source_hashes,
@@ -206,6 +238,8 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
             "train_batch_policy": train_batch_policy,
             "weight_decay": weight_decay,
             "freeze_batchnorm_stats": freeze_batchnorm_stats,
+            "density_weighting": density_weighting,
+            "simclr_pretraining": simclr_pretraining,
             "stage_config": schedule,
             "records_path": str(records_paths[target]), "scaler": scalers[target],
             "run_dir": str(output_dir / "runs" / architecture / target),
@@ -242,8 +276,17 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
                             or checkpoint.get("head_warmup_epochs") != schedule["head_warmup_epochs"]
                             or checkpoint.get("finetune_warmup_epochs") != schedule["finetune_warmup_epochs"]
                             or checkpoint.get("batchnorm_running_stats_frozen")
-                            != freeze_batchnorm_stats):
+                            != freeze_batchnorm_stats
+                            or checkpoint.get("loss_weighting") != (
+                                "train_density_inverse_sqrt" if density_weighting else "none"
+                            )
+                            or bool(checkpoint.get("initial_encoder_sha256"))
+                            != simclr_pretraining):
                         raise AssertionError(f"Wrong checkpoint identity: {run_dir}")
+                    if simclr_pretraining and checkpoint["initial_encoder_sha256"] != _sha256(
+                        run_dir / "pretrain_encoder.pt"
+                    ):
+                        raise AssertionError(f"Wrong contrastive encoder: {run_dir}")
                     metrics_frames.append(metrics)
                     status, reason = "ok", ""
                 except Exception as exc:

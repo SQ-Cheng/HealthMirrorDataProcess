@@ -1,0 +1,37 @@
+\begin{tikzpicture}[
+    x=1cm,y=1cm,>=Latex,
+    every node/.style={font=\scriptsize,align=center},
+    source/.style={draw=diagramSource,fill=diagramSourceBg,rounded corners=1pt,minimum height=0.72cm,text width=1.7cm},
+    encoder/.style={draw=diagramEncoder,fill=diagramEncoderBg,rounded corners=1pt,minimum height=0.75cm,text width=2.15cm},
+    op/.style={draw=diagramOp,fill=diagramOpBg,rounded corners=1pt,minimum height=0.75cm,text width=2.1cm},
+    head/.style={draw=diagramHead,fill=diagramHeadBg,rounded corners=1pt,minimum height=0.75cm,text width=2.45cm},
+    flow/.style={-{Latex[length=1.7mm]},draw=diagramFlow,line width=0.65pt}
+]
+\node[anchor=west,font=\bfseries\scriptsize] at (0,3.4) {Time-defined recovery};
+\node[source] (single) at (1.0,2.7) {Postoperative\\RGB face};
+\node[encoder] (singleenc) at (4.0,2.7) {EfficientNet-B0\\1280 features};
+\node[head] (singlehead) at (7.55,2.7) {FC $1280\to32\to1$\\sigmoid};
+\node[op] (time) at (11.1,2.7) {Recovery-time\\fraction $[0,1]$};
+\draw[flow] (single) -- (singleenc);
+\draw[flow] (singleenc) -- (singlehead);
+\draw[flow] (singlehead) -- (time);
+
+\node[anchor=west,font=\bfseries\scriptsize] at (0,1.72) {Laboratory-linked postoperative targets};
+\node[source] (pre) at (1.0,0.90) {Preoperative\\RGB face};
+\node[source] (post) at (1.0,-0.50) {Postoperative\\RGB face};
+\node[encoder] (preenc) at (4.0,0.90) {EfficientNet-B0\\pre weights};
+\node[encoder] (postenc) at (4.0,-0.50) {EfficientNet-B0\\post weights};
+\node[op] (preproj) at (7.0,0.90) {Projector\\$1280\to64$: $p$};
+\node[op] (postproj) at (7.0,-0.50) {Projector\\$1280\to64$: $q$};
+\node[op] (fuse) at (10.0,0.20) {$[p,q,q-p,|q-p|]$\\256 features};
+\node[head] (pairhead) at (13.05,0.20) {FC $256\to32\to1$\\Softplus / sigmoid};
+\draw[flow] (pre) -- (preenc);
+\draw[flow] (post) -- (postenc);
+\draw[flow] (preenc) -- (preproj);
+\draw[flow] (postenc) -- (postproj);
+\draw[flow] (preproj) -- (fuse);
+\draw[flow] (postproj) -- (fuse);
+\draw[flow] (fuse) -- (pairhead);
+\node[anchor=west,font=\scriptsize,text=diagramNote] at (1.0,-1.35)
+    {Single-face protocols substitute a zero vector for the missing 64-dimensional embedding.};
+\end{tikzpicture}

@@ -1,0 +1,19 @@
+\begin{tikzpicture}[
+    x=1cm,y=1cm,>=Latex,
+    every node/.style={font=\scriptsize,align=center},
+    source/.style={draw=diagramSource,fill=diagramSourceBg,rounded corners=1pt,minimum height=0.75cm,text width=1.75cm},
+    encoder/.style={draw=diagramEncoder,fill=diagramEncoderBg,rounded corners=1pt,minimum height=0.75cm,text width=2.55cm},
+    op/.style={draw=diagramOp,fill=diagramOpBg,rounded corners=1pt,minimum height=0.75cm,text width=2.0cm},
+    head/.style={draw=diagramHead,fill=diagramHeadBg,rounded corners=1pt,minimum height=0.75cm,text width=2.6cm},
+    flow/.style={-{Latex[length=1.7mm]},draw=diagramFlow,line width=0.65pt}
+]
+\node[source] (signal) at (1.0,0) {ECG window\\1024 samples};
+\node[encoder] (enc) at (4.0,0) {Frozen pretrained\\1-D ResNet or TCN};
+\node[op] (pool) at (7.15,0) {Temporal mean $\Vert$ max\\$2C$ features};
+\node[head] (head) at (10.35,0) {FC $2C\to128\to2$\\GELU, dropout};
+\node[op] (target) at (13.55,0) {QRS, morphology\\weak-label logits};
+\draw[flow] (signal) -- (enc);
+\draw[flow] (enc) -- (pool);
+\draw[flow] (pool) -- (head);
+\draw[flow] (head) -- (target);
+\end{tikzpicture}

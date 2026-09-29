@@ -953,6 +953,11 @@ def _plot_top_phase_trajectories(summary, selected_ids, output_dir):
             axis.axis("off")
             axis.set_title(f"{display_name}: no eligible data", fontsize=9)
             continue
+        if item_name == "肌钙蛋白Ⅰ":
+            values = values.copy()
+            values.loc[values["surgery_phase"].eq("intraop"), [
+                "median", "q25", "q75"
+            ]] = np.nan
         x = values["phase_order"].to_numpy()
         axis.plot(x, values["median"], color="#2F6B8A", marker="o")
         axis.fill_between(
@@ -967,6 +972,8 @@ def _plot_top_phase_trajectories(summary, selected_ids, output_dir):
             values["median"],
             values["patients"],
         ):
+            if not np.isfinite(point_y):
+                continue
             axis.annotate(
                 f"n={int(patients)}",
                 (point_x, point_y),

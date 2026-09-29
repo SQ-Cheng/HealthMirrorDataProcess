@@ -1,0 +1,24 @@
+\begin{tikzpicture}[
+    x=1cm,y=1cm,>=Latex,
+    every node/.style={font=\scriptsize,align=center},
+    source/.style={draw=diagramSource,fill=diagramSourceBg,rounded corners=1pt,minimum height=0.75cm,text width=1.8cm},
+    encoder/.style={draw=diagramEncoder,fill=diagramEncoderBg,rounded corners=1pt,minimum height=1.05cm,text width=2.55cm},
+    op/.style={draw=diagramOp,fill=diagramOpBg,rounded corners=1pt,minimum height=0.75cm,text width=2.0cm},
+    head/.style={draw=diagramHead,fill=diagramHeadBg,rounded corners=1pt,minimum height=0.75cm,text width=2.7cm},
+    flow/.style={-{Latex[length=1.7mm]},draw=diagramFlow,line width=0.65pt}
+]
+\node[source] (early) at (1.0,1.1) {Earlier face\\$224\times224$};
+\node[source] (late) at (1.0,-1.1) {Later face\\$224\times224$};
+\node[encoder] (shared) at (4.35,0) {Shared EfficientNet-B0\\same weights at both times\\global average pool};
+\node[op] (zearly) at (7.35,1.1) {$z_1\in\mathbb{R}^{1280}$};
+\node[op] (zlate) at (7.35,-1.1) {$z_2\in\mathbb{R}^{1280}$};
+\node[op] (diff) at (10.05,0) {$z_2-z_1$\\1280 features};
+\node[head] (head) at (13.05,0) {Task-specific head\\FC $1280\to32\to1$};
+\draw[flow] (early) -- (shared);
+\draw[flow] (late) -- (shared);
+\draw[flow] (shared) -- (zearly);
+\draw[flow] (shared) -- (zlate);
+\draw[flow] (zearly) -- (diff);
+\draw[flow] (zlate) -- (diff);
+\draw[flow] (diff) -- (head);
+\end{tikzpicture}

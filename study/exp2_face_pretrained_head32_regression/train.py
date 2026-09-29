@@ -325,6 +325,21 @@ def _freeze_batchnorm_running_stats(model):
             module.eval()
 
 
+def _training_loss(per_input_loss, video_weights, frame_video_rows, indices,
+                   view_codes, device):
+    if video_weights is None:
+        return per_input_loss.mean()
+    video_rows = torch.as_tensor(
+        frame_video_rows[indices.numpy()], dtype=torch.long, device=device
+    )
+    batch_weights = video_weights[video_rows]
+    if view_codes.ndim == 2:
+        batch_weights = batch_weights.repeat_interleave(view_codes.shape[1])
+    if len(batch_weights) != per_input_loss.numel():
+        raise AssertionError("Expanded video weights do not align with model inputs")
+    return (per_input_loss.flatten() * batch_weights).sum() / batch_weights.sum()
+
+
 def _train_epoch(
     model,
     head,
@@ -337,6 +352,7 @@ def _train_epoch(
     max_batches=None,
     frozen_modules=(),
     freeze_batchnorm_stats=False,
+    train_video_weights=None,
 ):
     if encoder_frozen:
         model.eval()
@@ -351,7 +367,7 @@ def _train_epoch(
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     started = time.perf_counter()
-    for batch_index, (images, labels, _, view_codes) in enumerate(loader):
+    for batch_index, (images, labels, indices, view_codes) in enumerate(loader):
         if max_batches is not None and batch_index >= max_batches:
             break
         images = _prepare_images(
@@ -365,7 +381,11 @@ def _train_epoch(
             device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"
         ):
             predictions = model(images)
-            loss = criterion(predictions, labels).mean()
+            per_input_loss = criterion(predictions, labels)
+            loss = _training_loss(
+                per_input_loss, train_video_weights,
+                loader.dataset.frame_video_rows, indices, view_codes, device,
+            )
         if not torch.isfinite(loss):
             continue
         scaler.scale(loss).backward()
@@ -600,6 +620,7 @@ def _run_stage(
     weight_decay=WEIGHT_DECAY,
     freeze_batchnorm_stats=False,
     warmup_epochs=0,
+    train_video_weights=None,
 ):
     if warmup_epochs < 0 or warmup_epochs >= max_epochs:
         raise ValueError("Warmup epochs must be nonnegative and shorter than the stage")
@@ -638,6 +659,7 @@ def _run_stage(
             max_batches=max_batches,
             frozen_modules=frozen_modules,
             freeze_batchnorm_stats=freeze_batchnorm_stats,
+            train_video_weights=train_video_weights,
         )
         train_eval = _evaluate(
             execution_model,
@@ -756,6 +778,8 @@ def train_task(
     freeze_batchnorm_stats=False,
     head_warmup_epochs=0,
     finetune_warmup_epochs=0,
+    train_video_weights=None,
+    initial_encoder_state_path=None,
 ):
     os.makedirs(run_dir, exist_ok=True)
     start_time = time.time()
@@ -798,7 +822,25 @@ def train_task(
     device = torch.device(
         f"cuda:{torch.cuda.current_device()}" if torch.cuda.is_available() else "cpu"
     )
+    if train_video_weights is not None:
+        train_video_weights = np.asarray(train_video_weights, dtype=np.float32)
+        if (len(train_video_weights) != len(records_by_split["train"])
+                or not np.isfinite(train_video_weights).all()
+                or np.any(train_video_weights <= 0)):
+            raise ValueError("Training video weights must be positive and align with training records")
+        train_video_weights = torch.as_tensor(train_video_weights, device=device)
     model, head, weight_path = build_pretrained_model(architecture, weights_dir)
+    initial_encoder_sha256 = None
+    if initial_encoder_state_path is not None:
+        if architecture != "efficientnet_b0":
+            raise ValueError("Contrastive initialization requires EfficientNet-B0")
+        encoder_checkpoint = torch.load(
+            initial_encoder_state_path, map_location="cpu", weights_only=True
+        )
+        model.features.load_state_dict(
+            encoder_checkpoint["features_state_dict"], strict=True
+        )
+        initial_encoder_sha256 = _sha256(initial_encoder_state_path)
     model = model.to(device, memory_format=torch.channels_last)
     criterion = nn.SmoothL1Loss(beta=SMOOTH_L1_BETA, reduction="none")
     total_parameters, _ = parameter_counts(model)
@@ -822,7 +864,9 @@ def train_task(
         f"batch_policy={train_batch_policy} "
         f"weight_decay={weight_decay:.1e} "
         f"normal/abnormal/boundary_frames={n_normal}/{n_abnormal}/{n_boundary} "
-        f"loss_weighting=none parameters={total_parameters}"
+        f"loss_weighting={'train_density_inverse_sqrt' if train_video_weights is not None else 'none'} "
+        f"contrastive_init={initial_encoder_sha256 is not None} "
+        f"parameters={total_parameters}"
     )
 
     if training_protocol == "one_stage_full":
@@ -838,6 +882,7 @@ def train_task(
             history, run_dir, False, architecture, target, max_batches, target_scaler,
             weight_decay=weight_decay,
             freeze_batchnorm_stats=freeze_batchnorm_stats,
+            train_video_weights=train_video_weights,
         )
         selected_stage = "direct"
         torch.save(
@@ -867,6 +912,7 @@ def train_task(
             minimum_learning_rate=head_min_learning_rate,
             weight_decay=weight_decay,
             warmup_epochs=head_warmup_epochs,
+            train_video_weights=train_video_weights,
         )
         model.load_state_dict(head_state)
         torch.save(
@@ -907,6 +953,7 @@ def train_task(
             weight_decay=weight_decay,
             freeze_batchnorm_stats=freeze_batchnorm_stats,
             warmup_epochs=finetune_warmup_epochs,
+            train_video_weights=train_video_weights,
         )
         torch.save(
             {
@@ -1013,7 +1060,10 @@ def train_task(
         "model_output": "(raw_value-train_median)/train_IQR",
         "reported_predictions": "inverse-transformed raw laboratory units",
         "smooth_l1_beta": SMOOTH_L1_BETA,
-        "loss_weighting": "none",
+        "loss_weighting": (
+            "train_density_inverse_sqrt" if train_video_weights is not None else "none"
+        ),
+        "initial_encoder_sha256": initial_encoder_sha256,
         "training_target_frame_counts": {
             "normal_training_frames": n_normal,
             "abnormal_training_frames": n_abnormal,

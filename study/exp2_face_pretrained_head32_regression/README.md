@@ -188,3 +188,40 @@ finish, it automatically runs the interleaved-view experiment on four GPUs:
 ```bash
 bash study/exp2_face_pretrained_head32_regression/launch_interleaved_after_regularization_screen.sh
 ```
+
+## Label-density and contrastive-initialization ablations
+
+These are two independent comparisons against the completed patient-diverse
+30/40 control. They reuse its eight tasks, patient split, 20 frames/video,
+five training views, train-only robust scalers, batch sampler, job seeds,
+EfficientNet-B0 architecture and downstream two-stage schedule. The first
+variant changes only the training loss: 12 equal-width bins fitted between
+the training labels' 1st and 99th percentiles receive inverse-square-root
+frequency weights. The tails are clipped into the edge bins, weights are
+capped at a 4:1 ratio and normalized to mean one. Validation and test metrics
+remain unweighted.
+
+The second variant changes only backbone initialization. Before the usual
+head and full-backbone stages, it trains the ImageNet-initialized backbone for
+eight epochs with a temporary 128-dimensional contrastive projection head,
+which is then discarded. Only training labels construct pairs: images from
+the same video or with values within 0.25 training IQR are positives,
+including close-valued different lab events from the same patient; values
+at least 0.75 IQR apart are negatives. Intermediate-distance pairs are
+excluded. The NT-Xent temperature is 0.20. Contrastive batches contain
+12 anchor videos, 12 close-valued partners, two source frames/video and two
+different randomly sampled views/frame (96 images). AdamW uses backbone
+LR `1e-4`, projection-head LR `3e-4`, weight decay `1e-4`, and cosine decay
+to `1e-6`. This is label-aware contrastive pretraining, not unsupervised
+SimCLR; no validation or test labels are used in pretraining.
+
+The variants run sequentially with dynamic four-GPU task scheduling. Each
+produces normal per-target figures and paired comparisons with the control;
+the final three-way figures and metrics are in
+`outputs/ablations/patient_diverse_density_simclr_comparison/`. Detailed
+train-bin weights, contrastive pairing audits, pretraining histories and
+encoder checkpoints remain in the individual variant directories.
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_density_simclr_screen.sh
+```

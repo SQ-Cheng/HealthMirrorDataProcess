@@ -1,0 +1,49 @@
+\begin{tikzpicture}[
+    x=1cm,y=1cm,>=Latex,
+    every node/.style={font=\scriptsize,align=center},
+    source/.style={draw=diagramSource,fill=diagramSourceBg,rounded corners=1pt,minimum height=0.67cm,text width=1.8cm},
+    encoder/.style={draw=diagramEncoder,fill=diagramEncoderBg,rounded corners=1pt,minimum height=0.67cm,text width=2.55cm},
+    head/.style={draw=diagramHead,fill=diagramHeadBg,rounded corners=1pt,minimum height=0.67cm,text width=2.45cm},
+    op/.style={draw=diagramOp,fill=diagramOpBg,rounded corners=1pt,minimum height=0.67cm,text width=2.0cm},
+    flow/.style={-{Latex[length=1.7mm]},draw=diagramFlow,line width=0.65pt}
+]
+\node[anchor=west,font=\bfseries\scriptsize] at (0,4.65) {Face only};
+\node[source] (face) at (1.1,4.0) {RGB face\\$3\times224\times224$};
+\node[encoder] (faceenc) at (4.45,4.0) {ImageNet EfficientNet-B0\\global average pool: 1280};
+\node[head] (facehead) at (8.45,4.0) {FC $1280\to32\to1$\\LN, SiLU, dropout};
+\node at (11.45,4.0) {$\hat y_{\rm face}$};
+\draw[flow] (face) -- (faceenc);
+\draw[flow] (faceenc) -- (facehead);
+\draw[flow] (facehead) -- (11.05,4.0);
+
+\node[anchor=west,font=\bfseries\scriptsize] at (0,3.12) {History only};
+\node[source] (hist) at (1.1,2.45) {Prior events\\$(v_j,\Delta t_j)$};
+\node[encoder] (histenc) at (4.45,2.45) {Per-event MLP $2\to16\to16$\\masked mean: 16};
+\node[head] (histhead) at (8.45,2.45) {FC $16\to32\to1$\\LN, SiLU, dropout};
+\node at (11.45,2.45) {$\hat y_{\rm hist}$};
+\draw[flow] (hist) -- (histenc);
+\draw[flow] (histenc) -- (histhead);
+\draw[flow] (histhead) -- (11.05,2.45);
+
+\node[anchor=west,font=\bfseries\scriptsize] at (0,1.57) {Face + history};
+\node[source] (fuseface) at (1.1,0.93) {RGB face};
+\node[source] (fusehist) at (1.1,-0.12) {Prior events};
+\node[encoder] (fuseenc) at (4.45,0.93) {EfficientNet-B0\\1280 features};
+\node[encoder] (fusemlp) at (4.45,-0.12) {Event MLP + masked mean\\16 features};
+\node[op] (concat) at (7.62,0.40) {Concatenate\\$1280+16=1296$};
+\node[head] (fusehead) at (10.67,0.40) {FC $1296\to32\to1$\\LN, SiLU, dropout};
+\draw[flow] (fuseface) -- (fuseenc);
+\draw[flow] (fusehist) -- (fusemlp);
+\draw[flow] (fuseenc) -- (concat);
+\draw[flow] (fusemlp) -- (concat);
+\draw[flow] (concat) -- (fusehead);
+
+\node[anchor=west,font=\bfseries\scriptsize] at (0,-1.02) {Video comparator};
+\node[source] (clip) at (1.1,-1.73) {RGB clip\\$3\times16\times112\times112$};
+\node[encoder] (r3d) at (4.45,-1.73) {Kinetics R3D-18\\pooled feature: 512};
+\node[head] (videohead) at (8.45,-1.73) {FC $512\to32\to1$\\LN, SiLU, dropout};
+\node at (11.45,-1.73) {$\hat y_{\rm video}$};
+\draw[flow] (clip) -- (r3d);
+\draw[flow] (r3d) -- (videohead);
+\draw[flow] (videohead) -- (11.05,-1.73);
+\end{tikzpicture}
