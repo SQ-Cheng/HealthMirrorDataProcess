@@ -8,7 +8,6 @@ import torch
 from torch import nn
 
 from . import train
-from .run_patient_diverse_schedule_warmup_ablation import WARMUP_CONFIG
 
 
 class WarmupScheduleTest(unittest.TestCase):
@@ -44,15 +43,6 @@ class WarmupScheduleTest(unittest.TestCase):
             (0.5, 1.0, 1.0, 0.75, 0.25),
         ):
             self.assertAlmostEqual(actual, expected)
-
-    def test_resolved_ablation_keeps_original_cosine_lengths(self):
-        self.assertEqual(WARMUP_CONFIG["head_max_epochs"], 32)
-        self.assertEqual(WARMUP_CONFIG["finetune_max_epochs"], 42)
-        self.assertEqual(WARMUP_CONFIG["head_warmup_epochs"], 2)
-        self.assertEqual(WARMUP_CONFIG["finetune_warmup_epochs"], 2)
-        self.assertEqual(WARMUP_CONFIG["head_learning_rate"], 1e-4)
-        self.assertEqual(WARMUP_CONFIG["finetune_learning_rate"], 3e-6)
-        self.assertEqual(WARMUP_CONFIG["finetune_min_learning_rate"], 1e-7)
 
 
 if __name__ == "__main__":

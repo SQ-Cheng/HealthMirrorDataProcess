@@ -2,9 +2,8 @@
 
 ## Native 224 Face Videos
 
-Exp2, Exp6 and Exp8 default to validated lossless `face224.mkv` crops when the
-raw-data production protocol exists. Explicit legacy reproduction remains
-available with `HEALTHMIRROR_FACE_SOURCE=legacy128`.
+Migrated face-only Exp2 and Exp6 regression accept native `face224.mkv` only.
+Legacy reproduction remains only for protected studies with no native-224 main.
 See [FACE224_PROTOCOL.md](FACE224_PROTOCOL.md) for decoding, exclusions, cache
 compatibility, retained splits, and the automatic screen rerun queue.
 

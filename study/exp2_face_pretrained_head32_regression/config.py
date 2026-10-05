@@ -3,7 +3,6 @@
 import os
 
 from study.exp2_lab_multimodal.config import DATA_ROOT, SEED
-from study.common.face_video import face_source_mode
 from study.exp2_face_history_head32_regression.config import (
     SCORE_DEFINITIONS,
     TARGETS,
@@ -16,8 +15,8 @@ WEIGHTS_DIR = os.path.abspath(
 )
 OUTPUT_ROOT = os.path.join(EXP_DIR, "outputs")
 OUTPUT_DIRS = {
-    "20frame": os.path.join(OUTPUT_ROOT, "20frame"),
-    "allframes": os.path.join(OUTPUT_ROOT, "allframes"),
+    "20frame": os.path.join(OUTPUT_ROOT, "20frame_face224"),
+    "allframes": os.path.join(OUTPUT_ROOT, "allframes_face224"),
 }
 OUTPUT_DIR = OUTPUT_DIRS["20frame"]
 LOG_DIR = os.path.join(EXP_DIR, "logs")
@@ -42,7 +41,7 @@ HEAD_HIDDEN_FEATURES = 32
 TORCH_COMPILE_ENABLED = True
 TORCH_COMPILE_MODE = "reduce-overhead"
 
-SOURCE_IMAGE_SIZE = 224 if face_source_mode() == "face224" else 128
+SOURCE_IMAGE_SIZE = 224
 FRAMES_PER_VIDEO = 20
 FRAME_QUANTILES = tuple(0.05 + 0.90 * index / 19 for index in range(20))
 MIN_SOURCE_FRAME_GAP = 2

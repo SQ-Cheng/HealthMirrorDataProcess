@@ -365,6 +365,8 @@ def train_task(
     finetune_min_learning_rate=MIN_LEARNING_RATE,
     head_patience=HEAD_PATIENCE, finetune_patience=FINETUNE_PATIENCE,
 ):
+    if set(frame_index.video_formats) != {"ffv1"}:
+        raise ValueError("Exp6 regression requires native 224 FFV1 inputs")
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     seed_everything(seed)

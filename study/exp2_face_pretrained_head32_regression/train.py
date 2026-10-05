@@ -110,6 +110,8 @@ def _sha256(path):
 
 
 def _loader(frame_index, records, views, architecture, shuffle, train_batch_policy="chunked"):
+    if set(frame_index.video_formats) != {"ffv1"}:
+        raise ValueError("Face-only Exp2 requires the native 224 FFV1 index; 128 inputs are retired")
     interpolation = (
         "bicubic"
         if architecture in ("efficientnet_b0", "shufflenet_v2_x1_0")

@@ -15,7 +15,7 @@ from study.common.plot_layout import target_grid_figsize, target_grid_shape
 from .plot_results import TASKS, TASK_LABELS, TASK_UNITS, _style
 
 
-DEFAULT_OUTPUT = Path(__file__).resolve().parent / "outputs/ablations/lab_match_6h"
+DEFAULT_OUTPUT = Path(__file__).resolve().parent / "outputs/ablations/lab_match_6h_face224"
 
 
 def plot(output_dir):

@@ -17,16 +17,19 @@ EXP_DIR = Path(__file__).resolve().parent
 analysis.EXP_DIR = EXP_DIR
 analysis.OUTPUT_ROOT = EXP_DIR / "outputs"
 analysis.VARIANTS = {
-    "20frame": "20 frames",
-    "allframes": "All frames",
+    "20frame_face224": "Native 224 / 20 frames",
 }
 analysis.TARGETS = {
     "hemoglobin_low": "Hemoglobin",
-    "po2_low": "PO2",
     "lactate_high": "Lactate",
     "oxyhemoglobin_fraction": "Oxyhemoglobin fraction",
+    "urea_high": "Urea",
+    "total_bilirubin_high": "Total bilirubin",
+    "platelet_count_low": "Platelet count",
+    "aa_po2_ratio_low": "A/a PO2 ratio",
+    "creatinine_high": "Creatinine",
 }
-analysis.COLORS = {"20 frames": "#4C78A8", "All frames": "#E15759"}
+analysis.COLORS = {"Native 224 / 20 frames": "#4C78A8"}
 analysis.FIGURE_TITLE = "Face-only regression: video-level test goodness of fit"
 
 

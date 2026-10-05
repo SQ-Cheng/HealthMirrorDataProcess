@@ -5,9 +5,12 @@ from pathlib import Path
 
 EXP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EXP_DIR.parents[1]
+# Clinical reference paths are also imported by the protected 128-only
+# direction-classification experiment. Native regression uses the shared queue.
 OUTPUT_DIR = EXP_DIR / "outputs"
-from study.common.face_video import face_source_mode
-CACHE_DIR = EXP_DIR / "cache" / ("frames20_face224" if face_source_mode() == "face224" else "frames20")
+CACHE_DIR = EXP_DIR / "cache/frames20"
+NATIVE_OUTPUT_DIR = OUTPUT_DIR / "face224"
+NATIVE_CACHE_DIR = EXP_DIR.parent / "common/cache/face224_20frame"
 LOG_DIR = EXP_DIR / "logs"
 WEIGHTS_DIR = REPO_ROOT / "study/common/pretrained_weights"
 PRETRAINED_WEIGHT_FILE = "efficientnet_b0_rwightman-7f5810bc.pth"
@@ -48,7 +51,7 @@ TARGET_UNITS = {
 }
 
 FRAMES_PER_VIDEO = 20
-SOURCE_IMAGE_SIZE = 224 if face_source_mode() == "face224" else 128
+SOURCE_IMAGE_SIZE = 224
 IMAGE_SIZE = 224
 VIEWS = ("original", "hflip", "center_crop", "brightness", "contrast")
 VIEWS_3 = ("original", "hflip", "center_crop")

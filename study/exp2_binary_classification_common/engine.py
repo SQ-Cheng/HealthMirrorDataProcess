@@ -453,12 +453,20 @@ def train_task(
     torch.cuda.set_device(device_id)
     torch.set_num_threads(4)
     device = torch.device(f"cuda:{device_id}")
-    output_dir = Path(output_dir) if output_dir is not None else EXPERIMENT_DIRS[modality] / "outputs"
+    output_dir = Path(output_dir) if output_dir is not None else EXPERIMENT_DIRS[modality] / ("outputs/face224" if modality == "face_only" else "outputs")
     run_dir = output_dir / "runs" / (
         Path("efficientnet_b0") / target if modality != "history_only" else Path(target)
     )
     run_dir.mkdir(parents=True, exist_ok=True)
-    records, history_store = load_task(target)
+    if modality == "face_only":
+        reference = ROOT / "study/exp2_face_pretrained_head32_regression/outputs/20frame_face224"
+        source_records_path = reference / f"task_records/{target}.csv"
+        records = pd.read_csv(reference / f"task_records/{target}.csv",
+                              dtype={"hospital_id": str, "video_id": str})
+        history_store = None
+    else:
+        records, history_store = load_task(target)
+        source_records_path = (PREPARED_DIR if target == "total_bilirubin_high" else REFERENCE_DIR) / f"task_records/{target}.csv"
     source_subset = False
     if records_path is not None:
         folded = pd.read_csv(
@@ -585,14 +593,8 @@ def train_task(
     (run_dir / "run_manifest.json").write_text(json.dumps({
         "schema_version": 1, "task_type": "true_binary_classification",
         "modality": modality, "target": target, "seed": seed,
-        "reference_records": str(records_path) if records_path is not None else str(
-            (PREPARED_DIR if target == "total_bilirubin_high" else REFERENCE_DIR)
-            / "task_records" / f"{target}.csv"
-        ),
-        "source_records": str(
-            (PREPARED_DIR if target == "total_bilirubin_high" else REFERENCE_DIR)
-            / "task_records" / f"{target}.csv"
-        ),
+        "reference_records": str(records_path or source_records_path),
+        "source_records": str(source_records_path),
         "time_alignment_contract": str(PREPARED_DIR / "time_alignment_contract.json"),
         "split_policy": (
             "patient-disjoint matching-window split on a strict source subset"

@@ -3,6 +3,7 @@
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import fcntl
+import hashlib
 import json
 import multiprocessing as mp
 import os
@@ -25,7 +26,6 @@ from study.exp2_face_pretrained_head32_regression.scaling import RobustTargetSca
 from .rerun_face224 import INDEX_DIR, STATE as FIRST_QUEUE, sha256
 from .selected_5fold_splits import FOLDS, TARGETS, prepare_splits
 from .selected_5fold_plots import plot_cv, plot_fold_classification, plot_split_distributions
-from .run_selected_5fold import _job_seed
 
 
 STUDY = Path(__file__).resolve().parents[1]
@@ -41,6 +41,11 @@ OUTPUTS = {
     "classification_standard": CLASS / "outputs/ablations/lab_match_12h_face224/5fold",
 }
 _GPU = _INDEX = None
+
+
+def _job_seed(target, fold):
+    token = f"{config.SEED}:efficientnet_b0:{target}:fold{fold}".encode()
+    return int.from_bytes(hashlib.sha256(token).digest()[:4], "little") % (2**31 - 1)
 
 
 def schedule_for(protocol):
@@ -60,10 +65,10 @@ def schedule_for(protocol):
 
 
 def load_source(target):
-    from study.exp2_binary_classification_common.engine import load_task
     path = SOURCE / f"task_records/{target}.csv"
     records = pd.read_csv(path, dtype={"hospital_id": str, "video_id": str})
-    original, _ = load_task(target)
+    original = pd.read_csv(REG / f"outputs/20frame_face224/task_records/{target}.csv",
+                           dtype={"hospital_id": str, "video_id": str})
     if records.video_id.duplicated().any() or not np.isfinite(records[["raw_value", "abnormal_score", "match_delta_h"]]).all().all():
         raise ValueError(f"Invalid 12h source records: {target}")
     if records.match_delta_h.lt(0).any() or records.match_delta_h.gt(12 + 1e-9).any():

@@ -1,160 +1,45 @@
-# Exp6: paired-face laboratory delta regression
+# Native-224 Paired-Face Laboratory Change Regression
 
-## Native 224 Inputs
+Nine independent models predict the difference between two distinct matched
+laboratory measurements of the same patient: oxyhemoglobin fraction, lactate,
+urea, troponin, platelet count, hemoglobin, A/a PO2 ratio, creatinine and total bilirubin.
 
-Both faces now default to validated lossless `face224.mkv` crops when the raw
-production protocol exists. Saved clinical pairs still use their original
-session/lab times, not the duration of the filtered crop. Explicit
-`HEALTHMIRROR_FACE_SOURCE=legacy128` retains the previous input workflow.
-See [the shared native-224 rerun protocol](../common/FACE224_PROTOCOL.md)
-for separate outputs and legacy/common-test comparisons.
+The two faces share an ImageNet-pretrained EfficientNet-B0 encoder. The head
+combines feature differences and has 32 hidden features. Twenty selected frames
+per video form paired inputs, expanded to the same five synchronized views:
+original, flip, center crop, brightness and contrast. Evaluation averages the
+twenty original-view pair predictions.
 
-This experiment predicts the change between two laboratory measurements from
-two chronologically corresponding face videos.
+Clinical pairing, canonical timestamps, original capture intervals, patient
+splits and nearest-assay labels remain fixed. Target differences are robust-scaled
+using training rows only. Training uses SmoothL1(beta=0.5), AdamW (wd=1e-4),
+head lr=2e-4 / 40 epochs / patience 10, then full-backbone fine-tuning
+lr=1e-5 / 60 epochs / patience 12, cosine floor=1e-6.
 
-## Main-run timing audit
+## Current Outputs
 
-Run `python -m study.exp6_face_pair_lab_delta.analyze_pair_timing` to inspect
-the completed 24-hour **main** experiment without retraining. Its results are
-in `outputs/timing_analysis/`: a per-pair audit, summaries by analyte and
-split, a de-duplicated physical-video-pair table, cross-hospitalization pairs,
-and 3-by-3 ECDF figures. Video intervals use session midpoints; laboratory
-intervals use matched measurement timestamps. Each face/lab matching distance
-is the shortest distance to the video session interval, not to its midpoint.
-The pooled task-pair count repeats physical video pairs across analytes.
+- Main 24h: `outputs/face224/`.
+- Windows: `outputs/ablations/lab_match_6h_face224/` and
+  `outputs/ablations/lab_match_12h_face224/`.
+- Matching-window comparisons use the native-224 main, not deleted 128 results.
 
-## Matching-window ablations
-
-The `lab_match_12h` and `lab_match_6h` variants retain the original 24-hour
-experiment's saved source snapshot and frame index. They filter each
-video/laboratory match to the shorter window **before** selecting the closest
-video for each laboratory event and rebuilding consecutive-event face pairs.
-Each variant independently reruns the 512-candidate patient-disjoint split
-search and fits its raw-delta scaler on train only. The nine targets, shared
-EfficientNet-B0, 20 frames per video, five synchronized views, loss, learning
-rates, stage lengths, per-target seed, and test protocol are unchanged.
-
-Results and checkpoints are isolated under
-`outputs/ablations/lab_match_12h/` and `outputs/ablations/lab_match_6h/`.
-After training, each receives the usual result figures plus full-cohort and
-common-held-out-pair comparisons to the 24-hour baseline. The former compares
-different test cohorts and is descriptive; the latter compares identical pair
-IDs, video IDs, and delta labels. A single detached four-GPU screen runs the
-12-hour variant followed by the 6-hour variant:
+Each run saves model.pt, histories, metrics and pair_predictions.csv.
+Figures are produced automatically.
 
 ```bash
-bash study/exp6_face_pair_lab_delta/launch_match_windows_screen.sh
+bash study/common/launch_face224_reruns_screen.sh
+# A single prepared protocol:
+bash study/exp6_face_pair_lab_delta/launch_screen.sh --hours 24
 ```
 
-The continuous log is `logs/ablations/match_windows/run.log`.
+The queue validates saved input hashes, skips complete protocols, and validates
+individually completed tasks before reusing them. Native regression rejects 128
+inputs. Previous 128 regression models, ablations and their launchers are removed.
 
-## Model
+## Protected 128-Only Classification Inputs
 
-- One independent model per laboratory target.
-- Shared ImageNet-pretrained EfficientNet-B0 encoder for both faces.
-- The 1,280-dimensional feature difference (`second - first`) is passed to a
-  32-dimensional `Linear + LayerNorm + SiLU + Dropout + Linear` head.
-- Stage 1 freezes the encoder and trains the head at `2e-4`.
-- Stage 2 unfreezes the full encoder and fine-tunes all parameters at `1e-5`.
-
-## Data
-
-- Targets: O2Hb fraction, lactate, urea, troponin, platelet count,
-  hemoglobin, A/a PO2 ratio, creatinine, and total bilirubin.
-- Each raw video is assigned its nearest laboratory event within 24 hours. If
-  multiple videos map to one event, only the closest video is retained.
-- Consecutive same-patient events form an ordered pair when both lab and video
-  timestamps increase and the videos differ.
-- Label: canonical second value minus canonical first value.
-- Twenty deterministic nonadjacent frames are streamed from each video.
-- Training expands every frame pair into original, horizontal flip, center
-  crop, brightness, and contrast views. The same view is applied to both sides.
-- Split is patient-disjoint. Among 512 candidates, the closest train/validation/
-  test delta distributions are selected. Delta robust scaling uses train only.
-
-## Run
-
-```bash
-screen -dmS exp6_pair_delta bash -lc \
-  'cd /root/autodl-tmp/HealthMirrorDataProcess && \
-   bash study/exp6_face_pair_lab_delta/launch_screen.sh \
-   2>&1 | tee study/exp6_face_pair_lab_delta/logs/run.log'
-```
-
-The launcher dynamically schedules one task on each of four GPUs and assigns a
-new task whenever a GPU finishes. Figures are generated automatically after all
-tasks complete.
-
-## Patient-diverse 30/40 ablation
-
-`shared_patient_diverse_30_40` keeps the same nine pair records, patient split,
-target scalers, frame index, shared pretrained backbone, 20 frame pairs, five
-synchronized views, patient-weighted loss, and validation/test protocol as the
-main experiment. Relative to the main run, each 24-source-pair training batch
-mixes up to 12 patients (two frame pairs per patient); every source frame pair
-is still used once per epoch. The head runs for at most 30 epochs at `1e-4`
-with patience 8 and a `1e-6` cosine floor. Full-backbone fine-tuning runs for
-at most 40 epochs at `3e-6` with patience 8 and a `1e-7` floor. This matches
-the controlled changes in Exp2 `patient_diverse_schedule_30_40`.
-
-Launch with `bash study/exp6_face_pair_lab_delta/launch_patient_diverse_30_40_screen.sh`.
-The script starts a detached four-GPU screen session. All outputs go to
-`outputs/shared_patient_diverse_30_40/`; at completion it writes the standard
-figures, per-task baseline comparisons, and `baseline_comparison.csv` without
-changing the main experiment outputs.
-
-## Schedule-only 30/40 ablation
-
-`shared_schedule_30_40` applies the same head/fine-tune learning rates, cosine
-floors, epoch limits, and patience as `shared_patient_diverse_30_40`, but keeps
-the main experiment's `chunk` sampler. A full source batch consists of 24
-paired frame rows from two consecutive shuffled laboratory-event pairs: 20
-rows from one pair and 4 from the next, or the corresponding residual split.
-Each source row expands to five synchronized face-pair views on the GPU, giving
-120 model examples (240 face images) per full batch. There is no patient
-diversity constraint; the two event pairs may belong to one or two patients.
-
-Launch with `bash study/exp6_face_pair_lab_delta/launch_schedule_30_40_screen.sh`.
-Its separate `outputs/shared_schedule_30_40/` directory receives checkpoints,
-histories, predictions, standard figures, and comparisons with both the main
-experiment and patient-diverse 30/40 variant.
-
-## Three-view shared-backbone variant
-
-`shared_views3` reuses the existing prepared pairs, patient splits, train-only
-scalers, frame index, shared EfficientNet-B0 model, and two-stage training
-schedule. It applies only original, horizontal-flip, and center-crop views to
-both faces in each training pair. Validation and test still use original frames.
-Results, checkpoints, histories, predictions, and the three standard figures
-are written under `outputs/shared_views3/`; the existing outputs are untouched.
-
-Launch it in screen with:
-
-```bash
-screen -L \
-  -Logfile /root/autodl-tmp/HealthMirrorDataProcess/study/exp6_face_pair_lab_delta/logs/shared_views3.log \
-  -dmS exp6_shared_views3 bash -lc \
-  'cd /root/autodl-tmp/HealthMirrorDataProcess && \
-   CUDA_VISIBLE_DEVICES=0,1,2,3 MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 \
-   exec bash study/exp6_face_pair_lab_delta/launch_views3_screen.sh'
-```
-
-## Independent-backbone variant
-
-The controlled variant keeps the same prepared pairs, patient splits, target
-scalers, frames, synchronized views, feature-difference fusion, and 32-unit
-head. It replaces the shared encoder with two independently parameterized
-EfficientNet-B0 encoders. Both start from the same ImageNet checkpoint; the
-early-face and late-face parameters can diverge during full fine-tuning.
-
-Results are stored separately under `outputs/independent_backbones/` and do not
-overwrite the shared-backbone results. Launch it with:
-
-```bash
-screen -L \
-  -Logfile /root/autodl-tmp/HealthMirrorDataProcess/study/exp6_face_pair_lab_delta/logs/independent_backbones.log \
-  -dmS exp6_independent_backbones bash -lc \
-  'cd /root/autodl-tmp/HealthMirrorDataProcess && \
-   CUDA_VISIBLE_DEVICES=0,1,2,3 MKL_THREADING_LAYER=GNU PYTHONUNBUFFERED=1 \
-   exec bash study/exp6_face_pair_lab_delta/launch_independent_backbones_screen.sh'
-```
+Root `outputs/task_records/`, scalers, run_index, source_data and the nine
+root `runs/*/pair_predictions.csv` files are immutable clinical reference inputs
+for the separate, protected 128-only direction-classification experiment.
+Root `cache/frames20/` is its required shared index. No old regression model
+weights or rendered frame caches remain in these reference locations.

@@ -313,13 +313,14 @@ def main():
         help="Train only --targets and preserve completed targets in this output.",
     )
     args = parser.parse_args()
+    if face_source_mode() != "face224":
+        parser.error("This experiment accepts native face224 videos only")
     if not 0 < args.match_max_delta_hours <= LAB_MATCH_MAX_DELTA_HOURS:
         parser.error("--match-max-delta-hours must be in (0, 24]")
     args.output_dir = args.output_dir or OUTPUT_DIRS[args.frame_policy]
     args.source_dir = args.source_dir or os.path.join(args.output_dir, "source_data")
     args.index_dir = args.index_dir or (
-        (str(Path(__file__).resolve().parents[1] / "common/cache/face224_20frame")
-         if face_source_mode() == "face224" else REFERENCE_INDEX_DIR)
+        str(Path(__file__).resolve().parents[1] / "common/cache/face224_20frame")
         if args.frame_policy == "20frame"
         else os.path.join(args.output_dir, "frame_index")
     )
@@ -597,7 +598,7 @@ def main():
         },
         "preprocessing": {
             "face_source": face_source_mode(),
-            "source_image_size": 224 if face_source_mode() == "face224" else 128,
+            "source_image_size": 224,
             "frame_policy": (
                 (
                     f"{FRAMES_PER_VIDEO} deterministic non-adjacent RGB "

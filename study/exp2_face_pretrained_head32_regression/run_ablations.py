@@ -1,4 +1,4 @@
-"""Run the three face-only regression ablations sequentially on four GPUs."""
+"""Reusable native ablation engine and immutable clinical reference for Exp3."""
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import hashlib
@@ -29,11 +29,6 @@ from .train import train_task
 EXP_DIR = Path(__file__).resolve().parent
 BASE_DIR = EXP_DIR / "outputs/20frame"
 ABLATION_DIR = EXP_DIR / "outputs/ablations"
-VARIANTS = (
-    ("one_stage_full", "efficientnet_b0", "one_stage_full"),
-    ("two_stage_tail30", "efficientnet_b0", "two_stage_tail30"),
-    ("shufflenet_two_stage", "shufflenet_v2_x1_0", "two_stage_full"),
-)
 _FRAME_INDEX = None
 _GPU_ID = None
 
@@ -317,17 +312,3 @@ def _run_variant(name, architecture, protocol, records_paths, scalers,
     plot_results(output_dir)
     (output_dir / "COMPLETE").write_text("ok\n", encoding="ascii")
     print(f"[variant-complete] name={name} output={output_dir}", flush=True)
-
-
-def main():
-    records_paths, scalers, index_path, source_hashes = _prepare_sources()
-    for name, architecture, protocol in VARIANTS:
-        _run_variant(name, architecture, protocol, records_paths, scalers,
-                     index_path, source_hashes)
-    from .plot_ablation_comparison import plot_comparison
-    plot_comparison(BASE_DIR, ABLATION_DIR, VARIANTS)
-    print("[all-ablations-complete]", flush=True)
-
-
-if __name__ == "__main__":
-    main()
