@@ -61,6 +61,17 @@ Every successful experiment automatically generates validated result figures.
 bash study/exp2_face_pretrained_head32_regression/launch_screen.sh 20frame
 ```
 
+To rerun the controlled all-frame variants, use
+`bash study/exp2_face_pretrained_head32_regression/launch_allframes_aligned_screen.sh`.
+The detached screen runs 24 h, 12 h, then 6 h sequentially on four GPUs. Each
+variant reuses its completed 20-frame counterpart's matched source data and
+exact target-specific videos, labels, and patient split; only the frame policy
+changes. The 24 h result replaces `outputs/allframes/`, while the shorter
+windows go to `outputs/ablations/lab_match_{12,6}h_allframes/`. All three share
+the compact all-frame offset index in `cache/allframes_index/`, not decoded
+frame files. Logs are under `logs/allframes_aligned/`, and each completed
+variant writes standalone figures and a paired 20-frame test comparison.
+
 Newly configured targets can be appended with `--add-targets`; completed
 checkpoints and metrics are retained, while the compact byte-offset index is
 rebuilt only when the added target introduces previously unseen videos.
@@ -90,6 +101,14 @@ retraining and writes figures and tables to
 ## Training/backbone ablations
 
 ### 12-hour lab/video matching window
+
+The saved 24-, 12-, and 6-hour video/laboratory timing distributions can be
+audited without training via
+`python -m study.exp2_face_pretrained_head32_regression.analyze_match_window_timing`.
+The results under `outputs/match_window_timing/` include per-target and
+per-split quantiles, time-bin counts, direction relative to the video session,
+and 4-by-2 ECDF and stacked-bin figures. A video repeated across analytes is
+counted once per analyte; the summary also reports distinct physical videos.
 
 `launch_match_12h_screen.sh` repeats the baseline eight-target EfficientNet-B0
 regression experiment with only the maximum lab-to-video-interval distance

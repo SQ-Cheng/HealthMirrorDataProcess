@@ -3,6 +3,42 @@
 This experiment predicts the change between two laboratory measurements from
 two chronologically corresponding face videos.
 
+## Main-run timing audit
+
+Run `python -m study.exp6_face_pair_lab_delta.analyze_pair_timing` to inspect
+the completed 24-hour **main** experiment without retraining. Its results are
+in `outputs/timing_analysis/`: a per-pair audit, summaries by analyte and
+split, a de-duplicated physical-video-pair table, cross-hospitalization pairs,
+and 3-by-3 ECDF figures. Video intervals use session midpoints; laboratory
+intervals use matched measurement timestamps. Each face/lab matching distance
+is the shortest distance to the video session interval, not to its midpoint.
+The pooled task-pair count repeats physical video pairs across analytes.
+
+## Matching-window ablations
+
+The `lab_match_12h` and `lab_match_6h` variants retain the original 24-hour
+experiment's saved source snapshot and frame index. They filter each
+video/laboratory match to the shorter window **before** selecting the closest
+video for each laboratory event and rebuilding consecutive-event face pairs.
+Each variant independently reruns the 512-candidate patient-disjoint split
+search and fits its raw-delta scaler on train only. The nine targets, shared
+EfficientNet-B0, 20 frames per video, five synchronized views, loss, learning
+rates, stage lengths, per-target seed, and test protocol are unchanged.
+
+Results and checkpoints are isolated under
+`outputs/ablations/lab_match_12h/` and `outputs/ablations/lab_match_6h/`.
+After training, each receives the usual result figures plus full-cohort and
+common-held-out-pair comparisons to the 24-hour baseline. The former compares
+different test cohorts and is descriptive; the latter compares identical pair
+IDs, video IDs, and delta labels. A single detached four-GPU screen runs the
+12-hour variant followed by the 6-hour variant:
+
+```bash
+bash study/exp6_face_pair_lab_delta/launch_match_windows_screen.sh
+```
+
+The continuous log is `logs/ablations/match_windows/run.log`.
+
 ## Model
 
 - One independent model per laboratory target.

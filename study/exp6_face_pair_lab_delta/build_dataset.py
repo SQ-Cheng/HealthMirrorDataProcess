@@ -48,7 +48,7 @@ def _interval_distance(timestamp, start, end):
     return 0.0
 
 
-def _pair_target(base, target):
+def _pair_target(base, target, max_match_delta_hours=None):
     analyte = TARGET_ANALYTES[target]
     value_column = f"{analyte}_value"
     time_column = f"{analyte}_lab_time_unix"
@@ -57,6 +57,10 @@ def _pair_target(base, target):
         pd.to_numeric(base[value_column], errors="coerce").notna()
         & pd.to_numeric(base[time_column], errors="coerce").notna()
     ].copy()
+    if max_match_delta_hours is not None:
+        events = events.loc[
+            pd.to_numeric(events[delta_column], errors="coerce").le(max_match_delta_hours)
+        ].copy()
     events["lab_value"] = pd.to_numeric(events[value_column], errors="raise")
     events["lab_time_unix"] = pd.to_numeric(events[time_column], errors="raise")
     events["match_delta_h"] = pd.to_numeric(events[delta_column], errors="raise")

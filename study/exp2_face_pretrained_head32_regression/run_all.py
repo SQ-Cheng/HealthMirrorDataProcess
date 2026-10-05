@@ -254,6 +254,14 @@ def _validate_reference_task_records(task_records, reference_output_dir):
             atol=1e-14,
         ):
             raise AssertionError(f"Raw values differ from reference for {target}")
+        for column in ("match_delta_h", "match_signed_delta_h"):
+            if not np.allclose(
+                current[column].to_numpy(np.float64),
+                reference[column].to_numpy(np.float64),
+                rtol=0.0,
+                atol=1e-10,
+            ):
+                raise AssertionError(f"{column} differs from reference for {target}")
         print(
             f"[data-match] target={target} videos={len(current)} "
             "samples_labels_raw_values_and_split=exact",
@@ -276,6 +284,14 @@ def main():
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--index-dir", default=None)
     parser.add_argument("--reference-output-dir", default=None)
+    parser.add_argument(
+        "--reuse-source-data", action="store_true",
+        help="Validate and reuse existing matched source CSVs without rebuilding them.",
+    )
+    parser.add_argument(
+        "--match-reference-samples", action="store_true",
+        help="Keep exactly the reference videos for each target before indexing.",
+    )
     parser.add_argument("--architectures", default=",".join(ARCHITECTURES))
     parser.add_argument("--targets", default=None)
     parser.add_argument("--seed", type=int, default=SEED)
@@ -321,6 +337,12 @@ def main():
         )
     if args.overwrite and args.add_targets:
         raise ValueError("--overwrite and --add-targets are mutually exclusive")
+    if args.match_reference_samples and not args.reference_output_dir:
+        raise ValueError("--match-reference-samples requires --reference-output-dir")
+    if args.reuse_source_data and os.path.commonpath(
+        (os.path.abspath(args.source_dir), os.path.abspath(args.output_dir))
+    ) == os.path.abspath(args.output_dir) and args.overwrite:
+        raise ValueError("Cannot reuse source data inside an output being overwritten")
     if args.smoke_test:
         args.head_epochs = args.finetune_epochs = 1
         args.head_patience = args.finetune_patience = 1
@@ -359,9 +381,10 @@ def main():
         shutil.rmtree(args.output_dir)
     os.makedirs(os.path.join(args.output_dir, "runs"), exist_ok=True)
     _set_seed(args.seed)
-    build_raw_video_source(
-        args.source_dir, preparation_targets, args.match_max_delta_hours
-    )
+    if not args.reuse_source_data:
+        build_raw_video_source(
+            args.source_dir, preparation_targets, args.match_max_delta_hours
+        )
     source_quality = validate_source_data(
         args.source_dir, args.match_max_delta_hours
     )
@@ -377,6 +400,18 @@ def main():
     _validate_time_alignment(
         base_manifest, preparation_targets, args.match_max_delta_hours
     )
+    if args.match_reference_samples:
+        for target in preparation_targets:
+            reference_path = os.path.join(
+                args.reference_output_dir, "task_records", f"{target}.csv"
+            )
+            reference = pd.read_csv(reference_path, dtype={"video_id": str})
+            if reference["video_id"].duplicated().any():
+                raise ValueError(f"Duplicate reference videos for {target}")
+            allowed = set(reference["video_id"])
+            base_manifest.loc[
+                ~base_manifest["video_id"].astype(str).isin(allowed), target
+            ] = np.nan
     candidate_mask = base_manifest[list(preparation_targets)].notna().any(axis=1)
     candidate_videos = base_manifest.loc[candidate_mask].drop_duplicates("video_id")
     frame_index = build_or_reuse_frame_index(
@@ -470,6 +505,8 @@ def main():
         "result_variant": args.frame_policy,
         "lab_match_max_delta_hours": args.match_max_delta_hours,
         "source_dir": os.path.abspath(args.source_dir),
+        "source_data_reused": args.reuse_source_data,
+        "reference_samples_matched": args.match_reference_samples,
         "source_data_quality_report": source_quality,
         "architectures": list(manifest_architectures),
         "targets": list(ready_targets),
