@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from study.common.face_video import face_source_mode
 
 
 HERE = Path(__file__).resolve().parent
@@ -17,12 +18,18 @@ RUN_SUFFIX = ("_hyperskin" if VARIANT == "hyperskin" else "") + (
 BASE = HERE.parent / "exp2_face_pretrained_head32_regression"
 BASE_OUTPUT = BASE / "outputs" / "20frame"
 INDEX_PATH = HERE.parent / "exp2_face_history_head32_regression" / "cache" / "20frame_index" / "frame_offsets.npz"
+if face_source_mode() == "face224":
+    BASE_OUTPUT = BASE / "outputs/20frame_face224"
+    INDEX_PATH = HERE.parent / "common/cache/face224_20frame/frame_offsets.npz"
+    RUN_SUFFIX += "_face224"
+BASE_OUTPUT = Path(os.environ.get("EXP8_BASE_OUTPUT", str(BASE_OUTPUT)))
+INDEX_PATH = Path(os.environ.get("EXP8_INDEX_PATH", str(INDEX_PATH)))
 WEIGHT_PATH = HERE.parent / "common" / "pretrained_weights" / (
     "mst_plus_plus_hyperskin_rgb_vis.pth" if VARIANT == "hyperskin"
     else "mst_plus_plus_ntire2022.pth"
 )
-CACHE = HERE / f"cache{RUN_SUFFIX}"
-OUTPUT = HERE / f"outputs{RUN_SUFFIX}"
+CACHE = Path(os.environ.get("EXP8_CACHE", str(HERE / f"cache{RUN_SUFFIX}")))
+OUTPUT = Path(os.environ.get("EXP8_OUTPUT", str(HERE / f"outputs{RUN_SUFFIX}")))
 
 TARGETS = ("hemoglobin_low", "total_bilirubin_high", "lactate_high")
 TARGET_LABELS = {
@@ -32,7 +39,7 @@ TARGET_LABELS = {
 }
 WAVELENGTH_NM = tuple(range(400, 701, 10))
 FEATURE_SHAPE = (31, GRID_SIZE, GRID_SIZE)
-SOURCE_IMAGE_SIZE = 128
+SOURCE_IMAGE_SIZE = 224 if face_source_mode() == "face224" else 128
 FRAMES_PER_VIDEO = 20
 SEED = 42
 

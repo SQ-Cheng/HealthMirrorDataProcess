@@ -18,7 +18,7 @@ from study.exp2_face_history_head32_regression.scaling import (
     fit_robust_target_scaler,
 )
 
-from .engine import PREPARED_DIR, REFERENCE_DIR
+from .engine import FRAME_INDEX_PATH, PREPARED_DIR, REFERENCE_DIR
 
 
 TARGET = "total_bilirubin_high"
@@ -75,10 +75,10 @@ def prepare():
         ignore_index=True,
     ).drop_duplicates("video_id").sort_values("video_id").reset_index(drop=True)
     frame_index = build_or_reuse_frame_index(
-        index_records, PREPARED_DIR / "20frame_index", "20frame"
+        index_records, FRAME_INDEX_PATH.parent, "20frame"
     )
     frame_manifest = json.loads(
-        (PREPARED_DIR / "20frame_index/index_manifest.json").read_text(
+        (FRAME_INDEX_PATH.parent / "index_manifest.json").read_text(
             encoding="utf-8"
         )
     )

@@ -281,7 +281,7 @@ def _prepare_images(images, view_codes, interpolation, device):
     )
     full_mask = ~crop_mask
     if full_mask.any():
-        output[full_mask] = functional.interpolate(
+        output[full_mask] = images[full_mask] if images.shape[-2:] == (IMAGE_SIZE, IMAGE_SIZE) else functional.interpolate(
             images[full_mask],
             size=(IMAGE_SIZE, IMAGE_SIZE),
             mode=interpolation,

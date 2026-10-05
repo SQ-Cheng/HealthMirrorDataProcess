@@ -48,8 +48,8 @@ def load_reconstructor(device):
 
 @torch.inference_mode()
 def reconstruct_features(model, images, device):
-    if images.ndim != 4 or tuple(images.shape[1:]) != (3, SOURCE_IMAGE_SIZE, SOURCE_IMAGE_SIZE):
-        raise ValueError(f"Expected RGB 128x128 batch, got {tuple(images.shape)}")
+    if (images.ndim != 4 or images.shape[1] != 3 or images.shape[-2:] not in ((128, 128), (224, 224))):
+        raise ValueError(f"Expected native RGB 128x128 or 224x224 batch, got {tuple(images.shape)}")
     rgb = images.to(device, non_blocking=True, dtype=torch.float32)
     minimum = rgb.amin(dim=(1, 2, 3), keepdim=True)
     maximum = rgb.amax(dim=(1, 2, 3), keepdim=True)
@@ -62,5 +62,7 @@ def reconstruct_features(model, images, device):
     if cube.shape[1] != FEATURE_SHAPE[0] or not torch.isfinite(cube).all():
         raise RuntimeError("MST++ returned invalid spectral estimates")
     # Keep a coarse spatial layout without persisting full spectral cubes.
-    central = cube.float().clamp(0, 1)[:, :, 16:112, 16:112]
+    height, width = cube.shape[-2:]
+    margin_h, margin_w = height // 8, width // 8
+    central = cube.float().clamp(0, 1)[:, :, margin_h:height - margin_h, margin_w:width - margin_w]
     return F.adaptive_avg_pool2d(central, FEATURE_SHAPE[1:]).cpu()

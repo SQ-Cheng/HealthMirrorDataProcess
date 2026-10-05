@@ -1,5 +1,10 @@
 # Exp2 Face + Prior Lab History Head32 Raw-Value Regression
 
+The shared face reader defaults to validated native 224 FFV1 crops when the
+production protocol exists. Legacy reproduction remains available through
+`HEALTHMIRROR_FACE_SOURCE=legacy128`; clinical history construction is unchanged.
+See [the native-224 protocol](../common/FACE224_PROTOCOL.md).
+
 This controlled experiment uses the retained 20-frame Head32 regression setup
 with prior measurements of the same analyte. It trains one independent
 EfficientNet-B0 model for each of: oxyhemoglobin fraction, lactate, urea,

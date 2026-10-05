@@ -3,6 +3,7 @@
 import os
 
 from study.exp2_lab_multimodal.config import DATA_ROOT, SEED
+from study.common.face_video import face_source_mode
 from study.exp2_face_history_head32_regression.config import (
     SCORE_DEFINITIONS,
     TARGETS,
@@ -41,7 +42,7 @@ HEAD_HIDDEN_FEATURES = 32
 TORCH_COMPILE_ENABLED = True
 TORCH_COMPILE_MODE = "reduce-overhead"
 
-SOURCE_IMAGE_SIZE = 128
+SOURCE_IMAGE_SIZE = 224 if face_source_mode() == "face224" else 128
 FRAMES_PER_VIDEO = 20
 FRAME_QUANTILES = tuple(0.05 + 0.90 * index / 19 for index in range(20))
 MIN_SOURCE_FRAME_GAP = 2

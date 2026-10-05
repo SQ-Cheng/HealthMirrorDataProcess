@@ -37,6 +37,7 @@ from study.exp2_face_pretrained_head32_regression import models as face_models
 from study.exp2_face_pretrained_head32_regression import train as face_train
 from study.exp2_history_only_head32_regression.data import HistoryOnlyDataset
 from study.exp2_history_only_head32_regression.models import HistoryOnlyRegressor
+from study.common.face_video import face_source_mode
 
 
 MODALITIES = ("face_history", "face_only", "history_only")
@@ -54,6 +55,8 @@ ROOT = Path(__file__).resolve().parents[2]
 REFERENCE_DIR = ROOT / "study/exp2_face_history_head32_regression/outputs/20frame"
 PREPARED_DIR = ROOT / "study/exp2_binary_classification_common/prepared"
 FRAME_INDEX_PATH = PREPARED_DIR / "20frame_index/frame_offsets.npz"
+if face_source_mode() == "face224":
+    FRAME_INDEX_PATH = ROOT / "study/common/cache/face224_20frame/frame_offsets.npz"
 WEIGHTS_DIR = ROOT / "study/common/pretrained_weights"
 EXPERIMENT_DIRS = {
     "face_history": ROOT / "study/exp2_face_history_head32_classification",
@@ -425,6 +428,7 @@ def train_task(
     train_batch_policy: str = "chunked",
     stage_config: dict | None = None,
     records_path: Path | None = None,
+    frame_index_path: Path | None = None,
 ):
     if modality not in MODALITIES:
         raise ValueError(modality)
@@ -482,7 +486,7 @@ def train_task(
         split: records[records.split.eq(split)].reset_index(drop=True)
         for split in ("train", "val", "test")
     }
-    frame_index = None if modality == "history_only" else FrameOffsetIndex.load(FRAME_INDEX_PATH)
+    frame_index = None if modality == "history_only" else FrameOffsetIndex.load(frame_index_path or FRAME_INDEX_PATH)
     datasets, loaders = {}, {}
     if modality == "history_only":
         datasets["train_augmented"], loaders["train_augmented"] = _history_loader(

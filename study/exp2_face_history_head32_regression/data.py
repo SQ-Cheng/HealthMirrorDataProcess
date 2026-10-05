@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 from scipy.stats import ks_2samp, wasserstein_distance
 from torch.utils.data import Dataset, Sampler
-from torchvision.io import ImageReadMode, decode_jpeg
+from study.common.face_video import decode_indexed_frame
 
 from .config import (
     DECODE_CACHE_FRAMES,
@@ -797,6 +797,7 @@ class AllFramesDataset(Dataset):
         self.frame_count = len(self.frame_indices)
         self._handles = OrderedDict()
         self._decoded_cache = OrderedDict()
+        self._ffv1_decoders = OrderedDict()
 
     def __len__(self):
         if self.expand_all_views:
@@ -811,6 +812,7 @@ class AllFramesDataset(Dataset):
         state = self.__dict__.copy()
         state["_handles"] = OrderedDict()
         state["_decoded_cache"] = OrderedDict()
+        state["_ffv1_decoders"] = OrderedDict()
         return state
 
     def _handle(self, path):
@@ -830,21 +832,14 @@ class AllFramesDataset(Dataset):
             return cached
         index_video = self.record_index_videos[video_row]
         path = str(self.index.video_paths[index_video])
-        start = int(self.index.starts[global_frame_index])
-        end = int(self.index.ends[global_frame_index])
         handle = self._handle(path)
-        handle.seek(start)
-        payload = handle.read(end - start)
         try:
-            encoded = torch.frombuffer(bytearray(payload), dtype=torch.uint8)
-            tensor = decode_jpeg(encoded, mode=ImageReadMode.RGB, device="cpu")
-            expected_shape = (3, SOURCE_IMAGE_SIZE, SOURCE_IMAGE_SIZE)
-            if tuple(tensor.shape) != expected_shape:
-                raise ValueError(f"unexpected decoded shape {tuple(tensor.shape)}")
+            tensor = decode_indexed_frame(self.index, index_video, global_frame_index,
+                                          handle, self._ffv1_decoders)
         except Exception as exc:
             raise RuntimeError(
                 f"Decode failed path={path} frame={global_frame_index} "
-                f"offsets={start}:{end}: {exc}"
+                f"codec={self.index.video_formats[index_video]}: {exc}"
             ) from exc
         self._decoded_cache[global_frame_index] = tensor
         while len(self._decoded_cache) > DECODE_CACHE_FRAMES:
@@ -880,6 +875,7 @@ class AllFramesDataset(Dataset):
             handle.close()
         self._handles.clear()
         self._decoded_cache.clear()
+        self._ffv1_decoders.clear()
 
     def __del__(self):
         self.close()

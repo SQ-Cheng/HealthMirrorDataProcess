@@ -1,5 +1,14 @@
 # Exp8: RGB-Estimated Visible Spectra to Laboratory Values
 
+## Native 224 Update
+
+The default now reconstructs spectra directly from validated native 224 FFV1
+face crops, without first reducing them to 128. The central ROI remains 75%
+of each axis and both 4x4/16x16 feature grids retain their head protocols.
+Native caches and outputs use a `_face224` suffix. Explicit
+`HEALTHMIRROR_FACE_SOURCE=legacy128` retains the historical protocol described
+below. See [the shared rerun protocol](../common/FACE224_PROTOCOL.md).
+
 This is an exploratory **two-step estimation**, not a calibrated hyperspectral
 measurement. First, the frozen official MST++ checkpoint trained on NTIRE 2022
 estimates a 31-band visible-spectrum cube (400-700 nm, 10-nm spacing) from each

@@ -1,4 +1,4 @@
-"""One-time MST++ inference over the retained 20-frame JPEG byte-offset index."""
+"""One-time MST++ inference over the retained 20-frame FFV1/MJPEG index."""
 
 import json
 
@@ -42,7 +42,8 @@ def load_or_extract_features(device=None):
         "dtype": "float16",
         "rgb_preprocess": "per-frame min-max across all RGB pixels, as in official MST++ training",
         "feature_policy": (
-            f"clip 0-1; central pixels [16:112,16:112]; "
+            ("clip 0-1; central pixels [28:196,28:196]; "
+             if "ffv1" in set(index.video_formats) else "clip 0-1; central pixels [16:112,16:112]; ") +
             f"{GRID_SIZE}x{GRID_SIZE} spatial means"
         ),
     }

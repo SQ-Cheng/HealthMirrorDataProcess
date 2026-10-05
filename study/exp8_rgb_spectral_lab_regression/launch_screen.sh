@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
 EXP="${ROOT}/study/exp8_rgb_spectral_lab_regression"
 VARIANT="${1:-ntire2022}"
 GRID_SIZE="${2:-4}"
@@ -15,6 +16,7 @@ if [[ "${GRID_SIZE}" != "4" && "${GRID_SIZE}" != "16" ]]; then
 fi
 SESSION="exp8_rgb_spectral_lab_${VARIANT}"
 SUFFIX=""
+SOURCE_SUFFIX="$('/root/miniconda3/envs/healthmirrorenv/bin/python' -c 'from study.common.face_video import face_source_mode; print("_face224" if face_source_mode() == "face224" else "")')"
 if [[ "${VARIANT}" == "hyperskin" ]]; then
     SUFFIX="_hyperskin"
     WEIGHT="${ROOT}/study/common/pretrained_weights/mst_plus_plus_hyperskin_rgb_vis.pth"
@@ -27,6 +29,8 @@ if [[ "${GRID_SIZE}" != "4" ]]; then
     SUFFIX="${SUFFIX}_grid${GRID_SIZE}"
     SESSION="${SESSION}_grid${GRID_SIZE}"
 fi
+SUFFIX="${SUFFIX}${SOURCE_SUFFIX}"
+SESSION="${SESSION}${SOURCE_SUFFIX}"
 OUTPUT="${EXP}/outputs${SUFFIX}"
 LOGS="${EXP}/logs${SUFFIX}"
 if screen -ls 2>/dev/null | grep -q "[.]${SESSION}[[:space:]]"; then

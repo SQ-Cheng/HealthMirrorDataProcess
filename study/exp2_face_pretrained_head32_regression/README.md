@@ -1,5 +1,14 @@
 # Exp2 Raw-Video Head32 Raw-Value Regression
 
+## Native 224 Inputs
+
+The default input now selects validated `face224.mkv` crops from the original
+raw videos when the production crop protocol is present. This avoids legacy
+128-to-224 upsampling. Use `HEALTHMIRROR_FACE_SOURCE=legacy128` to reproduce
+previous runs. The automatic reruns preserve existing results under separate
+`*_face224` outputs. See [the shared protocol](../common/FACE224_PROTOCOL.md)
+for source validation, cache reuse, saved splits and comparison figures.
+
 The retained 20-frame control uses the exact source builder from the corresponding
 face-plus-history experiment. That builder enumerates every raw `video.avi`, maps
 its hospital ID, and reads

@@ -12,6 +12,7 @@ from .config import (
     TARGET_LABELS, VARIANT, WAVELENGTH_NM,
 )
 from .extract_features import load_index
+from study.common.face_video import face_source_mode
 
 
 COLORS = ("#1C7C80", "#B75C43", "#6A72A6")
@@ -118,13 +119,16 @@ def plot_results():
     fig.tight_layout()
     fig.savefig(figures / "estimated_spectrum_examples.png", dpi=180)
     plt.close(fig)
-    if OUTPUT != HERE / "outputs":
+    if face_source_mode() == "face224":
+        if GRID_SIZE == 16:
+            _plot_variant_comparison(figures, metrics)
+    elif OUTPUT != HERE / "outputs":
         _plot_variant_comparison(figures, metrics)
     print(f"[exp8-figures] {figures}", flush=True)
 
 
 def _plot_variant_comparison(figures, new_metrics):
-    old_output = HERE / "outputs"
+    old_output = HERE / ("outputs_face224" if face_source_mode() == "face224" else "outputs")
     old_metrics = pd.read_csv(old_output / "metrics_all.csv")
     for target in TARGETS:
         paths = [output / "runs" / target / "predictions.csv"

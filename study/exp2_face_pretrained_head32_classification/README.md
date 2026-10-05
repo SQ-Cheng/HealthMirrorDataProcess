@@ -1,5 +1,10 @@
 # Exp2 face-only Head32 classification
 
+The shared reader now defaults to validated native 224 FFV1 inputs. Explicit
+`HEALTHMIRROR_FACE_SOURCE=legacy128` preserves old-run reproduction. The queued
+native rerun writes `outputs/face224`, leaving existing results intact; see
+[the shared protocol](../common/FACE224_PROTOCOL.md).
+
 True binary counterpart of `exp2_face_pretrained_head32_regression`. Data,
 patient splits, 20-frame policy, five views, EfficientNet-B0 Head32 model, and
 two-stage optimization match the regression experiment. The only learning-task

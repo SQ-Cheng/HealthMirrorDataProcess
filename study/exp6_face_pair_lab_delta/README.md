@@ -1,5 +1,14 @@
 # Exp6: paired-face laboratory delta regression
 
+## Native 224 Inputs
+
+Both faces now default to validated lossless `face224.mkv` crops when the raw
+production protocol exists. Saved clinical pairs still use their original
+session/lab times, not the duration of the filtered crop. Explicit
+`HEALTHMIRROR_FACE_SOURCE=legacy128` retains the previous input workflow.
+See [the shared native-224 rerun protocol](../common/FACE224_PROTOCOL.md)
+for separate outputs and legacy/common-test comparisons.
+
 This experiment predicts the change between two laboratory measurements from
 two chronologically corresponding face videos.
 

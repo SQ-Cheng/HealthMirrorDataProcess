@@ -9,6 +9,8 @@ import os
 import random
 import shutil
 import traceback
+from pathlib import Path
+from study.common.face_video import face_source_mode
 
 import numpy as np
 import pandas as pd
@@ -316,7 +318,8 @@ def main():
     args.output_dir = args.output_dir or OUTPUT_DIRS[args.frame_policy]
     args.source_dir = args.source_dir or os.path.join(args.output_dir, "source_data")
     args.index_dir = args.index_dir or (
-        REFERENCE_INDEX_DIR
+        (str(Path(__file__).resolve().parents[1] / "common/cache/face224_20frame")
+         if face_source_mode() == "face224" else REFERENCE_INDEX_DIR)
         if args.frame_policy == "20frame"
         else os.path.join(args.output_dir, "frame_index")
     )
@@ -593,13 +596,15 @@ def main():
             ),
         },
         "preprocessing": {
+            "face_source": face_source_mode(),
+            "source_image_size": 224 if face_source_mode() == "face224" else 128,
             "frame_policy": (
                 (
-                    f"{FRAMES_PER_VIDEO} deterministic non-adjacent RGB MJPEG "
+                    f"{FRAMES_PER_VIDEO} deterministic non-adjacent RGB "
                     "frames per video"
                 )
                 if args.frame_policy == "20frame"
-                else "all decodable RGB MJPEG frames per video"
+                else "all decodable RGB frames per video"
             ),
             "training_views": list(VIEW_NAMES),
             "model_input_shape": [3, 224, 224],
@@ -614,7 +619,7 @@ def main():
                     "unique decodable frames at the configured non-adjacent spacing"
                 )
                 if args.frame_policy == "20frame"
-                else "exclude videos with no decodable 128x128 RGB MJPEG frames"
+                else "exclude videos with no eligible decodable RGB frames"
             ),
             "frame_ineligible_labelled_videos": sorted(excluded_frame_videos),
             "split_policy": (
