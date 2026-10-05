@@ -123,23 +123,27 @@ def choose_folds(records, target, candidates=CANDIDATES):
     return patients.index.to_numpy(str), patient_folds, score, selected
 
 
-def prepare_splits():
-    sources = {target: _load_canonical(target) for target in TARGETS}
+def prepare_splits(source_loader=None, split_root=None, source_policy=None):
+    split_root = Path(split_root) if split_root is not None else SPLIT_ROOT
+    source_loader = source_loader or _load_canonical
+    sources = {target: source_loader(target) for target in TARGETS}
     hashes = {target: fingerprints for target, (_, fingerprints) in sources.items()}
-    manifest_path = SPLIT_ROOT / "manifest.json"
+    manifest_path = split_root / "manifest.json"
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest["source_sha256"] != hashes:
             raise RuntimeError("Existing five-fold split source differs")
-        expected = [SPLIT_ROOT / f"{target}_fold{fold}.csv"
+        if source_policy is not None and manifest.get("source_policy") != source_policy:
+            raise RuntimeError("Existing five-fold source policy differs")
+        expected = [split_root / f"{target}_fold{fold}.csv"
                     for target in TARGETS for fold in range(FOLDS)]
         if not all(path.is_file() for path in expected):
             raise RuntimeError("Existing five-fold split records are incomplete")
-        print(f"[folds-reused] directory={SPLIT_ROOT}", flush=True)
-        return SPLIT_ROOT
-    if SPLIT_ROOT.exists() and any(SPLIT_ROOT.iterdir()):
-        raise RuntimeError(f"Partial five-fold split output: {SPLIT_ROOT}")
-    SPLIT_ROOT.mkdir(parents=True, exist_ok=True)
+        print(f"[folds-reused] directory={split_root}", flush=True)
+        return split_root
+    if split_root.exists() and any(split_root.iterdir()):
+        raise RuntimeError(f"Partial five-fold split output: {split_root}")
+    split_root.mkdir(parents=True, exist_ok=True)
     assignment_rows, summary_rows, scalers, choices = [], [], {}, {}
     for target, (records, _) in sources.items():
         patient_ids, patient_folds, score, selected = choose_folds(records, target)
@@ -162,7 +166,7 @@ def prepare_splits():
                 target, prepared, SCORE_DEFINITIONS[target]["unit"]
             )
             prepared["robust_scaled_raw_value"] = scaler.transform(prepared.raw_value)
-            prepared.to_csv(SPLIT_ROOT / f"{target}_fold{fold}.csv", index=False)
+            prepared.to_csv(split_root / f"{target}_fold{fold}.csv", index=False)
             scalers[target][str(fold)] = scaler.to_dict()
             for split in ("train", "val", "test"):
                 subset = prepared.loc[prepared.split.eq(split)]
@@ -179,12 +183,12 @@ def prepare_splits():
                 })
         print(f"[folds-selected] target={target} candidate={selected} "
               f"objective={score['objective']:.4f}", flush=True)
-    pd.DataFrame(assignment_rows).to_csv(SPLIT_ROOT / "patient_folds.csv", index=False)
-    pd.DataFrame(summary_rows).to_csv(SPLIT_ROOT / "distribution_summary.csv", index=False)
-    (SPLIT_ROOT / "scalers.json").write_text(
+    pd.DataFrame(assignment_rows).to_csv(split_root / "patient_folds.csv", index=False)
+    pd.DataFrame(summary_rows).to_csv(split_root / "distribution_summary.csv", index=False)
+    (split_root / "scalers.json").write_text(
         json.dumps(scalers, indent=2), encoding="utf-8"
     )
-    manifest_path.write_text(json.dumps({
+    manifest = {
         "schema_version": 1, "folds": FOLDS, "candidate_count": CANDIDATES,
         "seed": SEED, "validation_policy": "next fold cyclically",
         "train_policy": "remaining three folds",
@@ -195,5 +199,8 @@ def prepare_splits():
             "compared with full cohort over raw_value and abnormal_score"
         ),
         "source_sha256": hashes, "selections": choices,
-    }, indent=2), encoding="utf-8")
-    return SPLIT_ROOT
+    }
+    if source_policy is not None:
+        manifest["source_policy"] = source_policy
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return split_root

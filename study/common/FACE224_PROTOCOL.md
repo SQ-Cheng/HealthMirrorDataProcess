@@ -125,3 +125,21 @@ Continuous screen log: `study/common/logs/face224_reruns/run.log`.
 Per-experiment logs use the output's relative layout under `logs/` rather than
 `outputs/`. No original 128 results are overwritten. All generated caches,
 results, logs and large weights stay out of Git.
+
+## Additional Patient-Diverse 30/40 Ablation
+
+`bash study/exp2_face_pretrained_head32_regression/launch_patient_diverse_224_screen.sh`
+starts a separate detached monitor named `face224_patient_diverse_30_40`.
+It waits for the entire queue above to complete and release its lock, then
+uses the native 24-hour main run's records, scalers and shared index. The
+original eight-target patient-diverse 30/40 schedule, task seeds, 20 frames
+and five views are retained. Existing queue work is not interrupted or reordered.
+Outputs and logs are in the experiment's `outputs/ablations/` and
+`logs/ablations/`, under `patient_diverse_schedule_30_40_face224`.
+Normal result plots and comparisons with both the corresponding legacy
+ablation and native-224 main run are generated automatically.
+
+Three further 12h five-fold protocols (regression patient-diverse 30/40,
+classification patient-diverse 30/40, and original classification) wait behind
+both preceding jobs. See [FACE224_12H_5FOLD.md](FACE224_12H_5FOLD.md) for shared
+patient folds, exact stage settings, outputs, and the detached launch command.

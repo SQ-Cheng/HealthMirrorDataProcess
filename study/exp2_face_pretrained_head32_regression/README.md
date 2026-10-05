@@ -9,6 +9,25 @@ previous runs. The automatic reruns preserve existing results under separate
 `*_face224` outputs. See [the shared protocol](../common/FACE224_PROTOCOL.md)
 for source validation, cache reuse, saved splits and comparison figures.
 
+The additional native-224 patient-diverse 30/40-epoch ablation is queued after
+the existing native-224 experiment queue, without altering or interrupting it:
+
+```bash
+bash study/exp2_face_pretrained_head32_regression/launch_patient_diverse_224_screen.sh
+screen -r face224_patient_diverse_30_40
+```
+
+It reuses `outputs/20frame_face224` records/scalers and the shared FFV1 index,
+and reproduces the saved legacy ablation's task seeds and patient-diverse
+schedule (head 1e-4/30 epochs, fine-tune 3e-6/40 epochs, patience 8/8,
+minimum rates 1e-6/1e-7, no warmup). Results remain separate in
+`outputs/ablations/patient_diverse_schedule_30_40_face224`; logs use the matching
+`logs/ablations` path. Normal plots, legacy-128/native-224 comparisons, and a
+same-cohort comparison against the native-224 main run are generated automatically.
+The monitor requires both the preceding queue's released lock and completion
+marker. A stopped, incomplete queue is reported as an error rather than launching
+into failed prerequisites.
+
 The retained 20-frame control uses the exact source builder from the corresponding
 face-plus-history experiment. That builder enumerates every raw `video.avi`, maps
 its hospital ID, and reads

@@ -66,8 +66,9 @@ def plot_fold_classification(output_dir):
     plt.close(figure)
 
 
-def plot_cv(root, protocol):
+def plot_cv(root, protocol, split_root=None):
     root = Path(root)
+    split_root = Path(split_root) if split_root is not None else SPLIT_ROOT
     classification = protocol == "face_classification"
     metrics, predictions, summaries = [], [], []
     for fold in range(FOLDS):
@@ -85,7 +86,7 @@ def plot_cv(root, protocol):
             )
             frame = frame.loc[frame.split.eq("test")].copy()
             expected = pd.read_csv(
-                SPLIT_ROOT / f"{target}_fold{fold}.csv",
+                split_root / f"{target}_fold{fold}.csv",
                 dtype={"hospital_id": str, "video_id": str},
             )
             expected = expected.loc[expected.split.eq("test")].set_index("video_id")
@@ -115,7 +116,7 @@ def plot_cv(root, protocol):
               else ("mae", "rmse", "r2", "pearson_r"))
     for target in TARGETS:
         selected = prediction_frame.loc[prediction_frame.target.eq(target)]
-        expected = pd.read_csv(SPLIT_ROOT / f"{target}_fold0.csv",
+        expected = pd.read_csv(split_root / f"{target}_fold0.csv",
                                dtype={"video_id": str, "hospital_id": str})
         if (len(selected) != len(expected) or selected.video_id.duplicated().any()
                 or set(selected.video_id) != set(expected.video_id)):
@@ -161,17 +162,18 @@ def plot_cv(root, protocol):
     print(f"[cv-plots-complete] protocol={protocol} directory={figures}", flush=True)
 
 
-def plot_split_distributions():
-    figures = SPLIT_ROOT / "figures"
+def plot_split_distributions(split_root=None):
+    split_root = Path(split_root) if split_root is not None else SPLIT_ROOT
+    figures = split_root / "figures"
     figures.mkdir(parents=True, exist_ok=True)
     rows, columns = target_grid_shape(len(TARGETS))
     figure, axes = plt.subplots(rows, columns,
                                 figsize=target_grid_figsize(rows, columns),
                                 squeeze=False)
     for axis, target in zip(axes.flat, TARGETS):
-        records = pd.read_csv(SPLIT_ROOT / f"{target}_fold0.csv",
+        records = pd.read_csv(split_root / f"{target}_fold0.csv",
                               dtype={"hospital_id": str})
-        assignment = pd.read_csv(SPLIT_ROOT / "patient_folds.csv",
+        assignment = pd.read_csv(split_root / "patient_folds.csv",
                                  dtype={"hospital_id": str})
         lookup = dict(assignment.loc[assignment.target.eq(target),
                                  ["hospital_id", "fold"]].itertuples(index=False, name=None))
