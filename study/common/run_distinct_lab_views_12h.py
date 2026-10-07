@@ -18,11 +18,12 @@ import torch
 
 from . import run_video_loss_12h as base
 from .video_loss import DistinctLabViewBatchSampler
+from .lab_run_version import versioned
 
 
 PREDECESSOR = base.STATE
 BASELINES = dict(base.OUTPUTS)
-STATE = base.STUDY / "common/outputs/view_loss_12_distinct_labs_12h"
+STATE = versioned(base.STUDY / "common/outputs/view_loss_12_distinct_labs_12h")
 OUTPUTS = {family: root.with_name("view_loss_12_distinct_labs") for family, root in BASELINES.items()}
 
 

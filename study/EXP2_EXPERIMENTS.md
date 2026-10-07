@@ -17,6 +17,9 @@ uses train-only robust scaling of raw lab values.
 color-statistics MLP, and approximately 100k-parameter CNN comparison, using
 native224/12h, the matched single split, and twenty-frame view-level losses.
 It is separate from the six primary predictive experiments above.
+`exp2_face_dinov3_frozen` uses the official frozen DINOv3 ViT-S/16 and sixteen
+independent regression/classification heads on the same twelve-distinct-lab
+view-loss protocol. An authorized official checkpoint is required.
 `exp2_lab_multimodal` remains solely as a compatibility module for source-data
 parsing; it is not a runnable experiment. Shared timestamp and plotting utilities
 live in `study/common`.

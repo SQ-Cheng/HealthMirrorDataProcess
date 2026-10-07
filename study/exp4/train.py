@@ -102,7 +102,7 @@ def _prepare_images(images, view_codes, device):
     output = torch.empty((len(images), 3, IMAGE_SIZE, IMAGE_SIZE), device=device)
     regular = ~crop
     if regular.any():
-        output[regular] = F.interpolate(
+        output[regular] = images[regular] if images.shape[-2:] == (IMAGE_SIZE, IMAGE_SIZE) else F.interpolate(
             images[regular], size=(IMAGE_SIZE, IMAGE_SIZE), mode="bicubic",
             align_corners=False, antialias=True,
         )

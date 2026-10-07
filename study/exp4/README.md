@@ -10,7 +10,7 @@ excluded.
 
 Hospitalization and surgery metadata come from `merged_lab_tests.csv`; lab
 result values are not used. Absolute video time comes only from the
-`patient_info.txt` Session Timestamp in `Asia/Shanghai`; `video.avi.ts` is
+`patient_info.txt` Session Timestamp in `Asia/Shanghai`; `raw_video.avi.ts` is
 cleaned and used only for recording duration and source-clock diagnostics.
 The local ID, embedded hospital ID, and hospitalization membership are
 validated. Source-clock disagreements over five minutes are retained as audit
@@ -25,6 +25,10 @@ warnings and never replace a valid Session Timestamp.
   and per-split audits are saved as machine-readable CSV files.
 - 20 nonadjacent color face frames per video, streamed through a compact byte
   offset index without a decoded image cache.
+  Inputs are validated native224 `face224.mkv` FFV1 crops under
+  `/root/shared/HealthMirrorRawData`, not upsampled legacy128 frames. Original
+  recordings and session metadata define labels; shortened filtered-face video
+  duration never defines recovery time. Face and label session times must agree.
 - ImageNet-pretrained EfficientNet-B0 and a 32-dimensional scalar sigmoid head.
 - Five deterministic training views per frame: original, horizontal flip,
   center crop, +6% brightness, and +8% contrast. Validation and test use only
@@ -57,6 +61,18 @@ Formal detached run:
 ```bash
 bash study/exp4/launch_screen.sh
 ```
+
+Queue after the existing architecture controls, using the freshly prepared data:
+
+```bash
+bash study/exp4/launch_after_current_screen.sh
+screen -r exp4_recovery_224
+```
+
+Old Exp4 outputs/logs and its legacy128 packet index are overwritten, not archived.
+The 224 cohort gets a new 512-candidate patient-disjoint balanced split search
+with the unchanged seed and criteria. Model, losses, views, epochs and learning
+rates are unchanged. The queued run uses one GPU and automatically draws results.
 
 Training completion writes the selected model's history, predictions,
 checkpoint, and metrics directly under `outputs/`, and generates

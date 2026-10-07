@@ -16,11 +16,11 @@ from study.exp2_face_pretrained_head32_regression.train import _prepare_images
 from study.exp2_face_pretrained_head32_regression.config import IMAGENET_MEAN, IMAGENET_STD, CROP_SCALE, BRIGHTNESS_DELTA, CONTRAST_DELTA
 from study.common.run_video_loss_12h import sha256
 
-from .config import HERE, INDEX_PATH, VIEWS, HISTOGRAM_BINS, HISTOGRAM_FEATURES, STATISTICS_FEATURES
+from .config import CACHE_DIR, INDEX_PATH, VIEWS, HISTOGRAM_BINS, HISTOGRAM_FEATURES, STATISTICS_FEATURES
 
 
 DATASET = None
-CACHE = HERE / "cache"
+CACHE = CACHE_DIR
 
 
 def color_features(rgb):
@@ -88,7 +88,7 @@ def _extract_video(video):
 
 
 def ensure_cache():
-    CACHE.mkdir(exist_ok=True)
+    CACHE.mkdir(parents=True, exist_ok=True)
     index = FrameOffsetIndex.load(INDEX_PATH)
     expected = {
         "index_sha256": sha256(INDEX_PATH), "frames": len(index.starts),

@@ -386,6 +386,19 @@ def split_unit_field(raw_value: str, measurement_count: int) -> list[str]:
     parts = raw_value.split("^")
     if len(parts) == measurement_count:
         return parts
+    # Mixed repeated/empty units occur in later exports. Preserve recognized
+    # scientific exponents before splitting the actual measurement separators.
+    sentinel = "\x00"
+    if sentinel in raw_value:
+        raise ConversionError("单位字段包含非法 NUL 字符")
+    protected = re.sub(
+        r"(?:10|[A-Za-zμµ]+)\^[+-]?\d+(?=[/A-Za-zμµ]|$)",
+        lambda match: match.group(0).replace("^", sentinel),
+        raw_value,
+    )
+    parts = [part.replace(sentinel, "^") for part in protected.split("^")]
+    if len(parts) == measurement_count:
+        return parts
     raise ConversionError(
         "单位字段无法无歧义拆分（单位中的 ^ 可能是指数符号）: "
         f"记录数={measurement_count}, 原值={raw_value!r}"
@@ -693,7 +706,9 @@ def write_audit_files(
     skipped_path.write_text("\n".join(skipped_files) + "\n", encoding="utf-8")
 
 
-def convert_directory(input_dir: Path, output_dir: Path) -> list[ConversionStats]:
+def convert_directory(
+    input_dir: Path, output_dir: Path, metadata_csv: Path | None = None
+) -> list[ConversionStats]:
     if not input_dir.is_dir():
         raise ConversionError(f"输入目录不存在: {input_dir}")
     source_paths = sorted(
@@ -706,6 +721,22 @@ def convert_directory(input_dir: Path, output_dir: Path) -> list[ConversionStats
 
     output_dir.mkdir(parents=True, exist_ok=True)
     metadata_registry = build_metadata_registry(source_paths)
+    if metadata_csv is not None:
+        registry_sets = {key: set(values) for key, values in metadata_registry.items()}
+        with metadata_csv.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            if not set(METADATA_FIELDS).issubset(reader.fieldnames or []):
+                raise ConversionError(f"病案索引 CSV 缺少首页字段: {metadata_csv}")
+            for row in reader:
+                metadata = normalize_metadata(tuple(row[name] for name in METADATA_FIELDS))
+                if metadata[0] and metadata[3] and metadata[5]:
+                    key = canonical_hospital_id(metadata[0])
+                    # Current export metadata takes precedence for the same
+                    # admission/discharge; retain older, distinct episodes.
+                    existing = registry_sets.setdefault(key, set())
+                    if not any(value[3] == metadata[3] and value[5] == metadata[5] for value in existing):
+                        existing.add(metadata)
+        metadata_registry = {key: tuple(sorted(values)) for key, values in registry_sets.items()}
     print(
         f"已建立病案首页索引: {len(metadata_registry)} 个病案号",
         flush=True,
@@ -778,13 +809,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=script_dir / "260917安贞化验" / "转换结果",
         help="输出目录（默认: %(default)s）",
     )
+    parser.add_argument(
+        "--metadata-csv", type=Path,
+        help="可选的已有化验总表，用于缺少首页信息时复用已有病案信息",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        stats_list = convert_directory(args.input_dir.resolve(), args.output_dir.resolve())
+        stats_list = convert_directory(
+            args.input_dir.resolve(), args.output_dir.resolve(),
+            args.metadata_csv.resolve() if args.metadata_csv else None,
+        )
     except ConversionError as exc:
         print(f"转换失败: {exc}", file=sys.stderr)
         return 1

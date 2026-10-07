@@ -124,7 +124,7 @@ LAB_SOURCE_DEFINITIONS = {
     },
     "total_bilirubin": {
         "items": (
-            "*总胆红素(T-Bil)测定", "总胆红素(T-Bil)测定", "总胆红素",
+            "*总胆红素(T-Bil)测定", "总胆红素(T-Bil)测定", "总胆红素", "*总胆红素",
         ),
         "canonical_unit": "umol/L",
         "valid_range": (0.1, 1000.0),

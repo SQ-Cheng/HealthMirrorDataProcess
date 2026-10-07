@@ -1,17 +1,19 @@
 """Configuration for postoperative recovery regression."""
 
 from pathlib import Path
+from study.common.face_video import raw_root
+from study.common.lab_run_version import RUN_TAG, versioned
 
 
 EXP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EXP_DIR.parents[1]
-DATA_ROOT = Path("/root/shared/HealthMirrorDataset")
+DATA_ROOT = raw_root()
 LAB_METADATA_CSV = REPO_ROOT / "merged_lab_tests.csv"
 PATIENT_INFO_GLOB = str(REPO_ROOT / "merged_patient_info_*.csv")
 WEIGHTS_DIR = REPO_ROOT / "study/common/pretrained_weights"
-OUTPUT_DIR = EXP_DIR / "outputs"
-CACHE_DIR = EXP_DIR / "cache"
-LOG_DIR = EXP_DIR / "logs"
+OUTPUT_DIR = versioned(EXP_DIR / "outputs")
+CACHE_DIR = EXP_DIR / "cache" / RUN_TAG if RUN_TAG else EXP_DIR / "cache"
+LOG_DIR = versioned(EXP_DIR / "logs")
 
 TIMEZONE = "Asia/Shanghai"
 MAX_TIME_SOURCE_DELTA_SECONDS = 300.0
@@ -30,7 +32,7 @@ ARCHITECTURE = "efficientnet_b0"
 PRETRAINED_WEIGHT_FILE = "efficientnet_b0_rwightman-7f5810bc.pth"
 HEAD_HIDDEN_FEATURES = 32
 IMAGE_SIZE = 224
-SOURCE_IMAGE_SIZE = 128
+SOURCE_IMAGE_SIZE = 224
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 

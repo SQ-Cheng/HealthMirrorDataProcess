@@ -66,14 +66,20 @@ def evaluate(model, dataset, batches, architecture, family, target, criterion, d
     return metrics, predictions
 
 
-def train_task(job, index, device):
+def train_task(job, index, device, *, experiment_config=None, model_factory=None,
+               loader_factory=None, feature_scaler=None):
+    cfg = experiment_config or config
+    make_model = model_factory or build_model
+    make_loader = loader_factory or loader
+    scale_features = feature_scaler or fit_feature_scaler
     architecture, family, target = job["architecture"], job["family"], job["target"]
-    root = config.HERE / "outputs" / family / architecture
+    output = getattr(cfg, "OUTPUT_DIR", cfg.HERE / "outputs")
+    root = output / family / architecture
     run = root / "runs" / target
     run.mkdir(parents=True, exist_ok=True)
-    records = pd.read_csv(config.HERE / f"outputs/source_records/{target}.csv",
+    records = pd.read_csv(output / f"source_records/{target}.csv",
                           dtype={"hospital_id": str, "video_id": str})
-    seed = config.reference.job_seed(family, target)
+    seed = cfg.reference.job_seed(family, target)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -82,29 +88,29 @@ def train_task(job, index, device):
     groups = {split: records.loc[records.split.eq(split)].reset_index(drop=True)
               for split in ("train", "val", "test")}
     datasets, batches = {}, {}
-    datasets["augmented"], batches["augmented"] = loader(index, groups["train"], architecture, family, True)
+    datasets["augmented"], batches["augmented"] = make_loader(index, groups["train"], architecture, family, True)
     for split, group in groups.items():
-        datasets[split], batches[split] = loader(index, group, architecture, family, False)
-    model = build_model(architecture)
-    fit_feature_scaler(model, index, records, architecture)
+        datasets[split], batches[split] = make_loader(index, group, architecture, family, False)
+    model = make_model(architecture)
+    scale_features(model, index, records, architecture)
     model = model.to(device)
     if architecture == "small_cnn":
         model = model.to(memory_format=torch.channels_last)
-    scaler = config.reference.RobustTargetScaler(**job["scaler"])
+    scaler = cfg.reference.RobustTargetScaler(**job["scaler"])
     positives = int(groups["train"].binary_label.sum())
     negatives = len(groups["train"]) - positives
     pos_weight = negatives / positives
     criterion = VideoBCELoss(torch.tensor(pos_weight, device=device)) if family == "classification" else VideoSmoothL1Loss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATES[architecture], weight_decay=config.WEIGHT_DECAY)
-    schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.MAX_EPOCHS,
-                                                         eta_min=config.MIN_LEARNING_RATES[architecture])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.LEARNING_RATES[architecture], weight_decay=cfg.WEIGHT_DECAY)
+    schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.MAX_EPOCHS,
+                                                         eta_min=cfg.MIN_LEARNING_RATES[architecture])
     amp = torch.amp.GradScaler("cuda", enabled=device.type == "cuda", init_scale=1024)
     history, best, patience, best_score = [], None, 0, -np.inf
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
     print(f"[job-start] {architecture}/{family}/{target} device={device} parameters={parameter_count} "
           f"videos={len(groups['train'])}/{len(groups['val'])}/{len(groups['test'])} "
           f"batch=12labs*20frames*1view pos_weight={pos_weight:.6g}", flush=True)
-    for epoch in range(1, config.MAX_EPOCHS + 1):
+    for epoch in range(1, cfg.MAX_EPOCHS + 1):
         model.train()
         started = time.perf_counter()
         loss_sum = units = inputs_count = 0
@@ -147,12 +153,12 @@ def train_task(job, index, device):
                         "target_scaler": scaler.to_dict() if family == "regression" else None}, run / "model.pt")
         else:
             patience += 1
-        print(f"[epoch] {architecture}/{family}/{target} {epoch:03d}/{config.MAX_EPOCHS} "
+        print(f"[epoch] {architecture}/{family}/{target} {epoch:03d}/{cfg.MAX_EPOCHS} "
               f"train_loss={train['loss']:.4f} val_loss={val['loss']:.4f} "
               f"val_score={score:.4f} lr={row['learning_rate']:.2e} "
-              f"throughput={inputs_count / duration:.1f}/s patience={patience}/{config.PATIENCE}", flush=True)
+              f"throughput={inputs_count / duration:.1f}/s patience={patience}/{cfg.PATIENCE}", flush=True)
         schedule.step()
-        if patience >= config.PATIENCE:
+        if patience >= cfg.PATIENCE:
             break
     if best is None:
         raise RuntimeError("No valid checkpoint")

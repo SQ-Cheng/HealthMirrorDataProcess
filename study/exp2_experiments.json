@@ -8,7 +8,8 @@
     {"id": "face_classification", "path": "study/exp2_face_pretrained_head32_classification", "task": "binary_classification"},
     {"id": "history_classification", "path": "study/exp2_history_only_head32_classification", "task": "binary_classification"},
     {"id": "lab_longitudinal_statistics", "path": "study/exp2_lab_longitudinal_statistics", "task": "descriptive_statistics"},
-    {"id": "face_architecture_ablation", "path": "study/exp2_face_architecture_ablation", "task": "raw_value_regression_and_binary_classification"}
+    {"id": "face_architecture_ablation", "path": "study/exp2_face_architecture_ablation", "task": "raw_value_regression_and_binary_classification"},
+    {"id": "face_dinov3_frozen", "path": "study/exp2_face_dinov3_frozen", "task": "frozen_dinov3_regression_and_binary_classification"}
   ],
   "shared_code": [
     "study/common",

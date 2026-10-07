@@ -429,6 +429,7 @@ def train_task(
     train_batch_policy: str = "chunked",
     stage_config: dict | None = None,
     records_path: Path | None = None,
+    reference_records_path: Path | None = None,
     frame_index_path: Path | None = None,
     loss_level: str = "frame",
 ):
@@ -436,6 +437,8 @@ def train_task(
         raise ValueError("Video-loss ablation is supported for face_only only")
     if modality not in MODALITIES:
         raise ValueError(modality)
+    if reference_records_path is not None and modality != "face_only":
+        raise ValueError("Explicit refreshed reference records are supported for face_only only")
     if modality != "face_only" and train_batch_policy != "chunked":
         raise ValueError("Patient-diverse batches are only supported for face_only")
     schedule = {
@@ -464,8 +467,8 @@ def train_task(
     run_dir.mkdir(parents=True, exist_ok=True)
     if modality == "face_only":
         reference = ROOT / "study/exp2_face_pretrained_head32_regression/outputs/20frame_face224"
-        source_records_path = reference / f"task_records/{target}.csv"
-        records = pd.read_csv(reference / f"task_records/{target}.csv",
+        source_records_path = Path(reference_records_path) if reference_records_path is not None else reference / f"task_records/{target}.csv"
+        records = pd.read_csv(source_records_path,
                               dtype={"hospital_id": str, "video_id": str})
         history_store = None
     else:
@@ -614,10 +617,15 @@ def train_task(
         "modality": modality, "target": target, "seed": seed,
         "reference_records": str(records_path or source_records_path),
         "source_records": str(source_records_path),
-        "time_alignment_contract": str(PREPARED_DIR / "time_alignment_contract.json"),
+        "time_alignment_contract": str(
+            source_records_path.parent.parent / "source_data/data_quality_report.json"
+            if reference_records_path is not None else PREPARED_DIR / "time_alignment_contract.json"
+        ),
         "split_policy": (
             "patient-disjoint matching-window split on a strict source subset"
             if source_subset else
+            "exact reuse of the supplied patient-disjoint reference split"
+            if reference_records_path is not None else
             "shared patient-disjoint five-fold assignment"
             if records_path is not None else
             "exact reuse of the patient-disjoint regression split"

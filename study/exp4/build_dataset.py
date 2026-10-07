@@ -170,12 +170,12 @@ def build_recovery_candidates(output_dir):
         hospital_id: group for hospital_id, group in episodes.groupby("hospital_id")
     }
     mappings = _read_merged_patient_info()
-    video_paths = sorted(glob.glob(str(DATA_ROOT / "mirror*_data/patient_*/video.avi")))
+    video_paths = sorted(glob.glob(str(DATA_ROOT / "mirror*_data/patient_*/raw_video.avi")))
     records, audit_rows = [], []
     exclusions = Counter()
     for video_path_text in video_paths:
         video_path = Path(video_path_text)
-        match = re.search(r"/(mirror\d+)_data/patient_(\d+)/video\.avi$", video_path_text)
+        match = re.search(r"/(mirror\d+)_data/patient_(\d+)/raw_video\.avi$", video_path_text)
         if match is None:
             exclusions["path_parse_failed"] += 1
             continue

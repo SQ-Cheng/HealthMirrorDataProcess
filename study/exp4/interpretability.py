@@ -63,7 +63,7 @@ def _select_examples(predictions, count):
 
 def _preprocess(images):
     images = images.float().div(255.0)
-    images = F.interpolate(
+    images = images if images.shape[-2:] == (IMAGE_SIZE, IMAGE_SIZE) else F.interpolate(
         images,
         size=(IMAGE_SIZE, IMAGE_SIZE),
         mode="bicubic",
@@ -76,13 +76,14 @@ def _preprocess(images):
 
 
 def _display_image(image):
-    resized = F.interpolate(
-        image[None].float().div(255.0),
+    source = image[None].float().div(255.0)
+    resized = (source if source.shape[-2:] == (IMAGE_SIZE, IMAGE_SIZE) else F.interpolate(
+        source,
         size=(IMAGE_SIZE, IMAGE_SIZE),
         mode="bicubic",
         align_corners=False,
         antialias=True,
-    )[0]
+    ))[0]
     return resized.permute(1, 2, 0).clamp(0, 1).numpy()
 
 

@@ -44,3 +44,6 @@ sample_length_report_output.txt
 /study/common/pretrained_weights/*.pth
 /study/exp2_face_pretrained_head32_regression/outputs/
 /study/exp2_face_pretrained_head32_regression/logs/
+
+# Raw laboratory exports and their generated conversion/audit files
+/[0-9]*安贞化验/

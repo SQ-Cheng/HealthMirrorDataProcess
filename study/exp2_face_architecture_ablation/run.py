@@ -53,7 +53,7 @@ def init_worker(queue):
 
 def worker(job):
     from .train import train_task
-    run = config.HERE / "outputs" / job["family"] / job["architecture"] / "runs" / job["target"]
+    run = config.OUTPUT_DIR / job["family"] / job["architecture"] / "runs" / job["target"]
     run.mkdir(parents=True, exist_ok=True)
     with (run / "train.log").open("a", buffering=1) as log, contextlib.redirect_stdout(config.reference.Tee(sys.stdout, log)):
         train_task(job, INDEX, DEVICE)
@@ -80,8 +80,8 @@ def main():
         print(json.dumps(parameters, indent=2))
         print(audit.to_string(index=False))
         return
-    output = config.HERE / "outputs"
-    output.mkdir(exist_ok=True)
+    output = config.OUTPUT_DIR
+    output.mkdir(parents=True, exist_ok=True)
     with (output / ".queue.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         manifest = {

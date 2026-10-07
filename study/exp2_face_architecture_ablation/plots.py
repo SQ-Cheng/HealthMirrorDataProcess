@@ -73,10 +73,10 @@ def plot_one(root, family, architecture):
 
 
 def compare():
-    figures = config.HERE / "outputs/figures"
+    figures = config.OUTPUT_DIR / "figures"
     figures.mkdir(exist_ok=True)
     for family in ("classification", "regression"):
-        roots = [config.BASELINES[family]] + [config.HERE / "outputs" / family / arch for arch in config.ARCHITECTURES]
+        roots = [config.BASELINES[family]] + [config.OUTPUT_DIR / family / arch for arch in config.ARCHITECTURES]
         names = ("efficientnet_b0", *config.ARCHITECTURES)
         values = []
         for architecture, root in zip(names, roots):
@@ -93,7 +93,7 @@ def compare():
                 pd.testing.assert_frame_equal(baseline.sort_values("video_id")[identity].reset_index(drop=True),
                                               candidate.sort_values("video_id")[identity].reset_index(drop=True), check_dtype=False)
         table = pd.concat(values, ignore_index=True)
-        table.to_csv(config.HERE / f"outputs/{family}_architecture_comparison.csv", index=False)
+        table.to_csv(config.OUTPUT_DIR / f"{family}_architecture_comparison.csv", index=False)
         metrics = (("roc_auc", "AUROC"), ("balanced_accuracy", "Balanced accuracy"), ("f1", "F1"), ("average_precision", "Average precision")) if family == "classification" else (("mae", "MAE"), ("rmse", "RMSE"), ("pearson_r", "Pearson r"), ("r2", "R2"))
         for key, label in metrics:
             figure, axes = panels()

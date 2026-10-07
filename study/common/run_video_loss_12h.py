@@ -24,13 +24,17 @@ from study.exp2_face_pretrained_head32_regression import config
 from study.exp2_face_pretrained_head32_regression.data import validate_source_data
 from study.exp2_face_pretrained_head32_regression.frame_index import FrameOffsetIndex, _index_is_reusable
 from study.exp2_face_pretrained_head32_regression.scaling import RobustTargetScaler, fit_robust_target_scaler
+from .lab_run_version import RUN_TAG, versioned
 
 
 STUDY = Path(__file__).resolve().parents[1]
 SOURCE = STUDY / "exp2_face_pretrained_head32_regression/outputs/ablations/lab_match_12h_face224"
 INDEX_PATH = STUDY / "common/cache/face224_20frame/frame_offsets.npz"
-STATE = STUDY / "common/outputs/video_loss_12h"
-OUTPUTS = {family: STUDY / f"exp2_face_pretrained_head32_{family}/outputs/ablations/lab_match_12h_face224/video_loss"
+if RUN_TAG:
+    SOURCE = STUDY / "common/outputs" / RUN_TAG / "reference"
+    INDEX_PATH = STUDY / "common/cache" / RUN_TAG / "frame_offsets.npz"
+STATE = versioned(STUDY / "common/outputs/video_loss_12h")
+OUTPUTS = {family: versioned(STUDY / f"exp2_face_pretrained_head32_{family}/outputs/ablations/lab_match_12h_face224") / "video_loss"
            for family in ("classification", "regression")}
 GPU = INDEX = None
 
@@ -47,13 +51,15 @@ def job_seed(family, target):
 
 
 def preflight():
-    if not (SOURCE / "COMPLETE").is_file():
+    if not (SOURCE / ("DATA_COMPLETE" if RUN_TAG else "COMPLETE")).is_file():
         raise RuntimeError("The single-split 12h reference is incomplete")
     validate_source_data(SOURCE / "source_data", expected_max_delta_hours=12)
     index = FrameOffsetIndex.load(INDEX_PATH)
     if set(index.video_formats) != {"ffv1"} or not _index_is_reusable(INDEX_PATH.parent, index.video_ids, "20frame"):
         raise RuntimeError("Native224 index is stale")
     saved_manifest = json.loads((SOURCE / "experiment_manifest.json").read_text())
+    if RUN_TAG and saved_manifest["lab_table_sha256"] != sha256(STUDY.parent / "merged_lab_tests.csv"):
+        raise RuntimeError("Lab table changed after cohort preparation")
     if saved_manifest["frame_index_sha256"] != sha256(INDEX_PATH):
         raise RuntimeError("Reference frame index changed")
     scalers = json.loads((SOURCE / "target_scalers.json").read_text())["targets"]
@@ -116,7 +122,8 @@ def train_one(job):
         if family == "classification":
             from study.exp2_binary_classification_common.engine import train_task
             train_task("face_only", target, GPU, seed, output_dir=root,
-                       records_path=path, frame_index_path=INDEX_PATH, loss_level="video",
+                       records_path=path, reference_records_path=SOURCE / f"task_records/{target}.csv",
+                       frame_index_path=INDEX_PATH, loss_level="video",
                        train_batch_policy=batch_policy)
         else:
             from study.exp2_face_pretrained_head32_regression.train import train_task
@@ -175,8 +182,8 @@ def prepare(scalers, hashes, counts, prepared_records=None):
             "job_seeds": {target: job_seed(family, target) for target in config.TARGETS},
             "split_policy": "exact single patient-disjoint 12h regression reference; no new seed search",
             "selection_metric": "validation bACC" if family == "classification" else "validation raw-unit MAE",
-            "baseline": None if family == "classification" else str(SOURCE),
-            "comparison_note": "No single-split 12h frame-loss classifier exists; five-fold results are not a paired baseline" if family == "classification" else "paired against existing 12h frame-loss regression",
+            "baseline": None if family == "classification" or RUN_TAG else str(SOURCE),
+            "comparison_note": "Refreshed cohort: no matched frame-loss baseline was retrained" if RUN_TAG else ("No single-split 12h frame-loss classifier exists; five-fold results are not a paired baseline" if family == "classification" else "paired against existing 12h frame-loss regression"),
         }
         if prepared_records is not None:
             manifest.update(
@@ -234,6 +241,8 @@ def finalize(family):
         from study.exp2_face_pretrained_head32_regression.plot_patient_diverse_comparison import plot_comparison
         plot(root)
         (root / "COMPLETE").write_text("training and figures completed\n")
+        if RUN_TAG:
+            return
         try:
             plot_comparison(SOURCE, root, reference_label="Frame-level loss",
                             candidate_label="Video-level loss", figure_prefix="frame_vs_video_loss")
@@ -254,7 +263,8 @@ def smoke(index, scalers):
         path = root / "records.csv"
         subset.to_csv(path, index=False)
         classify("face_only", target, 0, config.SEED, smoke=True, output_dir=root / "classification",
-                 records_path=path, frame_index_path=INDEX_PATH, loss_level="video")
+                 records_path=path, reference_records_path=SOURCE / f"task_records/{target}.csv",
+                 frame_index_path=INDEX_PATH, loss_level="video")
         with patch.object(regress, "TORCH_COMPILE_ENABLED", False):
             regress.train_task("efficientnet_b0", target, index, subset, RobustTargetScaler(**scalers[target]),
                                config.WEIGHTS_DIR, str(root / "regression"), head_epochs=1, finetune_epochs=1,

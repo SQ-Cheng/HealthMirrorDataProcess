@@ -5,7 +5,7 @@ from collections import OrderedDict
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torchvision.io import ImageReadMode, decode_jpeg
+from study.common.face_video import decode_indexed_frame
 
 from .config import (
     DECODE_CACHE_FRAMES,
@@ -33,6 +33,9 @@ class RecoveryFrameDataset(Dataset):
         self.video_weights = weights / weights.mean()
         self._handles = OrderedDict()
         self._decoded = OrderedDict()
+        self._ffv1_decoders = OrderedDict()
+        if set(frame_index.video_formats) != {"ffv1"}:
+            raise ValueError("Exp4 requires native224 FFV1 inputs")
 
     def __len__(self):
         return len(self.frame_indices)
@@ -45,6 +48,7 @@ class RecoveryFrameDataset(Dataset):
         state = self.__dict__.copy()
         state["_handles"] = OrderedDict()
         state["_decoded"] = OrderedDict()
+        state["_ffv1_decoders"] = OrderedDict()
         return state
 
     def _handle(self, path):
@@ -64,10 +68,8 @@ class RecoveryFrameDataset(Dataset):
             return cached
         video_position = int(np.searchsorted(self.index.video_ptr, global_index, side="right") - 1)
         path = str(self.index.video_paths[video_position])
-        start, end = int(self.index.starts[global_index]), int(self.index.ends[global_index])
-        handle = self._handle(path); handle.seek(start)
-        encoded = torch.frombuffer(bytearray(handle.read(end - start)), dtype=torch.uint8)
-        image = decode_jpeg(encoded, mode=ImageReadMode.RGB, device="cpu")
+        handle = self._handle(path)
+        image = decode_indexed_frame(self.index, video_position, global_index, handle, self._ffv1_decoders)
         if tuple(image.shape) != (3, SOURCE_IMAGE_SIZE, SOURCE_IMAGE_SIZE):
             raise RuntimeError(f"Unexpected frame shape {tuple(image.shape)} in {path}")
         self._decoded[global_index] = image
@@ -95,6 +97,7 @@ class RecoveryFrameDataset(Dataset):
         for handle in self._handles.values():
             handle.close()
         self._handles.clear(); self._decoded.clear()
+        self._ffv1_decoders.clear()
 
     def __del__(self):
         self.close()

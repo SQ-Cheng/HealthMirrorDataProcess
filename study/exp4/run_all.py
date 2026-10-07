@@ -12,8 +12,9 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from .build_dataset import add_balanced_patient_split, build_recovery_candidates
-from .config import CACHE_DIR, FRAMES_PER_VIDEO, OUTPUT_DIR, SEED, TRAIN_VIEWS
+from .build_dataset import _sha256, add_balanced_patient_split, build_recovery_candidates
+from .config import CACHE_DIR, FRAMES_PER_VIDEO, LAB_METADATA_CSV, OUTPUT_DIR, SEED, TRAIN_VIEWS
+from study.exp2_face_pretrained_head32_regression.frame_index import _index_is_reusable
 from .frame_index import FrameOffsetIndex, build_or_reuse_frame_index
 from .models import build_model, freeze_backbone
 from .plot_results import plot_results
@@ -45,6 +46,10 @@ def prepare(seed=SEED):
     quality["frame_policy"] = frame_manifest["policy"]
     quality["split_policy"] = split_manifest
     quality["training_input"] = {
+        "source_resolution": 224,
+        "source_codec": "FFV1",
+        "image_source": "HealthMirrorRawData face224.mkv",
+        "time_source": "raw_video.avi.ts duration + canonical Session Timestamp; never filtered MKV duration",
         "frames_per_video": FRAMES_PER_VIDEO,
         "train_views": list(TRAIN_VIEWS),
         "evaluation_views": ["original"],
@@ -90,6 +95,7 @@ def _clear_stale_training_outputs():
     if runs_dir.is_dir():
         shutil.rmtree(runs_dir)
     stale_files = (
+        "COMPLETE",
         "history.csv",
         "metrics.csv",
         "metrics_all.csv",
@@ -141,12 +147,14 @@ def schedule(seed=SEED, device_id=0):
         "run_dir": str(run_dir),
     }]).to_csv(OUTPUT_DIR / "run_index.csv", index=False)
     plot_results(OUTPUT_DIR)
+    (OUTPUT_DIR / "COMPLETE").write_text("native224 recovery training and figures completed\n")
     print("[experiment-complete] selected seed finished and figures generated", flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--reuse-prepared", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--worker", action="store_true")
     parser.add_argument("--seed", type=int, default=SEED)
@@ -156,7 +164,20 @@ def main():
     if args.worker:
         worker(args.seed, args.device, args.run_dir)
         return
-    records, frame_index = prepare(args.seed)
+    if args.reuse_prepared:
+        records = pd.read_csv(OUTPUT_DIR / "records.csv", dtype={"hospital_id": str})
+        frame_index = FrameOffsetIndex.load(CACHE_DIR / "frames20/frame_offsets.npz")
+        manifest = json.loads((OUTPUT_DIR / "experiment_manifest.json").read_text())
+        if manifest["training_input"]["source_resolution"] != 224 or set(frame_index.video_formats) != {"ffv1"}:
+            raise RuntimeError("Prepared Exp4 data are not native224")
+        if manifest["source"]["sha256"] != _sha256(LAB_METADATA_CSV):
+            raise RuntimeError("Exp4 lab metadata changed after preparation")
+        if not _index_is_reusable(CACHE_DIR / "frames20", records.video_id, "20frame"):
+            raise RuntimeError("Prepared Exp4 face index is stale")
+        if records.groupby("hospital_id").split.nunique().gt(1).any():
+            raise RuntimeError("Patient leakage in prepared Exp4 split")
+    else:
+        records, frame_index = prepare(args.seed)
     if args.smoke:
         smoke_test(records, frame_index, args.device)
         return

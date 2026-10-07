@@ -4,9 +4,12 @@ from pathlib import Path
 
 from study.common import run_video_loss_12h as reference
 from study.common.run_distinct_lab_views_12h import STATE as PREDECESSOR, OUTPUTS as BASELINES
+from study.common.lab_run_version import RUN_TAG, versioned
 
 
 HERE = Path(__file__).resolve().parent
+OUTPUT_DIR = versioned(HERE / "outputs")
+CACHE_DIR = HERE / "cache" / RUN_TAG if RUN_TAG else HERE / "cache"
 SOURCE = reference.SOURCE
 INDEX_PATH = reference.INDEX_PATH
 TARGETS = reference.config.TARGETS
