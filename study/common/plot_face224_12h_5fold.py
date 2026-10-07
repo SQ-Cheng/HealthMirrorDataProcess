@@ -47,6 +47,9 @@ def plot_oof(root, protocol):
     for extension in ("png", "pdf"):
         fig.savefig(figures / f"{stem}.{extension}", dpi=180)
     plt.close(fig)
+    if protocol != "regression_diverse":
+        from study.exp2_face_pretrained_head32_classification.plot_confusion_matrices import plot_confusion_matrices
+        plot_confusion_matrices(root, TARGETS, pooled=True)
     histories = pd.concat([pd.read_csv(root / f"fold_{fold}/history_all.csv").assign(fold=fold) for fold in range(5)], ignore_index=True)
     histories.to_csv(root / "history_all.csv", index=False)
     if protocol != "regression_diverse":
@@ -61,6 +64,10 @@ def plot_oof(root, protocol):
             fig.tight_layout()
             fig.savefig(root / f"fold_{fold}/figures/training_history.png", dpi=180)
             plt.close(fig)
+            directory = root / f"fold_{fold}"
+            if not all((directory / f"figures/test_confusion_matrices.{ext}").is_file()
+                       for ext in ("png", "pdf")):
+                plot_confusion_matrices(directory, TARGETS)
 
 
 def plot_classification_comparison(outputs, figures):

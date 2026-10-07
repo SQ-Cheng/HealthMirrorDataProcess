@@ -888,7 +888,7 @@ class AllFramesDataset(Dataset):
                 f"codec={self.index.video_formats[index_video]}: {exc}"
             ) from exc
         self._decoded_cache[global_frame_index] = tensor
-        while len(self._decoded_cache) > DECODE_CACHE_FRAMES:
+        while len(self._decoded_cache) > getattr(self, "decode_cache_frames", DECODE_CACHE_FRAMES):
             self._decoded_cache.popitem(last=False)
         return tensor
 

@@ -107,7 +107,7 @@ def _set_binary_labels(dataset) -> None:
 
 
 def _image_loader(modality, frame_index, records, history, train,
-                  train_batch_policy="chunked"):
+                  train_batch_policy="chunked", loss_level="frame"):
     views = base_config.VIEW_NAMES if train else ("original",)
     if modality == "face_history":
         dataset, loader = face_history_train._loader(
@@ -117,6 +117,7 @@ def _image_loader(modality, frame_index, records, history, train,
         dataset, loader = face_train._loader(
             frame_index, records, views, "efficientnet_b0", train,
             train_batch_policy=train_batch_policy,
+            loss_level=loss_level,
         )
     _set_binary_labels(dataset)
     return dataset, loader
@@ -429,7 +430,10 @@ def train_task(
     stage_config: dict | None = None,
     records_path: Path | None = None,
     frame_index_path: Path | None = None,
+    loss_level: str = "frame",
 ):
+    if loss_level not in ("frame", "video") or (loss_level == "video" and modality != "face_only"):
+        raise ValueError("Video-loss ablation is supported for face_only only")
     if modality not in MODALITIES:
         raise ValueError(modality)
     if modality != "face_only" and train_batch_policy != "chunked":
@@ -508,19 +512,25 @@ def train_task(
         datasets["train_augmented"], loaders["train_augmented"] = _image_loader(
             modality, frame_index, split_records["train"], history_store, True,
             train_batch_policy=train_batch_policy,
+            loss_level=loss_level,
         )
         for split in ("train", "val", "test"):
             datasets[split], loaders[split] = _image_loader(
-                modality, frame_index, split_records[split], history_store, False
+                modality, frame_index, split_records[split], history_store, False,
+                loss_level=loss_level,
             )
     negatives = int(split_records["train"].binary_label.eq(0).sum())
     positives = int(split_records["train"].binary_label.eq(1).sum())
     if min(negatives, positives) == 0:
         raise RuntimeError(f"Single-class training split for {target}")
     pos_weight = negatives / positives
-    criterion = nn.BCEWithLogitsLoss(
-        pos_weight=torch.tensor(pos_weight, device=device), reduction="none"
-    )
+    if loss_level == "video":
+        from study.common.video_loss import VideoBCELoss
+        criterion = VideoBCELoss(torch.tensor(pos_weight, device=device))
+    else:
+        criterion = nn.BCEWithLogitsLoss(
+            pos_weight=torch.tensor(pos_weight, device=device), reduction="none"
+        )
     model, head, weight_path = _build_model(modality)
     model = model.to(device)
     if modality != "history_only":
@@ -530,13 +540,21 @@ def train_task(
         datasets["train_augmented"].model_input_count
         if modality != "history_only" else len(datasets["train_augmented"])
     )
+    source_batch_size = (loaders["train_augmented"].batch_size
+                         or base_config.TRAIN_SOURCE_BATCH_SIZES["efficientnet_b0"])
+    if loaders["train_augmented"].batch_size is None:
+        sampler = loaders["train_augmented"].batch_sampler
+        frame_batch_size = getattr(sampler, "frame_batch_size", getattr(sampler, "batch_size", source_batch_size))
+    else:
+        frame_batch_size = source_batch_size * len(base_config.VIEW_NAMES) if modality != "history_only" else source_batch_size
+    loss_name = "weighted BCE on mean frame probability" if loss_level == "video" else "BCEWithLogitsLoss"
     print(
         f"[job-start] modality={modality} task={target} device={device} "
         f"train/val/test videos={len(split_records['train'])}/"
         f"{len(split_records['val'])}/{len(split_records['test'])} "
         f"train_neg/pos={negatives}/{positives} pos_weight={pos_weight:.6f} "
         f"train_inputs={train_inputs} "
-        f"source_batch={loaders['train_augmented'].batch_size} "
+        f"source_batch={source_batch_size} loss_level={loss_level} "
         f"batch_policy={train_batch_policy} parameters={total_parameters}", flush=True,
     )
     history = []
@@ -584,10 +602,11 @@ def train_task(
         "schema_version": 1, "task_type": "binary_classification",
         "modality": modality, "target": target, "seed": seed,
         "selected_stage": selected_stage, "state_dict": state,
-        "loss": "BCEWithLogitsLoss", "pos_weight": pos_weight,
+        "loss": loss_name, "pos_weight": pos_weight,
         "decision_threshold": 0.5,
         "pretrained_weight_path": str(weight_path) if weight_path else None,
         "train_batch_policy": train_batch_policy,
+        "loss_level": loss_level,
         "stage_config": schedule,
     }, run_dir / "model.pt")
     (run_dir / "run_manifest.json").write_text(json.dumps({
@@ -603,7 +622,9 @@ def train_task(
             if records_path is not None else
             "exact reuse of the patient-disjoint regression split"
         ),
-        "loss": "BCEWithLogitsLoss",
+        "loss": loss_name,
+        "loss_level": loss_level,
+        "loss_aggregation": "mean frame probability across 20 frames per view" if loss_level == "video" else "per frame",
         "pos_weight": pos_weight, "decision_threshold": 0.5,
         "selected_stage": selected_stage,
         "head_hidden_features": base_config.HEAD_HIDDEN_FEATURES,
@@ -611,7 +632,8 @@ def train_task(
         "training_views": list(base_config.VIEW_NAMES) if modality != "history_only" else [],
         "train_batch_policy": train_batch_policy,
         "stage_config": schedule,
-        "source_batch_size": loaders["train_augmented"].batch_size,
+        "source_batch_size": source_batch_size,
+        "frame_batch_size": frame_batch_size,
     }, indent=2), encoding="utf-8")
     test = metric_rows[-1]
     print(

@@ -109,7 +109,7 @@ def _sha256(path):
     return digest.hexdigest()
 
 
-def _loader(frame_index, records, views, architecture, shuffle, train_batch_policy="chunked"):
+def _loader(frame_index, records, views, architecture, shuffle, train_batch_policy="chunked", loss_level="frame"):
     if set(frame_index.video_formats) != {"ffv1"}:
         raise ValueError("Face-only Exp2 requires the native 224 FFV1 index; 128 inputs are retired")
     interpolation = (
@@ -117,10 +117,16 @@ def _loader(frame_index, records, views, architecture, shuffle, train_batch_poli
         if architecture in ("efficientnet_b0", "shufflenet_v2_x1_0")
         else "bilinear"
     )
-    if train_batch_policy not in ("chunked", "patient_diverse", "interleaved_views"):
+    if train_batch_policy not in ("chunked", "patient_diverse", "interleaved_views", "distinct_lab_views"):
         raise ValueError(f"Unknown train batch policy: {train_batch_policy}")
+    if loss_level not in ("frame", "video"):
+        raise ValueError(f"Unknown loss level: {loss_level}")
+    if loss_level == "video" and train_batch_policy not in ("chunked", "distinct_lab_views"):
+        raise ValueError("The video-loss ablation retains the original chunked policy")
+    if train_batch_policy == "distinct_lab_views" and loss_level != "video":
+        raise ValueError("Distinct-lab batching requires view-level pooled loss")
     interleaved_views = shuffle and train_batch_policy == "interleaved_views"
-    expand_all_views = shuffle and len(views) > 1 and not interleaved_views
+    expand_all_views = shuffle and len(views) > 1 and not interleaved_views and loss_level == "frame"
     batch_size = (
         TRAIN_SOURCE_BATCH_SIZES[architecture]
         * (len(views) if interleaved_views else 1)
@@ -149,7 +155,16 @@ def _loader(frame_index, records, views, architecture, shuffle, train_batch_poli
         "persistent_workers": num_workers > 0,
         "prefetch_factor": PREFETCH_FACTOR if num_workers > 0 else None,
     }
-    if interleaved_views:
+    if loss_level == "video":
+        from study.common.video_loss import VideoViewBatchSampler, DistinctLabViewBatchSampler
+        frame_budget = batch_size * len(views) if shuffle else batch_size
+        loader_kwargs["batch_sampler"] = (
+            DistinctLabViewBatchSampler(dataset, frame_budget, frames=FRAMES_PER_VIDEO)
+            if shuffle and train_batch_policy == "distinct_lab_views" else
+            VideoViewBatchSampler(dataset, frame_budget, shuffle, frames=FRAMES_PER_VIDEO)
+        )
+        dataset.decode_cache_frames = FRAMES_PER_VIDEO
+    elif interleaved_views:
         loader_kwargs["batch_sampler"] = InterleavedPatientViewBatchSampler(
             dataset, batch_size
         )
@@ -422,6 +437,7 @@ def _train_epoch(
 def _evaluate(model, loader, criterion, device, max_batches=None):
     model.eval()
     losses, scores, labels_out, record_indices = [], [], [], []
+    pooled_loss_sum = pooled_loss_count = 0
     for batch_index, (images, labels, indices, view_codes) in enumerate(loader):
         if max_batches is not None and batch_index >= max_batches:
             break
@@ -433,13 +449,18 @@ def _evaluate(model, loader, criterion, device, max_batches=None):
             device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"
         ):
             predictions = model(images)
-            loss = criterion(predictions, labels_device).mean()
+            per_unit_loss = criterion(predictions, labels_device)
+            loss = per_unit_loss.mean()
+        if getattr(criterion, "video_level", False):
+            pooled_loss_sum += float(per_unit_loss.sum().cpu())
+            pooled_loss_count += per_unit_loss.numel()
         losses.append(float(loss.cpu()))
         scores.append(predictions.float().cpu().numpy().ravel())
         labels_out.append(labels.numpy().ravel().copy())
         record_indices.append(indices.numpy().ravel().copy())
     return {
-        "loss": float(np.mean(losses)) if losses else np.nan,
+        "loss": (pooled_loss_sum / pooled_loss_count if pooled_loss_count else
+                 float(np.mean(losses)) if losses else np.nan),
         "scores": np.concatenate(scores) if scores else np.asarray([], dtype=np.float32),
         "labels": (
             np.concatenate(labels_out) if labels_out else np.asarray([], dtype=np.float32)
@@ -782,7 +803,10 @@ def train_task(
     finetune_warmup_epochs=0,
     train_video_weights=None,
     initial_encoder_state_path=None,
+    loss_level="frame",
 ):
+    if loss_level == "video" and train_video_weights is not None:
+        raise ValueError("Video-loss ablation does not change target-density weighting")
     os.makedirs(run_dir, exist_ok=True)
     start_time = time.time()
     records_by_split = {
@@ -792,6 +816,7 @@ def train_task(
     train_augmented_dataset, train_augmented_loader = _loader(
         frame_index, records_by_split["train"], VIEW_NAMES, architecture, True,
         train_batch_policy=train_batch_policy,
+        loss_level=loss_level,
     )
     datasets, loaders = {}, {"train_augmented": train_augmented_loader}
     for split in ("train", "val", "test"):
@@ -801,6 +826,7 @@ def train_task(
             ("original",),
             architecture,
             False,
+            loss_level=loss_level,
         )
     train_video_rows = datasets["train"].frame_video_rows
     train_raw = records_by_split["train"]["raw_value"].to_numpy(np.float64)[
@@ -844,7 +870,11 @@ def train_task(
         )
         initial_encoder_sha256 = _sha256(initial_encoder_state_path)
     model = model.to(device, memory_format=torch.channels_last)
-    criterion = nn.SmoothL1Loss(beta=SMOOTH_L1_BETA, reduction="none")
+    if loss_level == "video":
+        from study.common.video_loss import VideoSmoothL1Loss
+        criterion = VideoSmoothL1Loss(beta=SMOOTH_L1_BETA)
+    else:
+        criterion = nn.SmoothL1Loss(beta=SMOOTH_L1_BETA, reduction="none")
     total_parameters, _ = parameter_counts(model)
     history = []
     source_batch_size = TRAIN_SOURCE_BATCH_SIZES[architecture] * (
@@ -864,6 +894,7 @@ def train_task(
         f"source_batch={source_batch_size} effective_batch="
         f"{effective_batch_size} views={len(VIEW_NAMES)} "
         f"batch_policy={train_batch_policy} "
+        f"loss_level={loss_level} "
         f"weight_decay={weight_decay:.1e} "
         f"normal/abnormal/boundary_frames={n_normal}/{n_abnormal}/{n_boundary} "
         f"loss_weighting={'train_density_inverse_sqrt' if train_video_weights is not None else 'none'} "
@@ -1045,6 +1076,8 @@ def train_task(
         "selected_stage": selected_stage,
         "training_protocol": training_protocol,
         "train_batch_policy": train_batch_policy,
+        "loss_level": loss_level,
+        "loss_aggregation": "mean scaled prediction across 20 frames per view" if loss_level == "video" else "per frame",
         "weight_decay": weight_decay,
         "batchnorm_running_stats_frozen": freeze_batchnorm_stats,
         "head_learning_rate": head_learning_rate,

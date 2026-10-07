@@ -39,14 +39,14 @@ def _check_predictions(baseline_dir, variant_dir, target):
         raise AssertionError(f"Test-frame coverage differs: {target}")
 
 
-def _metric_bars(table, targets, metric, label, path):
+def _metric_bars(table, targets, metric, label, path, candidate_label="Patient diverse\n30/40"):
     rows, cols = target_grid_shape(len(targets))
     fig, axes = plt.subplots(rows, cols, figsize=target_grid_figsize(rows, cols), squeeze=False)
     for axis, target in zip(axes.flat, targets):
         values = [table.loc[target, f"baseline_{metric}"],
                   table.loc[target, f"ablation_{metric}"]]
         axis.bar([0, 1], values, color=["#7b8490", "#278079"], width=0.62)
-        axis.set_xticks([0, 1], ["Baseline", "Patient diverse\n30/40"])
+        axis.set_xticks([0, 1], ["Baseline", candidate_label])
         axis.set_ylim(0, 1)
         axis.set_title(DISPLAY.get(target, target))
         axis.grid(axis="y", alpha=0.2)
@@ -59,12 +59,12 @@ def _metric_bars(table, targets, metric, label, path):
     plt.close(fig)
 
 
-def _history(baseline_dir, variant_dir, targets, metric, label, path):
+def _history(baseline_dir, variant_dir, targets, metric, label, path, candidate_label="Patient diverse 30/40"):
     rows, cols = target_grid_shape(len(targets))
     fig, axes = plt.subplots(rows, cols, figsize=target_grid_figsize(rows, cols), squeeze=False)
     for axis, target in zip(axes.flat, targets):
         for root, text, color in ((baseline_dir, "Baseline", "#7b8490"),
-                                  (variant_dir, "Patient diverse 30/40", "#278079")):
+                                  (variant_dir, candidate_label, "#278079")):
             frame = pd.read_csv(_run_dir(root, target) / "history.csv")
             axis.plot(frame.global_epoch, frame[f"val_{metric}"],
                       label=text, color=color)
@@ -84,7 +84,7 @@ def _history(baseline_dir, variant_dir, targets, metric, label, path):
     plt.close(fig)
 
 
-def plot_comparison(baseline_dir, variant_dir, targets):
+def plot_comparison(baseline_dir, variant_dir, targets, candidate_label="Patient diverse 30/40"):
     baseline_dir, variant_dir = Path(baseline_dir), Path(variant_dir)
     targets = tuple(targets)
     baseline = _metrics(baseline_dir, targets)
@@ -104,9 +104,9 @@ def plot_comparison(baseline_dir, variant_dir, targets):
     for metric, label, stem in (("balanced_accuracy", "bACC", "bacc"),
                                 ("roc_auc", "ROC AUC", "auc")):
         _metric_bars(table, targets, metric, label,
-                     figure_dir / f"test_{stem}_comparison.png")
+                     figure_dir / f"test_{stem}_comparison.png", candidate_label=candidate_label)
         _history(baseline_dir, variant_dir, targets, metric, label,
-                 figure_dir / f"validation_{stem}_history.png")
+                 figure_dir / f"validation_{stem}_history.png", candidate_label=candidate_label)
     print(f"[plots-complete] directory={figure_dir}", flush=True)
 
 

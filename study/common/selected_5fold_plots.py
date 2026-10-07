@@ -64,6 +64,8 @@ def plot_fold_classification(output_dir):
     figure.savefig(figures / "test_classification_metrics.png", dpi=180,
                    bbox_inches="tight")
     plt.close(figure)
+    from study.exp2_face_pretrained_head32_classification.plot_confusion_matrices import plot_confusion_matrices
+    plot_confusion_matrices(output_dir, TARGETS)
 
 
 def plot_cv(root, protocol, split_root=None):
