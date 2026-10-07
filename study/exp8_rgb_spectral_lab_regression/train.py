@@ -1,5 +1,6 @@
 """Video-level regression from frozen estimated visible-spectrum features."""
 
+import argparse
 import json
 import random
 
@@ -15,7 +16,7 @@ from study.exp2_face_pretrained_head32_regression.data import validate_source_da
 
 from .config import (
     BASE_OUTPUT, BATCH_SIZE, FEATURE_SHAPE, HEAD_EPOCHS, INDEX_PATH,
-    LEARNING_RATE, MIN_LEARNING_RATE, OUTPUT, PATIENCE, SEED,
+    LEARNING_RATE, MATCHING_HOURS, MIN_LEARNING_RATE, OUTPUT, PATIENCE, SEED,
     SMOOTH_L1_BETA, TARGETS, VARIANT, WEIGHT_DECAY,
 )
 from .extract_features import load_or_extract_features
@@ -47,6 +48,9 @@ def _load_task(target, index, features, scaler):
         raise RuntimeError(f"Invalid saved split for {target}")
     if records.video_id.duplicated().any():
         raise RuntimeError(f"Duplicate video labels for {target}")
+    if (not np.isfinite(records[["raw_value", "robust_scaled_raw_value", "match_delta_h"]]).all().all()
+            or not records.match_delta_h.between(0, MATCHING_HOURS + 1e-9).all()):
+        raise RuntimeError(f"Invalid labels or records outside the {MATCHING_HOURS}h window: {target}")
     control_path = (BASE_OUTPUT / "runs" / "efficientnet_b0" / target
                     / "video_predictions.csv")
     control = pd.read_csv(control_path, dtype={"hospital_id": str, "video_id": str})
@@ -210,13 +214,42 @@ def train_target(target, target_index, index, features, scaler, device):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check-only", action="store_true")
+    args = parser.parse_args()
+    validate_source_data(BASE_OUTPUT / "source_data", expected_max_delta_hours=MATCHING_HOURS)
+    if not (BASE_OUTPUT / "COMPLETE").is_file():
+        raise RuntimeError("The paired 12h RGB control is incomplete")
+    if args.check_only:
+        from .config import CACHE, GRID_SIZE
+        if not (CACHE / f"mstpp_31band_grid{GRID_SIZE}x{GRID_SIZE}.npy").is_file():
+            raise RuntimeError("CPU-only checks require the existing spectral cache")
+        index, features = load_or_extract_features(device="cpu")
+        scalers = json.loads((BASE_OUTPUT / "target_scalers.json").read_text())["targets"]
+        for target in TARGETS:
+            records, _, _ = _load_task(target, index, features, scalers[target])
+            print(f"[check-ok] {target} videos={records.split.value_counts().to_dict()} "
+                  f"patients={records.groupby('split').hospital_id.nunique().to_dict()}", flush=True)
+        return
     if (OUTPUT / "COMPLETE").exists():
         raise RuntimeError("Exp8 is already complete; refusing to overwrite its results")
-    validate_source_data(BASE_OUTPUT / "source_data")
     index, features = load_or_extract_features()
     scaler_data = json.loads((BASE_OUTPUT / "target_scalers.json").read_text(encoding="utf-8"))
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "matching_hours": MATCHING_HOURS, "source_resolution": 224,
+        "base_output": str(BASE_OUTPUT), "frame_index_sha256": sha256(INDEX_PATH),
+        "task_records_sha256": {target: sha256(BASE_OUTPUT / f"task_records/{target}.csv") for target in TARGETS},
+        "target_scalers_sha256": sha256(BASE_OUTPUT / "target_scalers.json"),
+        "mstpp_weight_sha256": checkpoint_sha256(), "spectral_variant": VARIANT,
+        "feature_shape": list(FEATURE_SHAPE), "frames_per_video": 20,
+        "split_policy": "reuse paired native224 12h RGB control; patient-disjoint",
+        "seed": SEED, "learning_rate": LEARNING_RATE, "min_learning_rate": MIN_LEARNING_RATE,
+        "max_epochs": HEAD_EPOCHS, "patience": PATIENCE, "batch_size": BATCH_SIZE,
+        "weight_decay": WEIGHT_DECAY, "smooth_l1_beta": SMOOTH_L1_BETA,
+    }
+    (OUTPUT / "experiment_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     metrics, histories = [], []
     for target_index, target in enumerate(TARGETS):
         task_metrics, task_history = train_target(

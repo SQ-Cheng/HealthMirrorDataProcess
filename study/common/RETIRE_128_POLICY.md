@@ -21,8 +21,9 @@ four unfinished 6h tasks, not retraining completed models.
 Whole studies with only a 128 main remain intact: face+history, history-only,
 Exp1, Exp3, Exp4, Exp5, Exp6 direction classification, and existing analysis-only
 studies. Laboratory-only statistics and clinical patient tables are independent
-of pixel resolution and are not deleted. Exp8 currently has only 128 main results
-and is retained while its native runs are queued.
+of pixel resolution and are not deleted. Exp8 has subsequently migrated to
+native224/12h: all old 128 and 24h outputs/logs and 128 feature caches are removed.
+Its native224 label-independent feature caches remain reusable.
 
 Shared clinical inputs are protected because removing them would break Exp3
 or Exp6 classification. These are face regression `outputs/20frame` task tables,

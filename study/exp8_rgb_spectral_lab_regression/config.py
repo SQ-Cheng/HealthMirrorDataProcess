@@ -12,16 +12,16 @@ if VARIANT not in {"ntire2022", "hyperskin"}:
 GRID_SIZE = int(os.environ.get("EXP8_GRID_SIZE", "4"))
 if GRID_SIZE not in {4, 16}:
     raise ValueError(f"Unsupported Exp8 spatial grid: {GRID_SIZE}")
+if face_source_mode() != "face224":
+    raise ValueError("Exp8 requires native 224 FFV1 crops; legacy128 is retired")
 RUN_SUFFIX = ("_hyperskin" if VARIANT == "hyperskin" else "") + (
     f"_grid{GRID_SIZE}" if GRID_SIZE != 4 else ""
 )
 BASE = HERE.parent / "exp2_face_pretrained_head32_regression"
-BASE_OUTPUT = BASE / "outputs" / "20frame"
-INDEX_PATH = HERE.parent / "exp2_face_history_head32_regression" / "cache" / "20frame_index" / "frame_offsets.npz"
-if face_source_mode() == "face224":
-    BASE_OUTPUT = BASE / "outputs/20frame_face224"
-    INDEX_PATH = HERE.parent / "common/cache/face224_20frame/frame_offsets.npz"
-    RUN_SUFFIX += "_face224"
+MATCHING_HOURS = 12
+BASE_OUTPUT = BASE / "outputs/ablations/lab_match_12h_face224"
+INDEX_PATH = HERE.parent / "common/cache/face224_20frame/frame_offsets.npz"
+RUN_SUFFIX += "_face224"
 BASE_OUTPUT = Path(os.environ.get("EXP8_BASE_OUTPUT", str(BASE_OUTPUT)))
 INDEX_PATH = Path(os.environ.get("EXP8_INDEX_PATH", str(INDEX_PATH)))
 WEIGHT_PATH = HERE.parent / "common" / "pretrained_weights" / (
@@ -39,7 +39,7 @@ TARGET_LABELS = {
 }
 WAVELENGTH_NM = tuple(range(400, 701, 10))
 FEATURE_SHAPE = (31, GRID_SIZE, GRID_SIZE)
-SOURCE_IMAGE_SIZE = 224 if face_source_mode() == "face224" else 128
+SOURCE_IMAGE_SIZE = 224
 FRAMES_PER_VIDEO = 20
 SEED = 42
 

@@ -48,8 +48,8 @@ def load_reconstructor(device):
 
 @torch.inference_mode()
 def reconstruct_features(model, images, device):
-    if (images.ndim != 4 or images.shape[1] != 3 or images.shape[-2:] not in ((128, 128), (224, 224))):
-        raise ValueError(f"Expected native RGB 128x128 or 224x224 batch, got {tuple(images.shape)}")
+    if images.ndim != 4 or images.shape[1] != 3 or images.shape[-2:] != (224, 224):
+        raise ValueError(f"Expected native RGB 224x224 batch, got {tuple(images.shape)}")
     rgb = images.to(device, non_blocking=True, dtype=torch.float32)
     minimum = rgb.amin(dim=(1, 2, 3), keepdim=True)
     maximum = rgb.amax(dim=(1, 2, 3), keepdim=True)

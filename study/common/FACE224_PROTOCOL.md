@@ -40,11 +40,18 @@ Completed tasks are reused after identity/scaler validation. Interrupted
 unfinished tasks restart without changing split or settings. All screens detach.
 See [FACE224_12H_5FOLD.md](FACE224_12H_5FOLD.md).
 
+Exp8 now uses the native224 12h regression cohort only, for both spectral feature
+grids. Its previous 24h/128 results are retired. The label-independent native
+spectral caches are reused; its waiting launcher is:
+
+```bash
+bash study/exp8_rgb_spectral_lab_regression/launch_after_current_screen.sh
+```
+
 ## Protected Exceptions
 
 Studies whose main experiment exists only at 128 resolution are left intact,
 including face+history, video Exp3, Exp4/Exp5 and Exp6 direction classification.
-Exp8 also remains protected until its native main results actually exist.
 The minimal shared MJPEG decoder/index reader and original external 128 data
 are necessary for those studies, not fallback support for migrated entry points.
 

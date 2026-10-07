@@ -311,7 +311,7 @@ def run_experiment(experiment, index):
 def run_spectral(job):
     env = os.environ.copy()
     env.update(EXP8_VARIANT="ntire2022", EXP8_GRID_SIZE=str(job["grid"]),
-               EXP8_BASE_OUTPUT=str(STUDY / "exp2_face_pretrained_head32_regression/outputs/20frame_face224"),
+               EXP8_BASE_OUTPUT=str(STUDY / "exp2_face_pretrained_head32_regression/outputs/ablations/lab_match_12h_face224"),
                EXP8_INDEX_PATH=str(INDEX_DIR / "frame_offsets.npz"))
     if not (Path(job["output"]) / "COMPLETE").is_file():
         subprocess.run([sys.executable, "-u", "-m", "study.exp8_rgb_spectral_lab_regression.train"], env=env, check=True)

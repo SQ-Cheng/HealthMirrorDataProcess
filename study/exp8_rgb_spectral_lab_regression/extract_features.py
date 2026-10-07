@@ -1,4 +1,4 @@
-"""One-time MST++ inference over the retained 20-frame FFV1/MJPEG index."""
+"""One-time MST++ inference over the retained native224 20-frame FFV1 index."""
 
 import json
 
@@ -21,6 +21,8 @@ def load_index():
     if not INDEX_PATH.is_file():
         raise FileNotFoundError(f"Missing reference 20-frame index: {INDEX_PATH}")
     index = FrameOffsetIndex.load(INDEX_PATH)
+    if set(index.video_formats) != {"ffv1"}:
+        raise RuntimeError("Exp8 requires the native-224 FFV1 frame index")
     if not _index_is_reusable(INDEX_PATH.parent, index.video_ids, "20frame"):
         raise RuntimeError("Reference 20-frame index is stale; do not silently resample videos")
     if np.any(np.diff(index.video_ptr) != 20):
@@ -42,8 +44,7 @@ def load_or_extract_features(device=None):
         "dtype": "float16",
         "rgb_preprocess": "per-frame min-max across all RGB pixels, as in official MST++ training",
         "feature_policy": (
-            ("clip 0-1; central pixels [28:196,28:196]; "
-             if "ffv1" in set(index.video_formats) else "clip 0-1; central pixels [16:112,16:112]; ") +
+            "clip 0-1; central pixels [28:196,28:196]; " +
             f"{GRID_SIZE}x{GRID_SIZE} spatial means"
         ),
     }
