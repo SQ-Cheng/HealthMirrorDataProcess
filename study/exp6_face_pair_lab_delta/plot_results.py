@@ -21,6 +21,8 @@ DISPLAY = {
     "aa_po2_ratio_low": "A/a PO2 ratio",
     "creatinine_high": "Creatinine",
     "total_bilirubin_high": "Total bilirubin",
+    "hematocrit_low": "Hematocrit",
+    "egfr_low": "eGFR (creatinine)",
 }
 
 

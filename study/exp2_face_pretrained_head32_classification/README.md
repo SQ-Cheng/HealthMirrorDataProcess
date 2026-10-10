@@ -7,8 +7,15 @@ total bilirubin, platelets, hemoglobin, A/a PO2 ratio and creatinine.
 Twenty nonadjacent RGB frames per video and five training views are used.
 Evaluation averages twenty original-view frame probabilities per video.
 Saved patient-disjoint splits, labels and original-video matching intervals are
-preserved. The classifier trains BCEWithLogitsLoss, not thresholded regression;
+shared exactly with the fresh 24h regression main experiment. The classifier trains
+per-frame BCEWithLogitsLoss, not thresholded regression or twenty-frame pooled loss;
 positive weights are fitted to training class counts only.
+
+Each full batch contains twelve different matched lab events, twenty frames
+from one video per event, and one view shared by that video's frames: 240 frame
+inputs and 240 losses. All five views occur across different batches each epoch;
+all videos, frames and views are retained. Patients need not be distinct, but
+different videos matched to the same patient/report event cannot share a batch.
 
 Hemoglobin positivity means raw Hb <130 g/L for males and <120 g/L for
 females. The source implementation uses 120 g/L for any non-male metadata;
@@ -36,9 +43,17 @@ fine-tuning 3e-6 / 40 epochs / patience 8, floors 1e-6 / 1e-7.
 All three queued native 12h five-fold protocols share the same saved folds.
 
 ```bash
+bash study/common/launch_face_main_24h_screen.sh
+screen -r exp2_face_main_24h_frame_loss
+python -m study.exp2_face_pretrained_head32_classification.run_all --overwrite
 bash study/common/launch_face224_reruns_screen.sh
 bash study/common/launch_face224_12h_5fold_screen.sh
 ```
+
+The new paired main launcher overwrites only the two main result directories,
+not any ablation. Its log is `study/common/logs/face_main_24h_frame_loss/run.log`.
+The standalone classifier reuses the prepared regression main cohort and does
+not silently fall back to older clinical records or history features.
 
 Checkpoints, train/val/test metrics, predictions and history are saved; plots and
 the five-fold comparisons are automatic. Legacy face-only results and launchers

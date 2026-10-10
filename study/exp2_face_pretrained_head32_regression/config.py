@@ -37,6 +37,9 @@ REFERENCE_INDEX_DIR = os.path.abspath(
 )
 
 ARCHITECTURES = ("efficientnet_b0",)
+# Keep the eight-task shared classification/history controllers unchanged.
+ADDITIONAL_REGRESSION_TARGETS = ("hematocrit_low", "egfr_low")
+ALL_REGRESSION_TARGETS = TARGETS + ADDITIONAL_REGRESSION_TARGETS
 HEAD_HIDDEN_FEATURES = 32
 TORCH_COMPILE_ENABLED = True
 TORCH_COMPILE_MODE = "reduce-overhead"
@@ -46,6 +49,9 @@ FRAMES_PER_VIDEO = 20
 FRAME_QUANTILES = tuple(0.05 + 0.90 * index / 19 for index in range(20))
 MIN_SOURCE_FRAME_GAP = 2
 LAB_MATCH_MAX_DELTA_HOURS = 24.0
+DEFAULT_LOSS_LEVEL = "frame"
+DEFAULT_TRAIN_BATCH_POLICY = "distinct_lab_views"
+TRAIN_DISTINCT_LAB_EVENTS = 12
 IMAGE_SIZE = 224
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)

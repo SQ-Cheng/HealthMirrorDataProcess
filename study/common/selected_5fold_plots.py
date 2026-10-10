@@ -41,7 +41,7 @@ def _pooled_metrics(frame, classification):
     }
 
 
-def plot_fold_classification(output_dir):
+def plot_fold_classification(output_dir, title="Face-only binary classification: held-out fold"):
     output_dir = Path(output_dir)
     figures = output_dir / "figures"
     figures.mkdir(parents=True, exist_ok=True)
@@ -59,7 +59,7 @@ def plot_fold_classification(output_dir):
         axis.set_ylim(0, 1.04)
         axis.set_title(label)
         axis.grid(axis="y", alpha=.24)
-    figure.suptitle("Face-only binary classification: held-out fold")
+    figure.suptitle(title)
     figure.tight_layout()
     figure.savefig(figures / "test_classification_metrics.png", dpi=180,
                    bbox_inches="tight")

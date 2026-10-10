@@ -10,9 +10,51 @@ import torch
 from torch.nn import functional as F
 
 from .video_loss import VideoBCELoss, VideoSmoothL1Loss, VideoViewBatchSampler, DistinctLabViewBatchSampler
+from .clinical_events import attach_clinical_events
+from unittest.mock import patch
 
 
 class VideoLossTests(unittest.TestCase):
+    def test_frame_loss_loader_uses_twelve_events_without_expanding_five_views(self):
+        from study.exp2_face_pretrained_head32_regression.train import _loader
+        count = 25
+        records = pd.DataFrame({"video_id": [f"v{i}" for i in range(count)],
+                                "clinical_event_id": [f"e{i}" for i in range(count)],
+                                "robust_scaled_raw_value": np.arange(count,dtype=float)})
+        lookup = {video:i for i,video in enumerate(records.video_id)}
+        index = SimpleNamespace(video_formats=np.full(count,"ffv1"), video_lookup=lookup,
+                                frame_range=lambda video:(lookup[video]*20,(lookup[video]+1)*20))
+        with patch("study.exp2_face_pretrained_head32_regression.train.TRAIN_NUM_WORKERS",0):
+            dataset,loader = _loader(index,records,tuple(range(5)),"efficientnet_b0",True,
+                                     train_batch_policy="distinct_lab_views",loss_level="frame")
+        self.assertFalse(dataset.expand_all_views)
+        self.assertEqual(dataset.model_input_count,count*100)
+        self.assertEqual(loader.batch_sampler.frame_batch_size,240)
+        batches = list(loader.batch_sampler)
+        self.assertEqual(sorted(i for batch in batches for i in batch),list(range(count*100)))
+        for batch in batches:
+            groups = np.asarray(batch).reshape(-1,20)
+            self.assertEqual(len(set(groups[:,0]//100)),len(groups))
+            for group in groups:
+                self.assertEqual(len(set(group%5)),1)
+        predictions = torch.arange(240,dtype=torch.float32,requires_grad=True)
+        labels = torch.zeros(240)
+        losses = F.smooth_l1_loss(predictions,labels,beta=.5,reduction="none")
+        self.assertEqual(tuple(losses.shape),(240,))
+        losses.mean().backward()
+        self.assertTrue(torch.isfinite(predictions.grad).all())
+        dataset.close()
+
+    def test_clinical_identity_is_time_not_patient_or_value(self):
+        records = pd.DataFrame({"video_id":["a","b","c"],"hospital_id":["p"]*3,
+                                "raw_value":[1.]*3,"binary_label":[0]*3})
+        manifest = pd.DataFrame({"video_id":["c","b","a"],"hospital_id":["p"]*3,
+                                 "lactate_lab_time_unix":[200.,100.,100.],"lactate_value":[1.]*3})
+        result = attach_clinical_events(records,manifest,"lactate_value")
+        self.assertEqual(result.clinical_event_id.tolist(),["p@100","p@100","p@200"])
+        manifest.loc[manifest.video_id.eq("a"),"hospital_id"]="wrong"
+        with self.assertRaises(ValueError):attach_clinical_events(records,manifest,"lactate_value")
+
     def test_distinct_labs_separate_views_without_dropping_data(self):
         dataset = SimpleNamespace(
             expand_all_views=False,

@@ -54,6 +54,7 @@ from .config import (
     SMOOTH_L1_BETA,
     TRAIN_NUM_WORKERS,
     TRAIN_SOURCE_BATCH_SIZES,
+    TRAIN_DISTINCT_LAB_EVENTS,
     TORCH_COMPILE_ENABLED,
     TORCH_COMPILE_MODE,
     VIEW_NAMES,
@@ -123,10 +124,9 @@ def _loader(frame_index, records, views, architecture, shuffle, train_batch_poli
         raise ValueError(f"Unknown loss level: {loss_level}")
     if loss_level == "video" and train_batch_policy not in ("chunked", "distinct_lab_views"):
         raise ValueError("The video-loss ablation retains the original chunked policy")
-    if train_batch_policy == "distinct_lab_views" and loss_level != "video":
-        raise ValueError("Distinct-lab batching requires view-level pooled loss")
     interleaved_views = shuffle and train_batch_policy == "interleaved_views"
-    expand_all_views = shuffle and len(views) > 1 and not interleaved_views and loss_level == "frame"
+    distinct_labs = shuffle and train_batch_policy == "distinct_lab_views"
+    expand_all_views = shuffle and len(views) > 1 and not interleaved_views and not distinct_labs and loss_level == "frame"
     batch_size = (
         TRAIN_SOURCE_BATCH_SIZES[architecture]
         * (len(views) if interleaved_views else 1)
@@ -142,7 +142,7 @@ def _loader(frame_index, records, views, architecture, shuffle, train_batch_poli
         expand_all_views=expand_all_views,
     )
     sampler = None
-    if shuffle and not interleaved_views:
+    if shuffle and not interleaved_views and not distinct_labs:
         sampler = (
             PatientDiverseFrameSampler(dataset, batch_size)
             if train_batch_policy == "patient_diverse"
@@ -155,7 +155,13 @@ def _loader(frame_index, records, views, architecture, shuffle, train_batch_poli
         "persistent_workers": num_workers > 0,
         "prefetch_factor": PREFETCH_FACTOR if num_workers > 0 else None,
     }
-    if loss_level == "video":
+    if distinct_labs:
+        from study.common.video_loss import DistinctLabViewBatchSampler
+        loader_kwargs["batch_sampler"] = DistinctLabViewBatchSampler(
+            dataset, TRAIN_DISTINCT_LAB_EVENTS * FRAMES_PER_VIDEO, frames=FRAMES_PER_VIDEO
+        )
+        dataset.decode_cache_frames = FRAMES_PER_VIDEO
+    elif loss_level == "video":
         from study.common.video_loss import VideoViewBatchSampler, DistinctLabViewBatchSampler
         frame_budget = batch_size * len(views) if shuffle else batch_size
         loader_kwargs["batch_sampler"] = (
@@ -283,7 +289,8 @@ def _regression_metrics(targets, predictions, thresholds, direction):
     return result
 
 
-def _prepare_images(images, view_codes, interpolation, device):
+def _prepare_images(images, view_codes, interpolation, device,
+                    normalization_mean=IMAGENET_MEAN, normalization_std=IMAGENET_STD):
     """Apply deterministic views, resize, and normalize on the assigned GPU."""
     images = images.to(device, non_blocking=True).float().div_(255.0)
     view_codes = view_codes.to(device, non_blocking=True)
@@ -331,8 +338,8 @@ def _prepare_images(images, view_codes, interpolation, device):
             align_corners=False,
             antialias=True,
         )
-    mean = output.new_tensor(IMAGENET_MEAN).view(1, 3, 1, 1)
-    std = output.new_tensor(IMAGENET_STD).view(1, 3, 1, 1)
+    mean = output.new_tensor(normalization_mean).view(1, 3, 1, 1)
+    std = output.new_tensor(normalization_std).view(1, 3, 1, 1)
     return ((output - mean) / std).contiguous(memory_format=torch.channels_last)
 
 
@@ -884,6 +891,8 @@ def train_task(
         source_batch_size if train_batch_policy == "interleaved_views"
         else source_batch_size * len(VIEW_NAMES)
     )
+    if train_batch_policy == "distinct_lab_views":
+        source_batch_size = effective_batch_size = train_augmented_loader.batch_sampler.frame_batch_size
     _log(
         f"[job-start] arch={architecture} task={target} device={device} "
         f"train/val/test videos={len(records_by_split['train'])}/"

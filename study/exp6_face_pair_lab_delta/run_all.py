@@ -64,7 +64,7 @@ def _worker_train(job):
     random.seed(job_seed)
     np.random.seed(job_seed)
     torch.manual_seed(job_seed)
-    records = pd.read_csv(job["records_path"], dtype={"hospital_id": str})
+    records = pd.read_csv(job["records_path"], dtype={"hospital_id": str}, float_precision="round_trip")
     training_options = {
         "head_epochs": job["head_epochs"],
         "finetune_epochs": job["finetune_epochs"],
@@ -233,7 +233,18 @@ def main():
         raise ValueError("Exp6 regression no longer accepts legacy 128 videos")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hours", type=int, choices=(24, 12, 6), default=24)
+    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--prepare-only", action="store_true")
     args = parser.parse_args()
+    if args.hours == 24:
+        from .run_full_data import main as run_full_data
+        options = []
+        if args.overwrite: options.append("--overwrite")
+        if args.prepare_only: options.append("--prepare-only")
+        run_full_data(options)
+        return
+    if args.overwrite or args.prepare_only:
+        parser.error("Rebuild/overwrite flags currently apply only to the 24h main protocol")
     job = next(item for item in experiment_plan() if item["key"] == f"exp6_delta_{args.hours}h")
     run_experiment(job, FrameOffsetIndex.load(INDEX_DIR / "frame_offsets.npz"))
 

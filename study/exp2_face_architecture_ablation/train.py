@@ -100,7 +100,14 @@ def train_task(job, index, device, *, experiment_config=None, model_factory=None
     positives = int(groups["train"].binary_label.sum())
     negatives = len(groups["train"]) - positives
     pos_weight = negatives / positives
-    criterion = VideoBCELoss(torch.tensor(pos_weight, device=device)) if family == "classification" else VideoSmoothL1Loss()
+    loss_level = getattr(cfg, "LOSS_LEVEL", "video_view")
+    if loss_level == "frame":
+        criterion = (nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight, device=device), reduction="none")
+                     if family == "classification" else nn.SmoothL1Loss(beta=.5, reduction="none"))
+    elif loss_level == "video_view":
+        criterion = VideoBCELoss(torch.tensor(pos_weight, device=device)) if family == "classification" else VideoSmoothL1Loss()
+    else:
+        raise ValueError(f"Unsupported loss level: {loss_level}")
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.LEARNING_RATES[architecture], weight_decay=cfg.WEIGHT_DECAY)
     schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.MAX_EPOCHS,
                                                          eta_min=cfg.MIN_LEARNING_RATES[architecture])
@@ -109,7 +116,7 @@ def train_task(job, index, device, *, experiment_config=None, model_factory=None
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
     print(f"[job-start] {architecture}/{family}/{target} device={device} parameters={parameter_count} "
           f"videos={len(groups['train'])}/{len(groups['val'])}/{len(groups['test'])} "
-          f"batch=12labs*20frames*1view pos_weight={pos_weight:.6g}", flush=True)
+          f"batch=12labs*20frames*1view loss_unit={loss_level} pos_weight={pos_weight:.6g}", flush=True)
     for epoch in range(1, cfg.MAX_EPOCHS + 1):
         model.train()
         started = time.perf_counter()
@@ -149,7 +156,7 @@ def train_task(job, index, device, *, experiment_config=None, model_factory=None
             best = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
             torch.save({"state_dict": best, "architecture": architecture, "family": family, "target": target,
                         "seed": seed, "best_epoch": epoch, "parameters": parameter_count,
-                        "loss_unit": "video_view", "frames_per_view": 20, "pos_weight": pos_weight,
+               "loss_unit": loss_level, "frames_per_view": 20, "pos_weight": pos_weight,
                         "target_scaler": scaler.to_dict() if family == "regression" else None}, run / "model.pt")
         else:
             patience += 1

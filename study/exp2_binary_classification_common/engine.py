@@ -548,6 +548,7 @@ def train_task(
     if loaders["train_augmented"].batch_size is None:
         sampler = loaders["train_augmented"].batch_sampler
         frame_batch_size = getattr(sampler, "frame_batch_size", getattr(sampler, "batch_size", source_batch_size))
+        source_batch_size = frame_batch_size
     else:
         frame_batch_size = source_batch_size * len(base_config.VIEW_NAMES) if modality != "history_only" else source_batch_size
     loss_name = "weighted BCE on mean frame probability" if loss_level == "video" else "BCEWithLogitsLoss"
@@ -557,7 +558,7 @@ def train_task(
         f"{len(split_records['val'])}/{len(split_records['test'])} "
         f"train_neg/pos={negatives}/{positives} pos_weight={pos_weight:.6f} "
         f"train_inputs={train_inputs} "
-        f"source_batch={source_batch_size} loss_level={loss_level} "
+        f"source_batch={source_batch_size} frame_batch={frame_batch_size} loss_level={loss_level} "
         f"batch_policy={train_batch_policy} parameters={total_parameters}", flush=True,
     )
     history = []

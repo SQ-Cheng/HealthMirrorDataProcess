@@ -20,21 +20,24 @@ LABELS = {"efficientnet_b0": "Pretrained EfficientNet-B0", "color_histogram_mlp"
 COLORS = ("#64737C", "#2878B5", "#CB6547", "#278245")
 
 
-def panels():
-    rows, columns = target_grid_shape(len(config.TARGETS))
+def panels(targets=None):
+    rows, columns = target_grid_shape(len(config.TARGETS if targets is None else targets))
     return plt.subplots(rows, columns, figsize=target_grid_figsize(rows, columns), squeeze=False, constrained_layout=True)
 
 
-def plot_one(root, family, architecture):
+def plot_one(root, family, architecture, *, targets=None, loss_label="View-level loss"):
+    targets = config.TARGETS if targets is None else targets
     figures = root / "figures"
     figures.mkdir(exist_ok=True)
     history = pd.read_csv(root / "history_all.csv")
-    figure, axes = panels()
-    for axis, target in zip(axes.flat, config.TARGETS):
+    figure, axes = panels(targets)
+    for axis in axes.flat[len(targets):]:
+        axis.set_visible(False)
+    for axis, target in zip(axes.flat, targets):
         values = history.loc[history.target.eq(target)]
         axis.plot(values.epoch, values.train_loss, label="Train", color=COLORS[1])
         axis.plot(values.epoch, values.val_loss, label="Validation", color=COLORS[2])
-        axis.set(title=TASK_LABELS[target], xlabel="Epoch", ylabel="View-level loss")
+        axis.set(title=TASK_LABELS[target], xlabel="Epoch", ylabel=loss_label)
         axis.legend(fontsize=8)
         axis.grid(alpha=.2)
         if family == "regression":
@@ -50,10 +53,12 @@ def plot_one(root, family, architecture):
     figure.savefig(figures / "training_history.png", dpi=180)
     plt.close(figure)
     if family == "classification":
-        plot_confusion_matrices(root, config.TARGETS, run_root="runs")
+        plot_confusion_matrices(root, targets, run_root="runs")
         return
-    figure, axes = panels()
-    for axis, target in zip(axes.flat, config.TARGETS):
+    figure, axes = panels(targets)
+    for axis in axes.flat[len(targets):]:
+        axis.set_visible(False)
+    for axis, target in zip(axes.flat, targets):
         frame = pd.read_csv(root / f"runs/{target}/video_predictions.csv").query("split == 'test'")
         actual, predicted = frame.y_true.to_numpy(float), frame.y_pred.to_numpy(float)
         axis.scatter(actual, predicted, s=14, alpha=.45, color=COLORS[1], edgecolors="none")

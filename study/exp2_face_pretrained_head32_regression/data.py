@@ -136,7 +136,7 @@ def _score_events(events, target, video_summary):
         raw_value = pd.to_numeric(result[definition["value_column"]], errors="coerce")
         if raw_value.isna().any():
             raise ValueError(f"Missing raw values for {target}")
-        if target == "hemoglobin_low":
+        if isinstance(definition["threshold"], dict):
             threshold = np.where(
                 result["sex"].astype(str).eq("男"),
                 definition["threshold"]["male"],

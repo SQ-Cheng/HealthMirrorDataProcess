@@ -21,8 +21,8 @@ without gradients. There is no backbone fine-tuning or second training stage.
 
 Fixed original/hflip/center-crop/brightness/contrast views and ImageNet RGB
 normalization exactly reuse the native224 pipeline. Frozen CLS features are
-extracted once, shared by all heads, and saved as float32: about 194 MiB for
-the current 26,520 source frames x five views. No patch cubes, decoded images,
+extracted once, shared by all heads, and saved as float32: about 163 MiB for
+the current 22,260 source frames x five views. No patch cubes, decoded images,
 new videos, or sixteen duplicate backbone checkpoints are stored. The cache
 records source/weights/augmentation hashes. Head checkpoints record the shared
 weight SHA256 and source revision, so predictions can be reproduced online.
@@ -60,6 +60,13 @@ not an isolated freeze ablation of the same backbone.
 
 ## Required Authorized Weights
 
+The ViT-S/16 checkpoint is now installed in the common weights directory and
+has passed the full SHA256 check, strict loading, and a 224x224 CPU forward
+test. SHA256: `08c60483bc63c04f533611e34bf70b120eedb7240f469bc16e9e20bf344b941d`.
+The launch script selects the refreshed `lab_update_20261007` reference and
+the overwritten paired EfficientNet controls; it does not use the earlier
+12h cohort. No completed DINO results existed before this update.
+
 Official sources:
 - https://github.com/facebookresearch/dinov3
 - https://huggingface.co/facebook/dinov3-vits16-pretrain-lvd1689m
@@ -91,7 +98,81 @@ interrupted predecessor is reported as an error. The existing Torch 2.4.1
 environment can run the official backbone; no package upgrades are required.
 CPU tests use randomized official weights only to validate shapes, freezing,
 and gradients, and do not produce formal feature caches or results. A pretrained
-checkpoint smoke test remains pending until authorized weights are provided.
+checkpoint has now passed strict loading and the CPU forward smoke test.
 
 Results: `outputs/<classification|regression>/dinov3_vits16_frozen/`.
 Log: `logs/run.log`; per-head logs are under `runs/<target>/train.log`.
+
+## Current Main Regression Comparison (24h)
+
+Run the ten current main regression tasks (including directly reported HCT and
+eGFR) against `exp2_face_pretrained_head32_regression/outputs/20frame_face224`:
+
+```bash
+bash study/exp2_face_dinov3_frozen/launch_main_regression_screen.sh
+screen -r exp2_dinov3_main24h_regression
+```
+
+This variant copies the exact main task CSVs and train-only scalers without a
+new split search, uses the same selected native224 frame packets (including
+explicit equivalence checks against the HCT/eGFR index), and retains all five
+views. Every full batch contains twelve distinct lab events, twenty frames
+per event, and one view per event. Unlike the earlier 12h run, it computes 240
+individual frame SmoothL1 losses, not twelve pooled-view losses. Validation
+loss is also frame-level; metrics use mean predictions over twenty original
+frames. Initialization seeds match the corresponding main task runs.
+
+The DINO encoder remains completely frozen and the original single-stage
+head settings remain lr=2e-4, cosine minimum=1e-6, max epochs=80, patience=12,
+weight decay=1e-3 and dropout=0.25. The comparator trains EN-B0 in two stages;
+this is a representation/training-strategy comparison, not a backbone-only
+ablation. No existing 12h DINO results or EfficientNet results are overwritten.
+
+Outputs: `outputs/main24h_frame_loss/regression/dinov3_vits16_frozen/`.
+Log: `logs/main24h_regression/run.log`.
+Cache: `cache/main24h_frame_loss/`; only CLS vectors are stored, no copied pixels.
+The launcher runs one small real-feature smoke test and then four-GPU head
+training. At completion, training curves, prediction scatter plots with linear
+fits, and paired MAE/RMSE/Pearson r/R2/explained-variance bar charts are generated
+automatically. `paired_test_audit.csv` proves the test cohorts and labels agree;
+`paired_baseline_comparison.csv` contains all test metrics.
+
+### Head64 Variant
+
+```bash
+bash study/exp2_face_dinov3_frozen/launch_main_regression_screen.sh 64
+screen -r exp2_dinov3_main24h_regression_head64
+```
+
+Only the hidden width changes to 64 (24,833 trainable head parameters). All
+ten tasks, clinical labels, splits, seeds, views, batches, frame losses and
+optimization settings are unchanged. The same frozen CLS cache is reused.
+Head32 outputs remain untouched. Head64 outputs are under
+`outputs/main24h_frame_loss_head64/regression/dinov3_vits16_frozen/`, with logs
+in `logs/main24h_regression_head64/run.log`. Automatic metric comparisons show
+EfficientNet-B0, DINO head32 and DINO head64 on exactly the same test videos.
+
+## Frozen EfficientNet Controls And Five-Model Comparisons
+
+The companion head32/head64 EfficientNet controls keep the entire ImageNet
+backbone (including BatchNorm statistics) fixed and use exactly the DINO
+80-epoch single-stage schedule, patience=12, lr=2e-4, cosine floor=1e-6,
+weight decay=1e-3 and dropout=0.25. Heads consume 1280-dimensional GAP features
+and contain 41,089/82,177 parameters. Clinical cohorts, frame losses, views,
+seeds and evaluation are identical to the corresponding DINO runs. No feature
+standardization or extra projection is fitted. One shared 717 MB EN cache
+serves both the single-face and paired-face comparisons; frame packet equality
+is checked before remapping the single-face data to the common cache.
+
+```bash
+bash study/common/launch_frozen_en_regression_controls_screen.sh
+screen -r frozen_en_exp2_exp6_regression
+```
+
+This queue runs only the 42 new frozen-EN heads, never the completed DINO or
+fine-tuned EN baselines. Exp2 results are under `outputs/frozen_en_b0/head32/`
+and `outputs/frozen_en_b0/head64/` (then `regression/efficientnet_b0_frozen`).
+Five-model comparison PNG/PDF files are `outputs/figures/five_model_*`, with
+values in `outputs/five_model_test_comparison.csv` and strict test-identity
+audit in `outputs/five_model_test_audit.csv`. Existing comparison figures
+remain untouched. Common queue log: `study/common/logs/frozen_en_regression_controls/run.log`.

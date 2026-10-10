@@ -3,13 +3,16 @@
   "experiments": [
     {"id": "face_history_regression", "path": "study/exp2_face_history_head32_regression", "task": "raw_value_regression"},
     {"id": "face_regression", "path": "study/exp2_face_pretrained_head32_regression", "task": "raw_value_regression"},
+    {"id": "face_shared_backbone_regression", "path": "study/exp2_face_shared_backbone_head32_regression", "task": "shared_backbone_raw_value_regression"},
+    {"id": "face_ssl_regression", "path": "study/exp2_face_ssl_head32_regression", "task": "train_only_byol_then_independent_raw_value_regression"},
     {"id": "history_regression", "path": "study/exp2_history_only_head32_regression", "task": "raw_value_regression"},
     {"id": "face_history_classification", "path": "study/exp2_face_history_head32_classification", "task": "binary_classification"},
     {"id": "face_classification", "path": "study/exp2_face_pretrained_head32_classification", "task": "binary_classification"},
     {"id": "history_classification", "path": "study/exp2_history_only_head32_classification", "task": "binary_classification"},
     {"id": "lab_longitudinal_statistics", "path": "study/exp2_lab_longitudinal_statistics", "task": "descriptive_statistics"},
     {"id": "face_architecture_ablation", "path": "study/exp2_face_architecture_ablation", "task": "raw_value_regression_and_binary_classification"},
-    {"id": "face_dinov3_frozen", "path": "study/exp2_face_dinov3_frozen", "task": "frozen_dinov3_regression_and_binary_classification"}
+    {"id": "face_dinov3_frozen", "path": "study/exp2_face_dinov3_frozen", "task": "frozen_dinov3_regression_and_binary_classification"},
+    {"id": "face_dinov3_farl_regression", "path": "study/exp2_face_dinov3_farl_regression", "task": "frozen_dual_encoder_concat_and_gated_raw_value_regression"}
   ],
   "shared_code": [
     "study/common",

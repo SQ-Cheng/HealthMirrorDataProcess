@@ -124,6 +124,20 @@ SCORE_DEFINITIONS = {
         "scale": 30.0,
         "unit": "umol/L",
     },
+    "hematocrit_low": {
+        "value_column": "hematocrit_value",
+        "direction": "low",
+        "threshold": {"male": 37.0, "other": 34.0},
+        "scale": 5.0,
+        "unit": "%",
+    },
+    "egfr_low": {
+        "value_column": "egfr_creatinine_value",
+        "direction": "low",
+        "threshold": 60.0,
+        "scale": 15.0,
+        "unit": "mL/min/1.73m2",
+    },
 }
 REGRESSION_TARGET_COLUMN = "robust_scaled_raw_value"
 REGRESSION_TARGET_TRANSFORM = "train_only_median_iqr"

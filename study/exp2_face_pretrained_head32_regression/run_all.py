@@ -22,6 +22,9 @@ from .config import (
     FINETUNE_MAX_EPOCHS,
     FINETUNE_PATIENCE,
     FRAMES_PER_VIDEO,
+    DEFAULT_LOSS_LEVEL,
+    DEFAULT_TRAIN_BATCH_POLICY,
+    TRAIN_DISTINCT_LAB_EVENTS,
     FRAME_SHUFFLE_CHUNK_SIZE,
     HEAD_HIDDEN_FEATURES,
     HEAD_LEARNING_RATE,
@@ -58,6 +61,7 @@ from .source_data import (
 )
 from .scaling import fit_robust_target_scaler, write_target_scalers
 from .train import train_task
+from study.common.clinical_events import attach_clinical_events
 
 
 LAB_TARGET_PREFIXES = TARGET_ANALYTES
@@ -146,6 +150,8 @@ def _worker_train(job):
         head_patience=job["head_patience"],
         finetune_patience=job["finetune_patience"],
         max_batches=job["max_batches"],
+        train_batch_policy=job["train_batch_policy"],
+        loss_level=job["loss_level"],
     )
     return {
         "architecture": job["architecture"],
@@ -305,6 +311,8 @@ def main():
     parser.add_argument("--workers-per-gpu", type=int, default=1)
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--loss-level", choices=("frame","video"), default=DEFAULT_LOSS_LEVEL)
+    parser.add_argument("--train-batch-policy", choices=("chunked","patient_diverse","interleaved_views","distinct_lab_views"), default=None)
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
@@ -313,6 +321,9 @@ def main():
         help="Train only --targets and preserve completed targets in this output.",
     )
     args = parser.parse_args()
+    args.train_batch_policy = args.train_batch_policy or (DEFAULT_TRAIN_BATCH_POLICY if args.frame_policy == "20frame" else "chunked")
+    if args.train_batch_policy == "distinct_lab_views" and args.frame_policy != "20frame":
+        parser.error("Distinct-lab batches require the twenty-frame protocol")
     if face_source_mode() != "face224":
         parser.error("This experiment accepts native face224 videos only")
     if not 0 < args.match_max_delta_hours <= LAB_MATCH_MAX_DELTA_HOURS:
@@ -320,12 +331,12 @@ def main():
     args.output_dir = args.output_dir or OUTPUT_DIRS[args.frame_policy]
     args.source_dir = args.source_dir or os.path.join(args.output_dir, "source_data")
     args.index_dir = args.index_dir or (
-        str(Path(__file__).resolve().parents[1] / "common/cache/face224_20frame")
+        str(Path(__file__).resolve().parents[1] / "common/cache" / (
+            "face224_20frame_main" if args.train_batch_policy == "distinct_lab_views" else "face224_20frame"
+        ))
         if args.frame_policy == "20frame"
         else os.path.join(args.output_dir, "frame_index")
     )
-    if args.reference_output_dir is None and args.frame_policy == "20frame":
-        args.reference_output_dir = REFERENCE_OUTPUT_DIR
 
     architectures = _parse_csv(args.architectures)
     requested_targets = (
@@ -474,6 +485,10 @@ def main():
         task_records[target][REGRESSION_TARGET_COLUMN] = scaler.transform(
             task_records[target]["raw_value"]
         )
+        if args.train_batch_policy == "distinct_lab_views":
+            task_records[target] = attach_clinical_events(
+                task_records[target], base_manifest, SCORE_DEFINITIONS[target]["value_column"]
+            )
         task_records[target].to_csv(
             os.path.join(args.output_dir, "task_records", f"{target}.csv"),
             index=False,
@@ -676,6 +691,10 @@ def main():
                 f"all parameters unfrozen, lr={FINETUNE_LEARNING_RATE:.8g}"
             ),
             "objective": "unweighted SmoothL1 on train-only robust-scaled raw values",
+            "loss_level": args.loss_level,
+            "train_batch_policy": args.train_batch_policy,
+            "batch_unique_measurements": TRAIN_DISTINCT_LAB_EVENTS if args.train_batch_policy == "distinct_lab_views" else None,
+            "views_per_video_per_batch": 1 if args.train_batch_policy == "distinct_lab_views" else None,
             "smooth_l1_beta": SMOOTH_L1_BETA,
             "loss_weighting": "none",
             "head_max_epochs": args.head_epochs,
@@ -685,7 +704,7 @@ def main():
             "explicit_worker_override": args.workers,
             "train_source_batch_sizes": TRAIN_SOURCE_BATCH_SIZES,
             "effective_train_batch_sizes": {
-                name: size * len(VIEW_NAMES)
+                name: TRAIN_DISTINCT_LAB_EVENTS * FRAMES_PER_VIDEO if args.train_batch_policy == "distinct_lab_views" else size * len(VIEW_NAMES)
                 for name, size in TRAIN_SOURCE_BATCH_SIZES.items()
             },
             "eval_batch_sizes": EVAL_BATCH_SIZES,
@@ -758,6 +777,8 @@ def main():
                 "head_patience": args.head_patience,
                 "finetune_patience": args.finetune_patience,
                 "max_batches": args.max_batches,
+                "loss_level": args.loss_level,
+                "train_batch_policy": args.train_batch_policy,
             })
     replacement_keys = {(job["architecture"], job["target"]) for job in jobs}
     preserved_run_rows = []

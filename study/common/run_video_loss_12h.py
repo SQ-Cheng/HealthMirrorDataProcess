@@ -114,6 +114,9 @@ def train_one(job):
     family, target = job["family"], job["target"]
     root = Path(job.get("output", OUTPUTS[family]))
     batch_policy = job.get("batch_policy", "chunked")
+    loss_level = job.get("loss_level", "video")
+    reference_source = Path(job.get("reference_source", SOURCE))
+    index_path = Path(job.get("frame_index_path", INDEX_PATH))
     run = root / f"runs/efficientnet_b0/{target}"
     run.mkdir(parents=True, exist_ok=True)
     seed = job_seed(family, target)
@@ -122,8 +125,8 @@ def train_one(job):
         if family == "classification":
             from study.exp2_binary_classification_common.engine import train_task
             train_task("face_only", target, GPU, seed, output_dir=root,
-                       records_path=path, reference_records_path=SOURCE / f"task_records/{target}.csv",
-                       frame_index_path=INDEX_PATH, loss_level="video",
+                       records_path=path, reference_records_path=reference_source / f"task_records/{target}.csv",
+                       frame_index_path=index_path, loss_level=loss_level,
                        train_batch_policy=batch_policy)
         else:
             from study.exp2_face_pretrained_head32_regression.train import train_task
@@ -134,10 +137,10 @@ def train_one(job):
             torch.cuda.manual_seed_all(seed)
             train_task("efficientnet_b0", target, INDEX,
                        pd.read_csv(path, dtype={"hospital_id": str, "video_id": str}),
-                       RobustTargetScaler(**job["scaler"]), config.WEIGHTS_DIR, str(run), loss_level="video",
+                       RobustTargetScaler(**job["scaler"]), config.WEIGHTS_DIR, str(run), loss_level=loss_level,
                        train_batch_policy=batch_policy)
     checkpoint = torch.load(run / "model.pt", map_location="cpu", weights_only=True)
-    if checkpoint["loss_level"] != "video" or checkpoint["train_batch_policy"] != batch_policy:
+    if checkpoint["loss_level"] != loss_level or checkpoint["train_batch_policy"] != batch_policy:
         raise RuntimeError(f"Wrong saved protocol: {run}")
     prediction = pd.read_csv(run / "video_predictions.csv", dtype={"hospital_id": str, "video_id": str})
     source = pd.read_csv(path, dtype={"hospital_id": str, "video_id": str})

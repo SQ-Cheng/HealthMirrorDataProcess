@@ -15,6 +15,7 @@ mkdir -p "$LOGS"
 screen -dmS "$SESSION" bash -c '
   set -o pipefail
   export HEALTHMIRROR_FACE_SOURCE=face224 CUDA_VISIBLE_DEVICES=0,1,2,3
+  export HEALTHMIRROR_LAB_RUN_TAG=lab_update_20261007 HEALTHMIRROR_LAB_OVERWRITE=1
   export MKL_THREADING_LAYER=GNU OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
   /root/miniconda3/envs/healthmirrorenv/bin/python -u -m study.exp2_face_dinov3_frozen.run \
     2>&1 | tee -a "$1/run.log"

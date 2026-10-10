@@ -36,6 +36,8 @@ TARGET_ANALYTES = {
     "hemoglobin_low": "hemoglobin",
     "aa_po2_ratio_low": "aa_po2_ratio",
     "creatinine_high": "creatinine",
+    "hematocrit_low": "hematocrit",
+    "egfr_low": "egfr_creatinine",
 }
 
 
@@ -48,6 +50,22 @@ def _sha256(path):
 
 
 LAB_SOURCE_DEFINITIONS = {
+    "hematocrit": {
+        "items": ("*红细胞压积", "红细胞压积"),
+        "canonical_unit": "%",
+        "valid_range": (1.0, 85.0),
+        "exclude_venous": False,
+        "allowed_specimens": ("血", "血清", "血浆", "全血", "动脉血即刻", "即刻动脉血", "静脉血"),
+        "unit_conversion": {"%": 1.0},
+    },
+    "egfr_creatinine": {
+        "items": ("eGFR(CKD-EPI 肌酐)",),
+        "canonical_unit": "mL/min/1.73m2",
+        "valid_range": (0.0, 300.0),
+        "exclude_venous": False,
+        "allowed_specimens": ("血", "血清", "血浆", "全血", "动脉血即刻", "即刻动脉血", "静脉血"),
+        "unit_conversion": {"mL/min/1.73㎡": 1.0, "mL/(min/1.73㎡)": 1.0},
+    },
     "oxyhemoglobin_fraction": {
         "items": ("氧合血红蛋白分数", "氧合血红蛋白"),
         "canonical_unit": "%",
@@ -164,7 +182,11 @@ def _canonical_values(analyte, items, values, units):
         percent_item = items.eq("动脉氧分压与肺泡氧分压之比")
         supported = (fraction_item & units.eq("")) | (percent_item & units.eq("%"))
         return values.where(~fraction_item, values * 100.0), supported
+    if analyte == "egfr_creatinine":
+        supported = units.str.fullmatch(r"ml/(?:min/1[.]73(?:㎡|m2|m\^2)|\(min/1[.]73(?:㎡|m2|m\^2)\))")
+        return values, supported
     expected = {
+        "hematocrit": "%",
         "oxyhemoglobin_fraction": "%",
         "lactate": "mmol/l",
         "urea": "mmol/l",
@@ -223,6 +245,11 @@ def _load_lab_data(targets, output_dir):
                 else True
             )
         )
+        if "allowed_specimens" in definition:
+            selected["valid"] &= selected["标本名称"].isin(definition["allowed_specimens"])
+            selected["valid"] &= ~selected["检验值(文本)"].str.match(
+                r"^\s*(?:大于|小于|超过|低于)", na=False,
+            )
         retained = selected.loc[selected["valid"]].copy()
         conflicts = (
             retained.groupby(["hospital_id", "timestamp_unix"])["value"]
@@ -272,6 +299,9 @@ def _load_lab_data(targets, output_dir):
                 "for duplicate patient timestamps"
             ),
         }
+        if "allowed_specimens" in definition:
+            policies[analyte]["allowed_specimens"] = list(definition["allowed_specimens"])
+            policies[analyte]["direct_reported_only"] = True
     labs = pd.concat(lab_frames, ignore_index=True)
     labs = labs.sort_values(
         ["hospital_id", "analyte", "timestamp_unix", "value"],
@@ -356,15 +386,9 @@ def _nearest_measurement(measurements, start, end, max_delta_hours=LAB_MATCH_MAX
 
 def _binary_label(target, value, sex):
     definition = SCORE_DEFINITIONS[target]
-    threshold = (
-        definition["threshold"]["male"]
-        if target == "hemoglobin_low" and sex == "男"
-        else (
-            definition["threshold"]["other"]
-            if target == "hemoglobin_low"
-            else definition["threshold"]
-        )
-    )
+    threshold = definition["threshold"]
+    if isinstance(threshold, dict):
+        threshold = threshold["male"] if sex == "男" else threshold["other"]
     if definition["direction"] == "low":
         return int(value < threshold)
     if definition["direction"] == "high":
@@ -390,6 +414,11 @@ def validate_analyte_source_policies(quality, targets):
             problems.append("valid_range")
         if actual.get("unit_conversion") != expected["unit_conversion"]:
             problems.append("unit_conversion")
+        if "allowed_specimens" in expected:
+            if actual.get("allowed_specimens") != list(expected["allowed_specimens"]):
+                problems.append("allowed_specimens")
+            if actual.get("direct_reported_only") is not True:
+                problems.append("direct_reported_only")
         if int(actual.get("retained_patient_timestamp_events", 0)) <= 0:
             problems.append("retained_patient_timestamp_events")
         if problems:

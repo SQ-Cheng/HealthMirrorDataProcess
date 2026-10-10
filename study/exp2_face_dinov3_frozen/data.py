@@ -12,7 +12,7 @@ from .features import CACHE
 
 
 class DinoFeatureDataset(FeatureFrameDataset):
-    def __init__(self, index, records, views, family):
+    def __init__(self, index, records, views, family, cache_dir=CACHE):
         self.index = index
         self.video_records = records.reset_index(drop=True)
         self.views, self.expand_all_views = tuple(views), False
@@ -20,7 +20,7 @@ class DinoFeatureDataset(FeatureFrameDataset):
         self.frame_video_rows = np.repeat(np.arange(len(records)), 20)
         self.frame_count = len(self.frame_indices)
         self.labels_by_video = records["binary_label" if family == "classification" else "robust_scaled_raw_value"].to_numpy(np.float32)
-        self.features = np.load(CACHE / "cls_features.npy", mmap_mode="r")
+        self.features = np.load(cache_dir / "cls_features.npy", mmap_mode="r")
 
 
 def loader(index, records, architecture, family, train):

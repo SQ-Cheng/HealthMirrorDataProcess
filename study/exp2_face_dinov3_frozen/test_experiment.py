@@ -13,6 +13,14 @@ from .backbone import Head, FrozenPredictor, load_encoder, weight_sha256
 
 
 class FrozenDinoTests(unittest.TestCase):
+    def test_head64_size_and_gradient(self):
+        head = Head(64)
+        self.assertEqual(sum(parameter.numel() for parameter in head.parameters()), 24833)
+        prediction = head(torch.randn(240, 384))
+        self.assertEqual(tuple(prediction.shape), (240, 1))
+        torch.nn.functional.smooth_l1_loss(prediction, torch.randn(240, 1), beta=.5).backward()
+        self.assertTrue(all(p.grad is not None and torch.isfinite(p.grad).all() for p in head.parameters()))
+
     def test_head_size_and_gradient(self):
         head = Head()
         self.assertEqual(sum(parameter.numel() for parameter in head.parameters()), 12417)

@@ -29,12 +29,6 @@ model/models/onnx/step.onnx
 
 # Generated reports
 sample_length_report_output.txt
-/study/exp1_sqa_pretrain/sqa_outputs/logs
-/study/exp1_sqa_pretrain/sqa_annotations/
-/study/exp1_sqa_pretrain/sqa_outputs/human_finetune/
-/study/exp1_sqa_pretrain/sqa_outputs/evaluations/**/window_predictions.csv
-/study/exp1_sqa_pretrain/sqa_outputs/evaluations/**/example_windows.png
-/study/exp1_sqa_pretrain/sqa_outputs/evaluations/**/evaluation.log
 
 # IDE
 .vscode/
@@ -47,3 +41,6 @@ sample_length_report_output.txt
 
 # Raw laboratory exports and their generated conversion/audit files
 /[0-9]*安贞化验/
+
+# Preserved local human annotations; not experiment source code
+/study/common/annotations/

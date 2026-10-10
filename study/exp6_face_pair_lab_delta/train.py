@@ -45,11 +45,13 @@ from .config import (
     TORCH_COMPILE_MODE,
     TRAIN_NUM_WORKERS,
     TRAIN_SOURCE_BATCH_SIZE,
+    TRAIN_LAB_PAIRS_PER_BATCH,
     VIEWS,
     WEIGHT_DECAY,
 )
 from .data import ChunkShuffleSampler, PairedFrameDataset, PatientDiversePairSampler
 from .models import build_model, freeze_backbone, parameter_counts, unfreeze_all
+from study.common.video_loss import DistinctLabViewBatchSampler
 
 
 def seed_everything(seed):
@@ -61,17 +63,25 @@ def seed_everything(seed):
 
 
 def _loader(frame_index, records, train, train_views=VIEWS,
-            train_batch_policy="chunk"):
+            train_batch_policy="chunk", lab_pairs_per_batch=TRAIN_LAB_PAIRS_PER_BATCH):
+    indexed = train and train_batch_policy == "distinct_lab_views"
     dataset = PairedFrameDataset(
         frame_index,
         records,
         views=train_views if train else ("original",),
-        expand_views=train,
+        expand_views=train and not indexed,
+        index_views=indexed,
     )
     workers = TRAIN_NUM_WORKERS if train else EVAL_NUM_WORKERS
-    if train_batch_policy not in ("chunk", "patient_diverse"):
+    if train_batch_policy not in ("chunk", "patient_diverse", "distinct_lab_views"):
         raise ValueError(f"Unknown batch policy: {train_batch_policy}")
     sampler = None
+    if indexed:
+        return dataset, DataLoader(
+            dataset, batch_sampler=DistinctLabViewBatchSampler(dataset, lab_pairs_per_batch * 20),
+            num_workers=workers, pin_memory=True, persistent_workers=workers > 0,
+            prefetch_factor=PREFETCH_FACTOR if workers > 0 else None,
+        )
     if train:
         sampler = (
             PatientDiversePairSampler(dataset, TRAIN_SOURCE_BATCH_SIZE)
@@ -162,7 +172,8 @@ def _compile(model, target, stage):
         return model, "eager"
 
 
-def _train_epoch(model, raw_model, loader, optimizer, scaler, device, frozen, max_batches):
+def _train_epoch(model, raw_model, loader, optimizer, scaler, device, frozen, max_batches,
+                 microbatch_frame_pairs=None):
     if frozen:
         model.eval()
         raw_model.head.train()
@@ -176,22 +187,30 @@ def _train_epoch(model, raw_model, loader, optimizer, scaler, device, frozen, ma
             break
         first = _prepare(first, codes, device)
         second = _prepare(second, codes, device)
-        repeat = codes.shape[1]
+        repeat = codes.shape[1] if codes.ndim == 2 else 1
         target = target.repeat_interleave(repeat).to(device, non_blocking=True)
         weights = weights.repeat_interleave(repeat).to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
-        with torch.autocast(device_type="cuda", dtype=torch.float16):
-            prediction = model(first, second).squeeze(1)
-            loss = _weighted_loss(prediction, target, weights)
-        if not torch.isfinite(loss):
-            raise RuntimeError("Non-finite training loss")
-        scaler.scale(loss).backward()
+        size = microbatch_frame_pairs or len(target)
+        denominator = weights.sum().clamp_min(1e-8)
+        loss_total = 0.0
+        # Accumulate one weighted objective across the logical twelve-pair batch.
+        for start in range(0, len(target), size):
+            stop = min(start + size, len(target))
+            with torch.autocast(device_type="cuda", dtype=torch.float16):
+                prediction = model(first[start:stop], second[start:stop]).squeeze(1)
+                loss = _weighted_loss(prediction, target[start:stop], weights[start:stop])
+                loss = loss * weights[start:stop].sum() / denominator
+            if not torch.isfinite(loss):
+                raise RuntimeError("Non-finite training loss")
+            scaler.scale(loss).backward()
+            loss_total += float(loss.detach().cpu())
         scaler.unscale_(optimizer)
         nn.utils.clip_grad_norm_(raw_model.parameters(), GRAD_CLIP_NORM)
         scaler.step(optimizer)
         scaler.update()
         batch_weight = float(weights.sum().detach().cpu())
-        total += float(loss.detach().cpu()) * batch_weight
+        total += loss_total * batch_weight
         weight_total += batch_weight
         inputs += len(target)
         batches += 1
@@ -281,7 +300,10 @@ def _evaluate(model, dataset, loader, device, split, scaler, max_batches=None):
         "first_value", "second_value", "raw_delta", "lab_interval_h",
         "first_match_delta_h", "second_match_delta_h",
     ]].reset_index(drop=True)
-    aggregate["y_true"] = aggregate.y_true_scaled * scaler["iqr"] + scaler["median"]
+    expected_scaled = ((info.raw_delta - scaler["median"]) / scaler["iqr"]).to_numpy(np.float32)
+    np.testing.assert_array_equal(aggregate.y_true_scaled.to_numpy(np.float32), expected_scaled)
+    # Raw measured deltas are authoritative; inverse float32 labels incur rounding.
+    aggregate["y_true"] = info.raw_delta.to_numpy(np.float64)
     aggregate["y_pred"] = aggregate.y_pred_scaled * scaler["iqr"] + scaler["median"]
     result = pd.concat([info, aggregate.drop(columns="pair_row")], axis=1)
     result.insert(0, "split", split)
@@ -296,6 +318,7 @@ def _stage(
     stage, raw_model, datasets, loaders, target, device, run_dir, scaler,
     history, epochs, patience_limit, optimizer, max_batches,
     minimum_learning_rate=MIN_LEARNING_RATE,
+    microbatch_frame_pairs=None,
 ):
     execution, backend = _compile(raw_model, target, stage)
     amp_scaler = torch.amp.GradScaler("cuda", init_scale=1024)
@@ -305,6 +328,7 @@ def _stage(
         step = _train_epoch(
             execution, raw_model, loaders["train_augmented"], optimizer,
             amp_scaler, device, stage == "head", max_batches,
+            microbatch_frame_pairs=microbatch_frame_pairs,
         )
         train_metrics, _ = _evaluate(
             execution, datasets["train"], loaders["train"], device,
@@ -364,6 +388,8 @@ def train_task(
     head_min_learning_rate=MIN_LEARNING_RATE,
     finetune_min_learning_rate=MIN_LEARNING_RATE,
     head_patience=HEAD_PATIENCE, finetune_patience=FINETUNE_PATIENCE,
+    lab_pairs_per_batch=TRAIN_LAB_PAIRS_PER_BATCH,
+    microbatch_frame_pairs=None,
 ):
     if set(frame_index.video_formats) != {"ffv1"}:
         raise ValueError("Exp6 regression requires native 224 FFV1 inputs")
@@ -380,6 +406,7 @@ def train_task(
     train_augmented, train_augmented_loader = _loader(
         frame_index, split_records["train"], True, train_views,
         train_batch_policy=train_batch_policy,
+        lab_pairs_per_batch=lab_pairs_per_batch,
     )
     datasets, loaders = {}, {"train_augmented": train_augmented_loader}
     for split in ("train", "val", "test"):
@@ -399,8 +426,10 @@ def train_task(
         f"{split_records['test'].hospital_id.nunique()} "
         f"frames={len(datasets['train'])}/{len(datasets['val'])}/"
         f"{len(datasets['test'])} train_inputs={train_augmented.model_input_count} "
-        f"source_batch={TRAIN_SOURCE_BATCH_SIZE} "
-        f"effective_pair_batch={TRAIN_SOURCE_BATCH_SIZE * len(train_views)} "
+        f"source_batch={lab_pairs_per_batch * 20 if train_batch_policy == 'distinct_lab_views' else TRAIN_SOURCE_BATCH_SIZE} "
+        f"effective_pair_batch={lab_pairs_per_batch * 20 if train_batch_policy == 'distinct_lab_views' else TRAIN_SOURCE_BATCH_SIZE * len(train_views)} "
+        f"lab_pairs_per_batch={lab_pairs_per_batch if train_batch_policy == 'distinct_lab_views' else 'legacy_chunk'} "
+        f"microbatch_frame_pairs={microbatch_frame_pairs or 'full'} "
         f"batch_policy={train_batch_policy} "
         f"parameters={total} head_trainable={trainable}", flush=True,
     )
@@ -419,6 +448,7 @@ def train_task(
         "head", model, datasets, loaders, target, device, run_dir, scaler,
         history, head_epochs, head_patience, optimizer, max_batches,
         minimum_learning_rate=head_min_learning_rate,
+        microbatch_frame_pairs=microbatch_frame_pairs,
     )
     model.load_state_dict(head_state)
     unfreeze_all(model)
@@ -437,6 +467,7 @@ def train_task(
         "finetune", model, datasets, loaders, target, device, run_dir, scaler,
         history, finetune_epochs, finetune_patience, optimizer, max_batches,
         minimum_learning_rate=finetune_min_learning_rate,
+        microbatch_frame_pairs=microbatch_frame_pairs,
     )
     selected_stage, selected_state = (
         ("finetune", fine_state) if fine_mae <= head_mae else ("head", head_state)
@@ -475,6 +506,8 @@ def train_task(
         "pretrained_weight_path": str(weight_path),
         "seed": seed,
         "train_batch_policy": train_batch_policy,
+        "lab_pairs_per_batch": lab_pairs_per_batch,
+        "microbatch_frame_pairs": microbatch_frame_pairs,
         "head_learning_rate": head_learning_rate,
         "finetune_learning_rate": finetune_learning_rate,
         "head_min_learning_rate": head_min_learning_rate,
@@ -495,6 +528,8 @@ def train_task(
         "views": list(train_views),
         "frames_per_video": 20,
         "train_batch_policy": train_batch_policy,
+        "lab_pairs_per_batch": lab_pairs_per_batch,
+        "microbatch_frame_pairs": microbatch_frame_pairs,
         "head_learning_rate": head_learning_rate,
         "finetune_learning_rate": finetune_learning_rate,
         "head_min_learning_rate": head_min_learning_rate,

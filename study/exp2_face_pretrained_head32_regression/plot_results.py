@@ -41,6 +41,8 @@ TASK_LABELS = {
     "hemoglobin_low": "Hemoglobin",
     "aa_po2_ratio_low": "A/a PO2 ratio",
     "creatinine_high": "Creatinine",
+    "hematocrit_low": "Hematocrit",
+    "egfr_low": "eGFR (creatinine)",
 }
 TASK_UNITS = {
     "oxyhemoglobin_fraction": "%",
@@ -51,6 +53,8 @@ TASK_UNITS = {
     "hemoglobin_low": "g/L",
     "aa_po2_ratio_low": "%",
     "creatinine_high": "umol/L",
+    "hematocrit_low": "%",
+    "egfr_low": "mL/min/1.73m2",
 }
 COLORS = {
     "mobilenet_v3_small": "#2878B5",

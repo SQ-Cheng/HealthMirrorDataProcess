@@ -15,11 +15,15 @@ from .config import (
 
 
 class PairedFrameDataset(Dataset):
-    def __init__(self, frame_index, records, views=("original",), expand_views=False):
+    def __init__(self, frame_index, records, views=("original",), expand_views=False,
+                 index_views=False):
         self.index = frame_index
         self.records = records.reset_index(drop=True).copy()
         self.views = tuple(views)
         self.expand_views = bool(expand_views)
+        self.index_views = bool(index_views)
+        if self.index_views and self.expand_views:
+            raise ValueError("Views cannot be both individually indexed and expanded")
         first_indices, second_indices, pair_rows = [], [], []
         for pair_row, row in enumerate(self.records.itertuples(index=False)):
             first_start, first_end = frame_index.frame_range(row.first_video_id)
@@ -37,6 +41,11 @@ class PairedFrameDataset(Dataset):
         self.first_indices = np.concatenate(first_indices)
         self.second_indices = np.concatenate(second_indices)
         self.frame_pair_rows = np.concatenate(pair_rows)
+        if self.index_views:
+            # The shared distinct-lab sampler groups an observed delta as one event.
+            self.video_records = self.records.assign(clinical_event_id=self.records.pair_id)
+            self.frame_video_rows = self.frame_pair_rows
+            self.expand_all_views = False
         self.labels = self.records["scaled_delta"].to_numpy(np.float32)
         patient_pair_counts = self.records.groupby("hospital_id").pair_id.transform("size")
         weights = 1.0 / patient_pair_counts.to_numpy(np.float32)
@@ -46,7 +55,7 @@ class PairedFrameDataset(Dataset):
         self._ffv1_decoders = OrderedDict()
 
     def __len__(self):
-        return len(self.first_indices)
+        return len(self.first_indices) * (len(self.views) if self.index_views else 1)
 
     @property
     def model_input_count(self):
@@ -87,10 +96,14 @@ class PairedFrameDataset(Dataset):
         return image
 
     def __getitem__(self, frame_row):
+        view_code = 0
+        if self.index_views:
+            frame_row, view_code = divmod(frame_row, len(self.views))
         pair_row = int(self.frame_pair_rows[frame_row])
         view_codes = (
             torch.arange(len(self.views), dtype=torch.uint8)
             if self.expand_views
+            else torch.tensor([view_code], dtype=torch.uint8) if self.index_views
             else torch.tensor(0, dtype=torch.uint8)
         )
         return (

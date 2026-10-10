@@ -45,9 +45,9 @@ def load_encoder(*, pretrained=True):
 
 
 class Head(nn.Sequential):
-    def __init__(self):
-        super().__init__(nn.Linear(384, 32), nn.LayerNorm(32), nn.SiLU(),
-                         nn.Dropout(config.DROPOUT), nn.Linear(32, 1))
+    def __init__(self, hidden_features=config.HIDDEN):
+        super().__init__(nn.Linear(384, hidden_features), nn.LayerNorm(hidden_features), nn.SiLU(),
+                         nn.Dropout(config.DROPOUT), nn.Linear(hidden_features, 1))
 
 
 class FrozenPredictor(nn.Module):

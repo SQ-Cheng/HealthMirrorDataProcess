@@ -27,6 +27,7 @@ TARGETS = (
     "creatinine_high",
     "total_bilirubin_high",
 )
+NATIVE_TARGETS = TARGETS + ("hematocrit_low", "egfr_low")
 TARGET_ANALYTES = {
     "oxyhemoglobin_fraction": "oxyhemoglobin_fraction",
     "lactate_high": "lactate",
@@ -37,6 +38,8 @@ TARGET_ANALYTES = {
     "aa_po2_ratio_low": "aa_po2_ratio",
     "creatinine_high": "creatinine",
     "total_bilirubin_high": "total_bilirubin",
+    "hematocrit_low": "hematocrit",
+    "egfr_low": "egfr_creatinine",
 }
 TARGET_UNITS = {
     "oxyhemoglobin_fraction": "%",
@@ -48,6 +51,8 @@ TARGET_UNITS = {
     "aa_po2_ratio_low": "%",
     "creatinine_high": "umol/L",
     "total_bilirubin_high": "umol/L",
+    "hematocrit_low": "%",
+    "egfr_low": "mL/min/1.73m2",
 }
 
 FRAMES_PER_VIDEO = 20
@@ -67,6 +72,8 @@ SPLIT_CANDIDATES = 512
 SPLIT_QUANTILE_BINS = 8
 
 TRAIN_SOURCE_BATCH_SIZE = 24
+TRAIN_LAB_PAIRS_PER_BATCH = 12
+TRAIN_MICROBATCH_FRAME_PAIRS = 120
 EVAL_BATCH_SIZE = 96
 TRAIN_NUM_WORKERS = 6
 EVAL_NUM_WORKERS = 2

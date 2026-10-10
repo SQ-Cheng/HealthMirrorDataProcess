@@ -36,6 +36,33 @@
       "size_bytes": 9218294,
       "sha256": "5666bf0f80d1e7f8fb61f6a65742b9c27c37f3208c1f087cdcd7c1ec1aa8b848",
       "strict_load_verified": true
+    },
+    {
+      "architecture": "dinov3_vits16",
+      "pretraining_dataset": "LVD1689M",
+      "source_url": "https://facephys-dataset.tos-cn-beijing.volces.com/DINOV3/DINOV3-pth/dinov3_vits16_pretrain_lvd1689m-08c60483.pth",
+      "local_file": "dinov3_vits16_pretrain_lvd1689m-08c60483.pth",
+      "size_bytes": 86531063,
+      "sha256": "08c60483bc63c04f533611e34bf70b120eedb7240f469bc16e9e20bf344b941d",
+      "strict_load_verified": true,
+      "source_revision": "6876159a11b4df116f30f667f8c9888617df0751",
+      "cpu_forward_verified": true,
+      "feature_shape": [1, 384]
+    },
+    {
+      "architecture": "farl_clip_vit_b16",
+      "pretraining_dataset": "LAIONFace20M",
+      "pretraining_epochs": 64,
+      "source_url": "https://github.com/FacePerceiver/FaRL/releases/download/pretrained_weights/FaRL-Base-Patch16-LAIONFace20M-ep64.pth",
+      "local_file": "FaRL-Base-Patch16-LAIONFace20M-ep64.pth",
+      "size_bytes": 652173797,
+      "sha256": "ab3534c4c2377a853926b99456fc4a10140ea092213b9c8d32458e06ec0961b7",
+      "supplied_locally_by_user": true,
+      "strict_visual_load_verified": true,
+      "known_unused_masked_pretraining_tensors": 17,
+      "clip_revision": "d05afc436d78f1c48dc0dbf8e5980a9d471f35f6",
+      "cpu_forward_verified": true,
+      "feature_shape": [1, 512]
     }
   ]
 }
