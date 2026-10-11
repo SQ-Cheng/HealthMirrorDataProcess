@@ -44,8 +44,7 @@ def plot_oof(root, protocol):
         ax.grid(alpha=.2)
     fig.tight_layout()
     stem = "oof_predicted_vs_true" if protocol == "regression_diverse" else "oof_roc_curves"
-    for extension in ("png", "pdf"):
-        fig.savefig(figures / f"{stem}.{extension}", dpi=180)
+    fig.savefig(figures / f"{stem}.png", dpi=180)
     plt.close(fig)
     if protocol != "regression_diverse":
         from study.exp2_face_pretrained_head32_classification.plot_confusion_matrices import plot_confusion_matrices
@@ -65,8 +64,7 @@ def plot_oof(root, protocol):
             fig.savefig(root / f"fold_{fold}/figures/training_history.png", dpi=180)
             plt.close(fig)
             directory = root / f"fold_{fold}"
-            if not all((directory / f"figures/test_confusion_matrices.{ext}").is_file()
-                       for ext in ("png", "pdf")):
+            if not (directory / "figures/test_confusion_matrices.png").is_file():
                 plot_confusion_matrices(directory, TARGETS)
 
 
@@ -103,6 +101,5 @@ def plot_classification_comparison(outputs, figures):
             ax.set_axisbelow(True)
             ax.legend(fontsize=8)
         fig.suptitle(f"Native 224, 12h: same patient folds | {ylabel}")
-        for extension in ("png", "pdf"):
-            fig.savefig(figures / f"classification_{metric}_comparison.{extension}", dpi=180)
+        fig.savefig(figures / f"classification_{metric}_comparison.png", dpi=180)
         plt.close(fig)

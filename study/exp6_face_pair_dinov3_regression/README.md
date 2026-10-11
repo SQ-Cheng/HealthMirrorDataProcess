@@ -76,7 +76,7 @@ fail rather than overwrite results. The current other experiments are not stoppe
 - Root log: `logs/run.log`; per-head logs: `outputs/head{32,64}/runs/<target>/train.log`.
 - Outputs: `outputs/head32/`, `outputs/head64/` (metrics, predictions, histories,
   validation-selected checkpoints and per-width figures).
-- Comparison PNG/PDF: `outputs/figures/`; values: `outputs/test_comparison.csv`.
+- Comparison PNG: `outputs/figures/`; values: `outputs/test_comparison.csv`.
 - Audit CSV: `outputs/paired_test_audit.csv`; provenance: `outputs/experiment_manifest.json`.
 - Automatic plots: loss/MAE histories with independently scaled correlation
   axes; observed-vs-predicted delta scatter with identity and linear fit;

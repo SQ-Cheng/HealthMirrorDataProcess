@@ -203,8 +203,7 @@ def panels():
 
 def save(figure, figures, name):
     figure.tight_layout(rect=(0,.05,1,.95))
-    for extension in ("png", "pdf"):
-        figure.savefig(figures/f"{name}.{extension}", dpi=200)
+    figure.savefig(figures/f"{name}.png", dpi=200)
     plt.close(figure)
 
 

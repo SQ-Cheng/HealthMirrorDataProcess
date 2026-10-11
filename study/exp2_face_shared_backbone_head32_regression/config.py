@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from study.common.run_face_main_24h import INDEX_PATH
+
 from study.exp2_face_pretrained_head32_regression import config as reference
 from study.exp2_face_pretrained_head32_regression.config import (
     ALL_REGRESSION_TARGETS, EVAL_NUM_WORKERS, FINETUNE_LEARNING_RATE,

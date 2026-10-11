@@ -37,7 +37,7 @@ def worker(job):
     torch.set_num_threads(1)
     output = HERE / f"outputs/models/{job['kind']}/{job['roi_mode']}/{job['target']}"
     output.mkdir(parents=True, exist_ok=True)
-    with (output / "train.log").open("a", buffering=1) as log, contextlib.redirect_stdout(Tee(sys.stdout, log)):
+    with (output / "train.log").open("w", buffering=1) as log, contextlib.redirect_stdout(Tee(sys.stdout, log)):
         return train_job(job, DEVICE if job["kind"] == "mlp" else "cpu")
 
 
@@ -67,8 +67,11 @@ def main():
              [NAMES.index(name) for name in names] for names in protocol["roi_configurations"]}
     with (output / ".run.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        (output / "COMPLETE").unlink(missing_ok=True)
         if not args.reuse_prepared:
             prepare(protocol)
+        if json.loads((output / "tables/preparation_manifest.json").read_text())["protocol_sha256"] != sha256(HERE / "protocol.json"):
+            raise RuntimeError("Prepared ROI features use a different protocol")
         if args.prepare_only:
             return
         contract = sha256(output / "tables/preparation_manifest.json")
@@ -122,7 +125,7 @@ def main():
         pd.DataFrame(ci).to_csv(output / "tables/test_patient_bootstrap.csv", index=False)
         from .plots import plot_results
         plot_results(protocol, modes)
-        (output / "COMPLETE").write_text("120 native41 ROI regressors, patient-group ridge CV, bootstrap and figures completed\n")
+        (output / "COMPLETE").write_text("120 five-view native41 ROI regressors, patient-group ridge CV, bootstrap and figures completed\n")
         print("[queue-complete] Exp1 native ROI color regression", flush=True)
 
 

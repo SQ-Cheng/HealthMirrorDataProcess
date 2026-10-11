@@ -100,8 +100,7 @@ def plot_confusion_matrices(output_dir, targets=None, pooled=False, run_root="ru
     if output_dir.name.startswith("fold_"):
         cohort += f" | {output_dir.name.replace('_', ' ')}"
     figure.suptitle(f"Face-only classification | {cohort} | threshold = 0.50", fontsize=14)
-    for extension in ("png", "pdf"):
-        figure.savefig(figures / f"{stem}.{extension}", dpi=180)
+    figure.savefig(figures / f"{stem}.png", dpi=180)
     plt.close(figure)
     print(f"[confusion-matrices] {figures / (stem + '.png')}", flush=True)
 

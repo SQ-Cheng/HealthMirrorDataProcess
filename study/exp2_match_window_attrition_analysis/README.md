@@ -66,7 +66,7 @@ python -m unittest study.exp2_match_window_attrition_analysis.test_analysis
 ```
 
 Machine-readable CSVs and a source/definition manifest are under `outputs/`.
-Human-readable PNG/PDF charts are under `outputs/figures/`. Eight-analyte
+Human-readable PNG charts are under `outputs/figures/`. Eight-analyte
 panels use four columns by two rows. The primary charts cover overall
 attrition, normality, raw-value distributions, surgical/hospitalization phase,
 mirror effects, fixed split effects, matching direction, and assay cadence.

@@ -31,8 +31,7 @@ def panels():
 def finish(figure,figures,name,footer=None):
     if footer:figure.text(.5,.01,footer,ha="center",fontsize=8)
     figure.tight_layout(rect=(0,.055,1,.94))
-    for extension in ("png","pdf"):
-        figure.savefig(figures/f"{name}.{extension}",dpi=200)
+    figure.savefig(figures/f"{name}.png",dpi=200)
     plt.close(figure)
 
 

@@ -82,6 +82,9 @@ def extract_video(video_id):
 
 
 def prepare(protocol, workers=6):
+    if "views" in protocol["input"]:
+        from .views import prepare_views
+        return prepare_views(protocol, workers)
     from study.exp2_face_dinov3_frozen.run_main_regression import preflight, BASELINE, INDEX_PATH
     index, _, hashes, _, lab_hash = preflight()
     cache = HERE / "cache/native41"

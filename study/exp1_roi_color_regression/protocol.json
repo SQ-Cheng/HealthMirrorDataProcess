@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "status": "roi_approved_native41_features_ready_not_trained",
+  "schema_version": 3,
+  "status": "five_view_native41",
   "experiment": "exp1_roi_color_raw_lab_regression",
   "replaces": "study/exp1_sqa_pretrain",
   "preserved_source_annotations": "study/common/annotations/ecg_sqa",
@@ -10,7 +10,7 @@
   "matching_hours": 24,
   "split_policy": "exact per-analyte patient assignment from current Exp2; no new search",
   "targets": ["oxyhemoglobin_fraction", "lactate_high", "urea_high", "total_bilirubin_high", "platelet_count_low", "hemoglobin_low", "aa_po2_ratio_low", "creatinine_high", "hematocrit_low", "egfr_low"],
-  "input": {"source": "native224_rgb_ffv1", "frames_per_video": 20, "view": "original", "unit": "video"},
+  "input": {"source": "native224_rgb_ffv1", "frames_per_video": 20, "views": ["original", "hflip", "center_crop", "brightness", "contrast"], "evaluation_views": ["original"], "unit": "video_view"},
   "landmarker": {"api": "MediaPipe FaceLandmarker.detect", "running_mode": "IMAGE", "num_faces": 1, "min_face_detection_confidence": 0.5, "min_face_presence_confidence": 0.5, "delegate": "CPU", "output_face_blendshapes": false, "output_facial_transformation_matrixes": false},
   "roi": {
     "names": ["forehead", "image_left_cheek", "image_right_cheek", "lips"],
@@ -56,7 +56,11 @@
     "aggregation": "equal_weight_mean_of_common_valid_frame_descriptors",
     "image_imagenet_standardization": false,
     "photometric_correction": false,
-    "augmentation": false
+    "augmentation": true,
+    "augmentation_geometry": "transform reviewed native masks; hflip swaps image-left/right cheeks; center crop retains native pixels without ROI resize",
+    "augmentation_parameters": {"crop_scale": 0.9, "brightness_delta": 0.06, "contrast_delta": 0.08},
+    "contrast_mean": "full-frame per-channel spatial mean, not ROI mean",
+    "common_frames": "all four ROIs valid in all five views; same accepted source frames for every view"
   },
   "roi_configurations": [["forehead"], ["image_left_cheek"], ["image_right_cheek"], ["lips"], ["image_left_cheek", "image_right_cheek"], ["forehead", "image_left_cheek", "image_right_cheek", "lips"]],
   "models_count": 120,

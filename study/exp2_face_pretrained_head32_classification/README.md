@@ -60,9 +60,9 @@ the five-fold comparisons are automatic. Legacy face-only results and launchers
 were retired. The face-only engine loads native clinical records directly and
 does not require history features or fall back to a 128 frame index.
 
-Video-level confusion matrices are automatic in `figures/test_confusion_matrices.png`
-and `.pdf`; five-fold roots also contain `figures/oof_confusion_matrices.png`
-and `.pdf`. Cells display counts and percentages normalized within the true
+Video-level confusion matrices are automatic in `figures/test_confusion_matrices.png`;
+five-fold roots also contain `figures/oof_confusion_matrices.png`.
+Cells display counts and percentages normalized within the true
 class; machine-readable counts are saved outside `figures/`. OOF pooling uses
 exactly one held-out prediction per video, never concatenated train/val predictions.
 To add these figures to all already-completed results without training:

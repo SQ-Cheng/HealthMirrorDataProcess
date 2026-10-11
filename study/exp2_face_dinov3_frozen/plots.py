@@ -77,8 +77,7 @@ def plot_main_regression(root, baseline, targets, *, head_hidden=32, head32_root
             axis.grid(axis="y", alpha=.2)
             axis.set_axisbelow(True)
         figure.suptitle(f"Regression | same 24h held-out videos, 20 frames and frame-level loss | {label}")
-        for extension in ("png", "pdf"):
-            figure.savefig(figures / f"{metric}_baseline_comparison.{extension}", dpi=180)
+        figure.savefig(figures / f"{metric}_baseline_comparison.png", dpi=180)
         plt.close(figure)
 
 

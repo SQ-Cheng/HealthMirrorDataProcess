@@ -4,7 +4,8 @@ Independent parallel experiment; no existing results are overwritten. Ten
 current 24h main targets, exact patient splits, twenty native224 selected
 frames, five views, train-only raw-label median/IQR, distinct-lab batches and
 frame SmoothL1 are copied/verified against frozen DINO head32. One independent
-model per analyte and variant: **20 regression models**.
+model per analyte and variant: **30 regression models** (the added ten scalar-gate
+models do not retrain or overwrite the twenty existing concat/vector-gate models).
 
 ## Encoders And Input
 
@@ -30,7 +31,7 @@ uses existing ImageNet normalization; FaRL uses CLIP mean
 the same defined center-crop view is shared. No additional face alignment or
 feature L2 normalization is introduced.
 
-## Two Heads
+## Three Heads
 
 ```text
 Concat:
@@ -42,10 +43,16 @@ Gated:
   g = sigmoid(FC(concat(zd,zf),64))
   z = g*zd + (1-g)*zf
   z -> FC(64,32) -> LN -> SiLU -> Dropout(.25) -> FC(32,1)
+
+Scalar gated:
+  same two 64-d projectors and head32
+  g = sigmoid(FC(concat(zd,zf),1))
+  z = g*zd + (1-g)*zf  # one scalar per frame/view, broadcast to all 64 dimensions
 ```
 
 Trainable parameter counts: concat **28,801**; gated **68,161** (including
-both projectors and gate). The gate starts at 0.5 for every dimension. This
+both projectors and gate); scalar gated **60,034**. Both gates start at 0.5.
+The scalar is input-dependent, not one global learned constant. This
 is a feature-fusion comparison, not a parameter-count-matched ablation.
 Head hidden dimension stays 32; projected expert dimension is 64.
 
@@ -64,6 +71,10 @@ pip install --no-deps -r study/exp2_face_dinov3_farl_regression/requirements.txt
 python -m unittest study.exp2_face_dinov3_farl_regression.test_experiment
 bash study/exp2_face_dinov3_farl_regression/launch_screen.sh
 screen -r exp2_dinov3_farl_regression
+
+# Add only the scalar gate; automatically update all four-model PNG comparisons.
+bash study/exp2_face_dinov3_farl_regression/launch_screen.sh scalar_gated
+screen -r exp2_dinov3_farl_scalar_gate
 ```
 
 Four GPU workers extract features, then dynamically consume head jobs. The
@@ -71,9 +82,15 @@ launcher runs a small real-feature optimizer/checkpoint smoke test before
 formal training. Valid completed jobs resume; incompatible contracts fail.
 
 - Log: `logs/run.log`; per-target logs in `outputs/regression/<variant>/runs/<target>/train.log`.
-- Results: `outputs/regression/{concat,gated}/` with checkpoints, all histories,
-  metrics, per-video predictions and per-variant PNG/PDF.
+- Scalar-gate queue log: `logs/scalar_gate_run.log`.
+- Results: `outputs/regression/{concat,gated,scalar_gated}/` with checkpoints, all histories,
+  metrics, per-video predictions and per-variant PNG.
 - Automatic paired baseline comparisons: `outputs/figures/`,
   `outputs/test_comparison.csv`, `outputs/paired_test_audit.csv`.
 - The cached pixels/views/index and all held-out video IDs/labels are verified
   before comparing the existing DINO head32 with concat and gated models.
+- `experiment_manifest.json` is the immutable original two-variant protocol.
+  `scalar_gate_manifest.json` records the matching scalar-gate extension;
+  `architecture_registry.json` lists all three variants and their validated
+  contracts. Original checkpoints/complete markers retain their old hashes.
+  `outputs/COMPLETE` is updated after all thirty models and PNG comparisons finish.

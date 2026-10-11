@@ -1,6 +1,6 @@
 # Exp1: Local Face Color And Laboratory Regression
 
-Status: **full-cohort native41 extraction and all 120 models completed**.
+Status: **five-view native41 protocol, replacing the previous original-only results**.
 Actual progress is in `logs/run.log` and `outputs/tables/run_index.csv`;
 `outputs/COMPLETE` marks successful training, bootstrap and figure completion.
 This replaces the old ECG/SQA Exp1, not the current Exp2 or Exp6 experiments.
@@ -26,7 +26,8 @@ Every analyte/model/ROI configuration has an independent fitted model.
   across the ten tasks. Analyte-specific counts differ. Final counts cannot
   be stated until ROI extraction is audited.
 
-The primary statistical unit is **one video**, not twenty independent lab
+Training uses **five video/view descriptors** per training video; validation
+and test use the original view only. The primary statistical unit is **one video**, not twenty independent lab
 samples. The twenty frames provide repeated color measurements for that video.
 This has the same labels/test unit as Exp2 but a video-feature-level training
 objective rather than the main Exp2 frame loss; it is not a loss-controlled
@@ -117,12 +118,24 @@ cosine are averaged; concentration is their vector magnitude. Achromatic
 regions use zero for all three hue features when total saturation is negligible.
 Exposure diagnostics remain features; dark or bright pixels are not discarded.
 
-For each video/ROI, average the 41-dimensional descriptors over the common
+For each video/view/ROI, average the 41-dimensional descriptors over the common
 valid frames with equal frame weights. This avoids treating duplicate labels
 as independent measurements. Do
 not add shape, pose, identity, timestamps or clinical history to the model.
-No brightness/contrast augmentation, white balance correction, histogram
-equalization, color matching or target-informed feature selection is used.
+Five training views are original, horizontal flip, center crop (0.9),
+brightness multiplication (1.06), and contrast multiplication (1.08) around
+the full-face per-channel spatial mean. These are the same parameters as DINO.
+Reuse reviewed original-frame landmarks and transform masks, rather than
+redetecting landmarks on augmented views. Horizontal flip swaps image-left
+and image-right cheek identities. The center view selects native pixels in
+the 202x202 central window, without ROI interpolation; forehead reaches the
+top edge of that window. Brightness/contrast statistics use float pixels
+clipped to [0,1], without uint8 requantization. No white balance correction,
+histogram equalization, color matching or target-informed selection is used.
+Common frames must pass all four ROI masks in all five views; at least ten
+of the original twenty selected frames are required. Augmentations do not
+add patients or clinical measurements. A compact derived cache lives in
+`cache/five_views41`; `cache/native41` remains the reviewed landmark source.
 
 Validation reused the saved landmarks and original source frames from the
 approved 100-frame preview, without another MediaPipe pass. All 369 accepted
@@ -158,9 +171,10 @@ Training-only standardized feature vector (D=41/82/164)
 ```
 
 Trainable parameters: 4,801 / 7,425 / 12,673 for the three input dimensions.
-AdamW lr=5e-4, weight decay=1e-3, batch size=64 videos, max epochs=150,
+AdamW lr=5e-4, weight decay=1e-3, batch size=64 video/views, max epochs=150,
 validation raw-unit MAE early stopping patience=20, gradient clip=1.
-SmoothL1 beta=0.5, unweighted video loss. ReduceLROnPlateau monitors val MAE,
+SmoothL1 beta=0.5, unweighted video/view loss. Each of the five views occurs
+once per epoch; original-view predictions supply train MAE/r. ReduceLROnPlateau monitors val MAE,
 factor=0.5, patience=5, minimum lr=1e-5. Use deterministic per-task seeds
 derived from the existing reference, and keep them fixed across ROI modes.
 No pretraining, second stage or neural-network hyperparameter search.
@@ -171,7 +185,10 @@ No pretraining, second stage or neural-network hyperparameter search.
 alpha in `[1e-4,1e-3,1e-2,1e-1,1,10,100,1000,10000]`. Select alpha using
 five-fold **patient-grouped CV inside the training split**, minimizing
 mean raw-unit MAE. Fit feature/target transforms separately inside each
-inner training fold. Refit on the full valid training set after selection.
+inner training fold. All views of a patient stay together. Train on five
+views but score each inner held-out fold on original views only. Target
+median/IQR uses unique training videos, not repeated view labels.
+Refit on the full valid training set after selection.
 Neither the outer test set nor val set chooses alpha. Outer val is reported.
 
 Both regressors fit feature standardization and target median/IQR only from
@@ -189,12 +206,13 @@ study/exp1_roi_color_regression/
   logs/                  # extraction/training logs
   outputs/tables/        # cohorts, failures, features schema, metrics, predictions
   outputs/models/        # MLP checkpoints and fitted ridge/transforms
-  outputs/figures/       # ROI overlays, feature distributions and result PNG/PDF
+  outputs/figures/       # ROI overlays, feature distributions and result PNG
 ```
 
 Cache one extraction pass per source video; do not copy videos or save every
-ROI image. About 18.3 MB stores all 27,820 x4 x41 float32 frame features
-before exclusions, plus masks/landmark audit metadata. Save a small, explicitly
+ROI image. Original color descriptors require about 18.3 MB. The derived
+27,820 x5 x4 x41 float32 five-view bank requires about 91.2 MB, with a
+separate validity array. Save a small, explicitly
 selected set of ROI previews for manual geometry review. Cache keys include
 native video/sidecar fingerprints, frame index, MediaPipe weight hash and ROI/
 color schema versions. Future extraction uses a bounded CPU worker pool;
@@ -212,8 +230,9 @@ tuning on test or treating videos as independent patients.
 
 The pipeline uses a six-worker CPU extraction pool, four GPU MLP slots and
 two CPU ridge slots. Completed contract-matching jobs are reused on relaunch.
-Full extraction retained 1,343 of the 1,391 source videos (48 failed the common
-native-ROI rule); per-analyte/split counts and excluded IDs are in `outputs/tables`.
+The original-only extraction retained 1,343 of 1,391 videos; current five-view
+counts are recorded in `outputs/tables/preparation_manifest.json` and
+`cohort_counts.csv`, with excluded IDs in `outputs/tables`.
 No existing Exp2 source records or patient split files are modified.
 
 ```bash
@@ -221,9 +240,9 @@ bash study/exp1_roi_color_regression/launch_screen.sh
 screen -r exp1_roi_color_regression
 ```
 
-The immutable `protocol.json` records the approved design, including its
-initial pre-training status; runtime/completion is represented by output
-artifacts and logs, not by changing the extraction-cache configuration.
+`protocol.json` records the current five-view design; runtime/completion is
+represented by output artifacts and logs. Reviewed original landmarks and
+geometry are reused without rewriting their original extraction contract.
 
 ## Primary References
 

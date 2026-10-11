@@ -72,5 +72,5 @@ python -m study.exp2_lab_video_window_variability.analyze --plots-only
 python -m unittest study.exp2_lab_video_window_variability.test_analysis
 ```
 
-CSV tables and the source-fingerprint manifest go in `outputs/`. PNG/PDF
+CSV tables and the source-fingerprint manifest go in `outputs/`. PNG
 charts go in `outputs/figures/`. Generated patient data are not Git-tracked.

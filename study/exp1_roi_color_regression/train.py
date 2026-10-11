@@ -31,7 +31,7 @@ def target_scale(y):
     return float(median), float(q3 - q1)
 
 
-def fit_ridge(x, y, patients, alphas):
+def fit_ridge(x, y, patients, alphas, video_ids=None, views=None):
     if len(set(patients)) < 5:
         raise ValueError("Five-fold ridge selection needs at least five training patients")
     scores = []
@@ -41,14 +41,16 @@ def fit_ridge(x, y, patients, alphas):
         for training, held in folds:
             assert not set(patients[training]) & set(patients[held])
             transform = StandardScaler().fit(x[training])
-            median, iqr = target_scale(y[training])
+            scale_rows = training if video_ids is None else training[np.unique(video_ids[training], return_index=True)[1]]
+            median, iqr = target_scale(y[scale_rows])
             model = Ridge(alpha=alpha, fit_intercept=True, solver="svd").fit(transform.transform(x[training]), (y[training] - median) / iqr)
-            predicted = model.predict(transform.transform(x[held])) * iqr + median
-            errors.append(float(np.mean(np.abs(predicted - y[held]))))
+            evaluation = held if views is None else held[views[held] == 0]
+            predicted = model.predict(transform.transform(x[evaluation])) * iqr + median
+            errors.append(float(np.mean(np.abs(predicted - y[evaluation]))))
         scores.append({"alpha": alpha, "cv_raw_mae": np.mean(errors)})
     chosen = min(scores, key=lambda row: (row["cv_raw_mae"], row["alpha"]))["alpha"]
     transform = StandardScaler().fit(x)
-    median, iqr = target_scale(y)
+    median, iqr = target_scale(y if video_ids is None else y[np.unique(video_ids, return_index=True)[1]])
     model = Ridge(alpha=chosen, fit_intercept=True, solver="svd").fit(transform.transform(x), (y - median) / iqr)
     return model, transform, median, iqr, scores
 
@@ -58,19 +60,23 @@ def fit_mlp(x, y, x_val, y_val, device, options, seed, output):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    transform = StandardScaler().fit(x)
+    original = x[:, 0] if x.ndim == 3 else x
+    expanded = x.reshape(-1, x.shape[-1])
+    expanded_y = np.repeat(y, x.shape[1]) if x.ndim == 3 else y
+    transform = StandardScaler().fit(expanded)
     median, iqr = target_scale(y)
-    train_x = torch.tensor(transform.transform(x), dtype=torch.float32, device=device)
-    train_y = torch.tensor((y - median) / iqr, dtype=torch.float32, device=device)
+    train_x = torch.tensor(transform.transform(expanded), dtype=torch.float32, device=device)
+    original_x = torch.tensor(transform.transform(original), dtype=torch.float32, device=device)
+    train_y = torch.tensor((expanded_y - median) / iqr, dtype=torch.float32, device=device)
     val_x = torch.tensor(transform.transform(x_val), dtype=torch.float32, device=device)
-    model = MLP(x.shape[1]).to(device)
+    model = MLP(x.shape[-1]).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=options["lr"], weight_decay=options["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=options["scheduler_factor"], patience=options["scheduler_patience"], min_lr=options["min_lr"])
     best, patience, history = np.inf, 0, []
     for epoch in range(1, options["max_epochs"] + 1):
         model.train()
-        order = torch.randperm(len(x), device=device)
-        for start in range(0, len(x), options["batch_videos"]):
+        order = torch.randperm(len(expanded), device=device)
+        for start in range(0, len(expanded), options["batch_videos"]):
             selected = order[start:start + options["batch_videos"]]
             optimizer.zero_grad(set_to_none=True)
             loss = nn.functional.smooth_l1_loss(model(train_x[selected]).squeeze(1), train_y[selected], beta=.5)
@@ -81,9 +87,10 @@ def fit_mlp(x, y, x_val, y_val, device, options, seed, output):
             optimizer.step()
         model.eval()
         with torch.no_grad():
-            train_pred = model(train_x).squeeze(1)
+            train_augmented_pred = model(train_x).squeeze(1)
+            train_pred = model(original_x).squeeze(1)
             val_pred = model(val_x).squeeze(1)
-            train_loss = nn.functional.smooth_l1_loss(train_pred, train_y, beta=.5).item()
+            train_loss = nn.functional.smooth_l1_loss(train_augmented_pred, train_y, beta=.5).item()
             val_loss = nn.functional.smooth_l1_loss(val_pred, torch.tensor((y_val - median) / iqr, dtype=torch.float32, device=device), beta=.5).item()
         train_metrics, val_metrics = _metrics(y, train_pred.cpu().numpy() * iqr + median), _metrics(y_val, val_pred.cpu().numpy() * iqr + median)
         row = {"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss,
@@ -96,8 +103,9 @@ def fit_mlp(x, y, x_val, y_val, device, options, seed, output):
             best, patience = row["val_mae"], 0
             torch.save({"state_dict": {key: value.detach().cpu().clone() for key, value in model.state_dict().items()},
                         "feature_mean": torch.from_numpy(transform.mean_), "feature_scale": torch.from_numpy(transform.scale_),
-                        "target_median": median, "target_iqr": iqr, "input_dimension": x.shape[1], "seed": seed,
-                        "best_epoch": epoch}, output / "model.pt")
+                        "target_median": median, "target_iqr": iqr, "input_dimension": x.shape[-1], "seed": seed,
+                        "best_epoch": epoch, "training_views": int(x.shape[1]) if x.ndim == 3 else 1,
+                        "evaluation_view": "original"}, output / "model.pt")
         else:
             patience += 1
         print(f"[epoch] {output.name} {epoch}/{options['max_epochs']} train_loss={train_loss:.4f} val_loss={val_loss:.4f} "
@@ -116,27 +124,34 @@ def train_job(job, device="cpu"):
     output = HERE / f"outputs/models/{kind}/{roi_mode}/{target}"
     output.mkdir(parents=True, exist_ok=True)
     records = pd.read_csv(HERE / f"outputs/tables/records_{target}.csv", dtype={"hospital_id": str, "video_id": str})
-    features = np.load(HERE / f"outputs/tables/features_{target}.npy", allow_pickle=False)[:, job["roi_indices"], :].reshape(len(records), -1)
+    bank = np.load(HERE / f"outputs/tables/features_{target}.npy", allow_pickle=False)
+    if bank.shape != (len(records), 5, 4, 41):
+        raise ValueError("Expected five-view ROI video descriptors")
+    features = bank[:, :, job["roi_indices"], :].reshape(len(records), 5, -1)
     if not np.isfinite(features).all():
         raise ValueError("Nonfinite effective video features")
     groups = {split: np.flatnonzero(records.split.eq(split)) for split in ("train", "val", "test")}
     y = records.raw_value.to_numpy(float)
     training, val = groups["train"], groups["val"]
-    print(f"[job-start] {kind}/{roi_mode}/{target} device={device} dimension={features.shape[1]} "
+    original = features[:, 0]
+    print(f"[job-start] {kind}/{roi_mode}/{target} device={device} dimension={features.shape[-1]} views=5 "
           f"videos={len(training)}/{len(val)}/{len(groups['test'])}", flush=True)
     if kind == "ridge":
-        model, transform, median, iqr, cv = fit_ridge(features[training], y[training], records.hospital_id.to_numpy()[training], protocol["ridge"]["alphas"])
+        model, transform, median, iqr, cv = fit_ridge(features[training].reshape(-1, features.shape[-1]), np.repeat(y[training], 5),
+            np.repeat(records.hospital_id.to_numpy()[training], 5), protocol["ridge"]["alphas"],
+            video_ids=np.repeat(records.video_id.to_numpy()[training], 5), views=np.tile(np.arange(5), len(training)))
         pd.DataFrame(cv).to_csv(output / "cv_scores.csv", index=False)
-        joblib.dump({"model": model, "transform": transform, "target_median": median, "target_iqr": iqr}, output / "model.joblib")
+        joblib.dump({"model": model, "transform": transform, "target_median": median, "target_iqr": iqr,
+                     "training_views": 5, "evaluation_view": "original", "contract": job["contract"]}, output / "model.joblib")
         restored = joblib.load(output / "model.joblib")
-        np.testing.assert_array_equal(model.predict(transform.transform(features)), restored["model"].predict(restored["transform"].transform(features)))
-        prediction = model.predict(transform.transform(features)) * iqr + median
+        np.testing.assert_array_equal(model.predict(transform.transform(original)), restored["model"].predict(restored["transform"].transform(original)))
+        prediction = model.predict(transform.transform(original)) * iqr + median
     else:
-        model, transform, median, iqr = fit_mlp(features[training], y[training], features[val], y[val], torch.device(device),
+        model, transform, median, iqr = fit_mlp(features[training], y[training], original[val], y[val], torch.device(device),
                                               protocol["mlp"], job_seed("regression", target), output)
         model.eval()
         with torch.no_grad():
-            prediction = model(torch.tensor(transform.transform(features), dtype=torch.float32, device=device)).squeeze(1).cpu().numpy() * iqr + median
+            prediction = model(torch.tensor(transform.transform(original), dtype=torch.float32, device=device)).squeeze(1).cpu().numpy() * iqr + median
     metric_rows = []
     baseline = float(np.median(y[training]))
     for split, positions in groups.items():

@@ -156,7 +156,6 @@ def plot(summary, pairs, events, figures):
         ax.axvline(0, color=".8", linewidth=.7)
     axes.flat[0].legend(fontsize=8)
     fig.savefig(figures / "change_predicted_vs_observed.png", dpi=200)
-    fig.savefig(figures / "change_predicted_vs_observed.pdf")
     plt.close(fig)
     fig, axes = plt.subplots(1, 3, figsize=(16, 5), constrained_layout=True)
     positions = np.arange(len(summary))
@@ -173,7 +172,6 @@ def plot(summary, pairs, events, figures):
         ax.invert_yaxis()
     fig.suptitle("Held-out within-patient changes: 95% patient-cluster bootstrap intervals")
     fig.savefig(figures / "tracking_performance.png", dpi=200)
-    fig.savefig(figures / "tracking_performance.pdf")
     plt.close(fig)
     fig, axes = plt.subplots(2, 4, figsize=(17, 8), constrained_layout=True)
     for ax, (target, definition) in zip(axes.flat, ANALYTES.items()):

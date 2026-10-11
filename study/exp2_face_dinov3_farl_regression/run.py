@@ -1,4 +1,4 @@
-"""Fit independent concat/gated regression heads on identical DINO main data."""
+"""Fit independent concat/vector-gate/scalar-gate heads on identical main data."""
 
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -75,7 +75,8 @@ def worker(job):
                    loader_factory=loader, feature_scaler=no_feature_fitting)
     saved = torch.load(root / "model.pt", map_location="cpu", weights_only=True)
     saved.update(encoders_frozen=True, dino_weight_sha256=job["dino_weight_sha256"], farl_weight_sha256=job["farl_weight_sha256"],
-                 feature_dimensions=[384, 512], projection_dimension=64 if job["architecture"] == "gated" else None,
+                 feature_dimensions=[384, 512], projection_dimension=64 if job["architecture"] != "concat" else None,
+                 gate_dimension={"concat": None, "gated": 64, "scalar_gated": 1}[job["architecture"]],
                  head_hidden=32, matching_hours=24, clinical_source_sha256=job["source_sha256"], experiment_contract=job["contract"])
     torch.save(saved, root / "model.pt")
     (root / "job_complete.json").write_text(json.dumps({"contract": job["contract"]}) + "\n")
@@ -83,7 +84,7 @@ def worker(job):
     return {"target": job["target"], "architecture": job["architecture"], "status": "ok"}
 
 
-def smoke(index, scalers):
+def smoke(index, scalers, variants=config.VARIANTS):
     target = "lactate_high"
     records = pd.read_csv(config.reference.BASELINE / f"task_records/{target}.csv", dtype={"hospital_id": str, "video_id": str})
     training = records.loc[records.split.eq("train")].drop_duplicates("clinical_event_id").groupby("binary_label", group_keys=False).head(6)
@@ -94,19 +95,44 @@ def smoke(index, scalers):
         root = Path(name)
         (root / "source_records").mkdir()
         subset.to_csv(root / f"source_records/{target}.csv", index=False)
-        for variant in config.VARIANTS:
+        for variant in variants:
             train_task({"target": target, "architecture": variant, "family": "regression", "scaler": scalers[target]},
                        index, torch.device("cuda:0"), experiment_config=training_config(root, 1),
                        model_factory=build_model, loader_factory=loader, feature_scaler=no_feature_fitting)
             checkpoint = torch.load(root / f"regression/{variant}/runs/{target}/model.pt", map_location="cpu", weights_only=True)
             assert checkpoint["parameters"] == sum(p.numel() for p in build_model(variant).parameters())
-    print("[smoke-ok] both fusion heads, real shared frame/view features, loss, optimizer and checkpoints", flush=True)
+    print(f"[smoke-ok] {','.join(variants)}; real shared frame/view features, loss, optimizer and checkpoints", flush=True)
+
+
+def register_contracts(base_manifest, output):
+    """Keep completed base contracts immutable when adding the scalar variant."""
+    path = output / "experiment_manifest.json"
+    if path.exists():
+        if json.loads(path.read_text()) != base_manifest:
+            raise RuntimeError("Existing fusion contract changed; results are not overwritten")
+    else:
+        path.write_text(json.dumps(base_manifest, indent=2) + "\n")
+    base_contract = sha256(path)
+    extension = {**base_manifest, "variants": ["scalar_gated"], "parameters": {"scalar_gated": 60034},
+                 "gate_dimension": 1, "gate_initial_value": .5, "gate_policy": "input-dependent scalar broadcast over 64 features",
+                 "base_manifest_sha256": base_contract}
+    extension_path = output / "scalar_gate_manifest.json"
+    if extension_path.exists() and json.loads(extension_path.read_text()) != extension:
+        raise RuntimeError("Existing scalar-gate contract changed; results are not overwritten")
+    extension_path.write_text(json.dumps(extension, indent=2) + "\n")
+    contracts = {variant: base_contract for variant in config.BASE_VARIANTS}
+    contracts["scalar_gated"] = sha256(extension_path)
+    (output / "architecture_registry.json").write_text(json.dumps({"variants": list(config.VARIANTS), "contracts": contracts,
+        "base_manifest": path.name, "scalar_gate_manifest": extension_path.name}, indent=2) + "\n")
+    return contracts
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument("--variants", nargs="+", choices=config.VARIANTS, default=list(config.VARIANTS),
+                        help="Only these architectures may launch training; other completed results are reused")
     args = parser.parse_args()
     index, scalers, hashes, counts, lab_hash = config.reference.preflight()
     dino_output = config.reference.config.HERE / "outputs/main24h_frame_loss"
@@ -122,14 +148,14 @@ def main():
         ensure_dino(config.INDEX_PATH, config.DINO_CACHE)
         ensure_cache()
         if args.smoke:
-            smoke(index, scalers)
+            smoke(index, scalers, args.variants)
             return
         manifest = {"targets": list(config.TARGETS), "source_records_sha256": hashes, "lab_table_sha256": lab_hash,
                     "frame_index_sha256": sha256(config.INDEX_PATH), "scalers_sha256": sha256(config.reference.BASELINE / "target_scalers.json"),
                     "dino_weight_sha256": dino_manifest["backbone_weight_sha256"], "farl_weight_sha256": sha256(config.WEIGHTS),
-                    "clip_revision": config.CLIP_REVISION, "encoders_frozen": True, "variants": list(config.VARIANTS),
+                    "clip_revision": config.CLIP_REVISION, "encoders_frozen": True, "variants": list(config.BASE_VARIANTS),
                     "feature_dimensions": [384, 512], "projection_dimension": 64, "head_hidden": 32,
-                    "parameters": {variant: sum(p.numel() for p in build_model(variant).parameters()) for variant in config.VARIANTS},
+                    "parameters": {variant: sum(p.numel() for p in build_model(variant).parameters()) for variant in config.BASE_VARIANTS},
                     "matching_hours": 24, "frames_per_video": 20, "views": list(config.reference.config.VIEWS),
                     "batch_distinct_labs": 12, "batch_frames": 240, "loss_level": "frame",
                     "loss": "unweighted SmoothL1 beta=.5 on train-only robust raw values", "max_epochs": 80,
@@ -137,11 +163,7 @@ def main():
                     "dropout": .25, "optimizer": "AdamW", "scheduler": "cosine; no warmup", "compile": False,
                     "normalization": {"dino": "original ImageNet normalization", "farl_mean": list(config.CLIP_MEAN), "farl_std": list(config.CLIP_STD)},
                     "dino_comparator_manifest_sha256": sha256(dino_output / "experiment_manifest.json")}
-        path = config.OUTPUT / "experiment_manifest.json"
-        if path.exists() and json.loads(path.read_text()) != manifest:
-            raise RuntimeError("Existing fusion contract changed; results are not overwritten")
-        path.write_text(json.dumps(manifest, indent=2) + "\n")
-        contract = sha256(path)
+        contracts = register_contracts(manifest, config.OUTPUT)
         counts.to_csv(config.OUTPUT / "cohort_counts.csv", index=False)
         (config.OUTPUT / "source_records").mkdir(exist_ok=True)
         for target in config.TARGETS:
@@ -150,15 +172,19 @@ def main():
         jobs, rows = [], []
         for target in config.TARGETS:
             for variant in config.VARIANTS:
+                contract = contracts[variant]
                 root = config.OUTPUT / f"regression/{variant}/runs/{target}"
                 marker = root / "job_complete.json"
                 if marker.exists() and json.loads(marker.read_text()) == {"contract": contract} and all((root / f).is_file() for f in ("model.pt", "history.csv", "metrics.csv", "video_predictions.csv")):
                     rows.append({"target": target, "architecture": variant, "status": "ok"})
                 else:
+                    if variant not in args.variants:
+                        raise RuntimeError(f"Unselected comparator is incomplete or changed: {variant}/{target}")
                     jobs.append({"target": target, "architecture": variant, "family": "regression", "scaler": scalers[target],
                                  "contract": contract, "dino_weight_sha256": manifest["dino_weight_sha256"],
                                  "farl_weight_sha256": manifest["farl_weight_sha256"], "source_sha256": hashes[target]})
         workers = min(4, torch.cuda.device_count(), len(jobs))
+        (config.OUTPUT / "COMPLETE").unlink(missing_ok=True)
         context = mp.get_context("spawn")
         print(f"[scheduler] fusion heads={len(jobs)} GPUs={workers}", flush=True)
         if jobs:
@@ -189,7 +215,7 @@ def main():
             raise RuntimeError("Clinical/DINO reference changed during training")
         from .plots import plot_results
         plot_results()
-        (config.OUTPUT / "COMPLETE").write_text("20 independent frozen dual-encoder regressors and paired figures completed\n")
+        (config.OUTPUT / "COMPLETE").write_text(f"{len(config.TARGETS) * len(config.VARIANTS)} independent frozen dual-encoder regressors and paired figures completed\n")
         print("[queue-complete] DINOv3+FaRL regression", flush=True)
 
 

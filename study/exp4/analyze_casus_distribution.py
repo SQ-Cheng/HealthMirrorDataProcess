@@ -139,8 +139,7 @@ def plot(records, patients, output, hours):
         axis.spines[["top","right"]].set_visible(False)
         axis.grid(axis="y",alpha=.2);axis.set_axisbelow(True)
     figure.suptitle(f"CABG postoperative native224 videos | nearest postoperative labs within {hours:g} h", fontsize=12)
-    for extension in ("png","pdf"):
-        figure.savefig(figures/f"casus_score_distribution.{extension}",dpi=200)
+    figure.savefig(figures/"casus_score_distribution.png",dpi=200)
     plt.close(figure)
     figure, axes = plt.subplots(1,2,figsize=(13,4.5),constrained_layout=True)
     left = np.zeros(4)

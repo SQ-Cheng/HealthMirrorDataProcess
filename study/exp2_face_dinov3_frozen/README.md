@@ -172,7 +172,7 @@ screen -r frozen_en_exp2_exp6_regression
 This queue runs only the 42 new frozen-EN heads, never the completed DINO or
 fine-tuned EN baselines. Exp2 results are under `outputs/frozen_en_b0/head32/`
 and `outputs/frozen_en_b0/head64/` (then `regression/efficientnet_b0_frozen`).
-Five-model comparison PNG/PDF files are `outputs/figures/five_model_*`, with
+Five-model comparison PNG files are `outputs/figures/five_model_*`, with
 values in `outputs/five_model_test_comparison.csv` and strict test-identity
 audit in `outputs/five_model_test_audit.csv`. Existing comparison figures
 remain untouched. Common queue log: `study/common/logs/frozen_en_regression_controls/run.log`.

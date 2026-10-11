@@ -269,7 +269,6 @@ def summarize(output, results, config, seed):
     axes[1].set(ylabel="Cumulative fraction", title="Empirical cumulative distribution")
     axes[0].legend(fontsize=8)
     fig.savefig(output / "figures/confidence_distribution.png", dpi=180)
-    fig.savefig(output / "figures/confidence_distribution.pdf")
     plt.close(fig)
     fig, axes = plt.subplots(1, 2, figsize=(13, 5), constrained_layout=True)
     plotted = counts.head(12).copy()
@@ -287,7 +286,6 @@ def summarize(output, results, config, seed):
     axes[1].hist(videos.aligned_retention_fraction, bins=np.linspace(0, 1, 21), color="#ce663b", edgecolor="white")
     axes[1].set(xlabel="Accepted fraction of original frames", ylabel="Videos", title="Per-video retention", xlim=(0, 1))
     fig.savefig(output / "figures/quality_rejections.png", dpi=180)
-    fig.savefig(output / "figures/quality_rejections.pdf")
     plt.close(fig)
     protocol = {"quality_gate": FaceQualityGate(QualityConfig(**config)).manifest(),
                 "crop": KalmanComparison().manifest(), "detector_reporting_floor": .10,

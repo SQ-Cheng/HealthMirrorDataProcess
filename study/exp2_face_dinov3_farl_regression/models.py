@@ -18,11 +18,11 @@ class ConcatHead(nn.Module):
 
 
 class GatedHead(nn.Module):
-    def __init__(self):
+    def __init__(self, gate_dimension=64):
         super().__init__()
         self.dino_project = nn.Sequential(nn.Linear(384, 64), nn.LayerNorm(64), nn.SiLU())
         self.farl_project = nn.Sequential(nn.Linear(512, 64), nn.LayerNorm(64), nn.SiLU())
-        self.gate = nn.Linear(128, 64)
+        self.gate = nn.Linear(128, gate_dimension)
         nn.init.zeros_(self.gate.weight)
         nn.init.zeros_(self.gate.bias)
         self.head = regression_head(64)
@@ -34,11 +34,20 @@ class GatedHead(nn.Module):
         return self.head(gate * dino + (1 - gate) * farl)
 
 
+class ScalarGatedHead(GatedHead):
+    """One input-dependent scalar gate shared by all 64 projected dimensions."""
+
+    def __init__(self):
+        super().__init__(gate_dimension=1)
+
+
 def build_model(architecture):
     if architecture == "concat":
         return ConcatHead()
     if architecture == "gated":
         return GatedHead()
+    if architecture == "scalar_gated":
+        return ScalarGatedHead()
     raise ValueError(architecture)
 
 

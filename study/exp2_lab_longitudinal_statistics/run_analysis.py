@@ -13,7 +13,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import font_manager
 import numpy as np
 import pandas as pd
@@ -1713,95 +1712,91 @@ def _plot_per_analyte(
         if filename.endswith(".png") and filename not in expected_pngs:
             os.remove(os.path.join(per_dir, filename))
     paths = []
-    pdf_path = os.path.join(output_dir, "all_analyte_trajectories.pdf")
-    with PdfPages(pdf_path) as pdf:
-        for row in statistics.sort_values("variable_id").itertuples(index=False):
-            variable_id = row.variable_id
-            trajectory = trajectories[
-                trajectories["variable_id"].eq(variable_id)
-            ].sort_values("progress_bin")
-            episode_change = changes[
-                changes["variable_id"].eq(variable_id)
-            ]
-            slope_values = slopes.loc[
-                slopes["variable_id"].eq(variable_id),
-                "theil_sen_slope_per_day",
-            ].to_numpy(np.float64)
-            figure, axes = plt.subplots(1, 3, figsize=(16, 4.8))
-            x = trajectory["progress_midpoint"] * 100
-            axes[0].plot(x, trajectory["median"], color="#2F6B8A", marker="o")
-            axes[0].fill_between(
-                x,
-                trajectory["q25"],
-                trajectory["q75"],
-                color="#8CB7C9",
-                alpha=0.35,
-            )
-            axes[0].set_xlabel("Hospital stay (%)")
-            axes[0].set_ylabel(row.unit)
-            axes[0].set_title("Patient-balanced median and IQR")
+    for row in statistics.sort_values("variable_id").itertuples(index=False):
+        variable_id = row.variable_id
+        trajectory = trajectories[
+            trajectories["variable_id"].eq(variable_id)
+        ].sort_values("progress_bin")
+        episode_change = changes[
+            changes["variable_id"].eq(variable_id)
+        ]
+        slope_values = slopes.loc[
+            slopes["variable_id"].eq(variable_id),
+            "theil_sen_slope_per_day",
+        ].to_numpy(np.float64)
+        figure, axes = plt.subplots(1, 3, figsize=(16, 4.8))
+        x = trajectory["progress_midpoint"] * 100
+        axes[0].plot(x, trajectory["median"], color="#2F6B8A", marker="o")
+        axes[0].fill_between(
+            x,
+            trajectory["q25"],
+            trajectory["q75"],
+            color="#8CB7C9",
+            alpha=0.35,
+        )
+        axes[0].set_xlabel("Hospital stay (%)")
+        axes[0].set_ylabel(row.unit)
+        axes[0].set_title("Patient-balanced median and IQR")
 
-            paired = episode_change[["first_value", "last_value"]].to_numpy(
-                np.float64
+        paired = episode_change[["first_value", "last_value"]].to_numpy(
+            np.float64
+        )
+        if len(paired):
+            rng = np.random.default_rng(SEED + int(variable_id[1:]))
+            selected = (
+                rng.choice(len(paired), size=min(80, len(paired)), replace=False)
+                if len(paired) > 80
+                else np.arange(len(paired))
             )
-            if len(paired):
-                rng = np.random.default_rng(SEED + int(variable_id[1:]))
-                selected = (
-                    rng.choice(len(paired), size=min(80, len(paired)), replace=False)
-                    if len(paired) > 80
-                    else np.arange(len(paired))
-                )
-                for values in paired[selected]:
-                    axes[1].plot((0, 1), values, color="#97A4AD", alpha=0.18)
-                axes[1].boxplot(
-                    [paired[:, 0], paired[:, 1]],
-                    positions=(0, 1),
-                    tick_labels=("First", "Last"),
-                    showfliers=False,
-                )
-            axes[1].set_ylabel(row.unit)
-            shown_pairs = min(80, len(episode_change))
-            axes[1].set_title(
-                "Episode first/last values "
-                f"(boxplots n={len(episode_change)}, lines n={shown_pairs})"
+            for values in paired[selected]:
+                axes[1].plot((0, 1), values, color="#97A4AD", alpha=0.18)
+            axes[1].boxplot(
+                [paired[:, 0], paired[:, 1]],
+                positions=(0, 1),
+                tick_labels=("First", "Last"),
+                showfliers=False,
             )
+        axes[1].set_ylabel(row.unit)
+        shown_pairs = min(80, len(episode_change))
+        axes[1].set_title(
+            "Episode first/last values "
+            f"(boxplots n={len(episode_change)}, lines n={shown_pairs})"
+        )
 
-            if len(slope_values):
-                axes[2].hist(
-                    slope_values,
-                    bins=25,
-                    color="#C46A45",
-                    edgecolor="white",
-                )
-                axes[2].axvline(0, color="black", linewidth=1)
-                axes[2].axvline(
-                    np.median(slope_values),
-                    color="#2F6B8A",
-                    linestyle="--",
-                    linewidth=1.5,
-                )
-            axes[2].set_xlabel(f"{row.unit} per day")
-            axes[2].set_title(f"Theil-Sen episode slopes (n={len(slope_values)})")
-            for axis in axes:
-                axis.grid(alpha=0.2)
-            figure.suptitle(
-                f"{row.variable_id} {row.item_name_en} [{row.unit}]\n"
-                f"Median patient change={row.median_first_last_change:.4g}; "
-                f"BH q={row.q_value_bh:.3g}",
-                fontsize=13,
+        if len(slope_values):
+            axes[2].hist(
+                slope_values,
+                bins=25,
+                color="#C46A45",
+                edgecolor="white",
             )
-            figure.tight_layout()
-            path = os.path.join(per_dir, f"{variable_id}.png")
-            figure.savefig(path, dpi=170, bbox_inches="tight")
-            pdf.savefig(figure, bbox_inches="tight")
-            plt.close(figure)
-            paths.append(
-                {
-                    "variable_id": variable_id,
-                    "png_path": os.path.relpath(path, output_dir),
-                    "pdf_path": os.path.basename(pdf_path),
-                }
+            axes[2].axvline(0, color="black", linewidth=1)
+            axes[2].axvline(
+                np.median(slope_values),
+                color="#2F6B8A",
+                linestyle="--",
+                linewidth=1.5,
             )
+        axes[2].set_xlabel(f"{row.unit} per day")
+        axes[2].set_title(f"Theil-Sen episode slopes (n={len(slope_values)})")
+        for axis in axes:
+            axis.grid(alpha=0.2)
+        figure.suptitle(
+            f"{row.variable_id} {row.item_name_en} [{row.unit}]\n"
+            f"Median patient change={row.median_first_last_change:.4g}; "
+            f"BH q={row.q_value_bh:.3g}",
+            fontsize=13,
+        )
+        figure.tight_layout()
+        path = os.path.join(per_dir, f"{variable_id}.png")
+        figure.savefig(path, dpi=170, bbox_inches="tight")
+        plt.close(figure)
+        paths.append(
+            {
+                "variable_id": variable_id,
+                "png_path": os.path.relpath(path, output_dir),
+            }
+        )
     return pd.DataFrame(paths)
 
 
@@ -1909,14 +1904,13 @@ def _write_report(
 - `../figures/longitudinal_heatmap.png`：标准化住院进程轨迹
 - `../figures/top_trajectory_panels.png`：变化最大的 12 个项目
 - `../figures/per_analyte/*.png`：每个纵向变量的完整分项图
-- `../figures/all_analyte_trajectories.pdf`：所有分项图的多页 PDF
 - `../figures/surgery_cohort_overview.png`：手术队列、术式和 CABG 时间概览
 - `../figures/surgery_phase_coverage.png`：手术相对阶段覆盖
 - `../figures/cabg_surgery_aligned_heatmap.png`：CABG 对齐轨迹热图
 - `../figures/cabg_surgery_trajectory_panels.png`：CABG 变化最大的分项轨迹
 - `../figures/cabg_surgery_contrast_forest.png`：CABG 配对变化及 bootstrap CI
 - `../figures/surgery_all_vs_cabg_sensitivity.png`：全部手术与 CABG 敏感性比较
-- `../figures/all_surgery_aligned_trajectories.pdf`：全部手术分项轨迹 PDF
+- `../figures/per_analyte_surgery/*.png`：全部手术分项轨迹 PNG
 
 ## 机器可读结果
 
@@ -2060,9 +2054,6 @@ def run(source_path=LAB_CSV, output_dir=OUTPUT_DIR):
         figure_dir,
     )
     plot_manifest["png_path"] = plot_manifest["png_path"].map(
-        lambda path: os.path.join("figures", path)
-    )
-    plot_manifest["pdf_path"] = plot_manifest["pdf_path"].map(
         lambda path: os.path.join("figures", path)
     )
     plot_manifest.to_csv(

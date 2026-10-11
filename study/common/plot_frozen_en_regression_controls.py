@@ -86,8 +86,7 @@ def compare(family, targets, roots=None, output=None):
             axis.grid(axis="y", alpha=.2)
             axis.set_axisbelow(True)
         figure.suptitle(f"{'Single-face lab values' if family == 'exp2' else 'Paired-face lab changes'} | same 24h test cohort | {label}")
-        for extension in ("png", "pdf"):
-            figure.savefig(figures / f"five_model_{metric}_comparison.{extension}", dpi=180)
+        figure.savefig(figures / f"five_model_{metric}_comparison.png", dpi=180)
         plt.close(figure)
     print(f"[five-model-plots] {family}: {figures}", flush=True)
 

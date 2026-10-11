@@ -22,8 +22,7 @@ def panels(targets):
 
 
 def save(figure, path):
-    for extension in ("png", "pdf"):
-        figure.savefig(path.with_suffix("." + extension), dpi=180)
+    figure.savefig(path.with_suffix(".png"), dpi=180)
     plt.close(figure)
 
 

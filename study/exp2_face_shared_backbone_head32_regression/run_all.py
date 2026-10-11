@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import random
+import shutil
 import tempfile
 import time
 
@@ -16,6 +17,7 @@ import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+from sklearn.metrics import explained_variance_score
 
 from . import config
 from study.exp2_face_pretrained_head32_regression.data import _candidate_score, _distribution_audit, _plot_split_distributions
@@ -42,13 +44,13 @@ def execution_model(model):
     return compiled, "inductor:default_dynamic_no_cudagraphs"
 
 
-def record_memory_fix(resume):
+def record_execution_settings(resume):
     path = OUTPUT / "experiment_manifest.json"
     manifest = json.loads(path.read_text())
     manifest["training"]["execution"] = {
         "backend": "inductor", "mode": "default", "dynamic_batches": True,
         "cudagraphs": False, "evaluation": "eager",
-        "reason": "OOM at first finetune epoch; log reports 14.4 GiB of 15.3 GiB allocated in private CUDA Graph pools",
+        "reason": "Disable CUDA Graph pools for variable-sized shared batches; the previous run encountered a CUDA Graph OOM",
         "data_split_labels_loss_and_batch_unchanged": True,
     }
     if resume:
@@ -106,6 +108,10 @@ def select_shared_split(records):
 
 
 def build_union(records):
+    if set(records) != set(TARGETS):
+        raise ValueError("All ten target tables are required")
+    if any(table.video_id.duplicated().any() for table in records.values()):
+        raise ValueError("Duplicate video/target label")
     videos = pd.concat([table[["hospital_id", "video_id", "mirror", "lab_patient_id", "split"]] for table in records.values()])
     if videos.groupby("video_id").hospital_id.nunique().gt(1).any() or videos.groupby("hospital_id").split.nunique().gt(1).any():
         raise ValueError("Shared encoder would leak patient identity across tasks")
@@ -115,6 +121,8 @@ def build_union(records):
     lookup = dict(zip(videos.video_id, range(len(videos))))
     for column, target in enumerate(TARGETS):
         table = records[target]
+        if table.clinical_event_id.isna().any() or not np.isfinite(table.robust_scaled_raw_value).all():
+            raise ValueError(f"Invalid observed labels/events: {target}")
         rows = table.video_id.map(lookup).to_numpy(int)
         labels[rows, column] = table.robust_scaled_raw_value.to_numpy(np.float32); masks[rows, column] = True
         for row, event in zip(rows, table.clinical_event_id):
@@ -122,14 +130,49 @@ def build_union(records):
     return videos, labels, masks, events
 
 
+def clear_outputs():
+    """Overwrite only this experiment's outputs; keep the live queue lock."""
+    expected = config.EXP_DIR / "outputs"
+    if OUTPUT.resolve() != expected.resolve():
+        raise RuntimeError("Refusing to clear an unexpected output directory")
+    for child in OUTPUT.iterdir():
+        if child.name == ".queue.lock":
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def write_mask_audit(records, videos, masks):
+    table = videos[["hospital_id", "video_id", "split"]].copy()
+    for column, target in enumerate(TARGETS):
+        table[target] = table.video_id.map(records[target].set_index("video_id").raw_value)
+        np.testing.assert_array_equal(table[target].notna(), masks[:, column])
+    table["available_targets"] = masks.sum(axis=1)
+    table.to_csv(OUTPUT / "video_targets.csv", index=False)
+    distribution = table.groupby(["split", "available_targets"]).agg(videos=("video_id", "size"), patients=("hospital_id", "nunique")).reset_index()
+    distribution.to_csv(OUTPUT / "label_availability.csv", index=False)
+    import matplotlib.pyplot as plt
+    figure, axis = plt.subplots(figsize=(9, 4.5))
+    x = np.arange(1, len(TARGETS) + 1)
+    for offset, split, color in zip((-.25, 0, .25), ("train", "val", "test"), ("#2878B5", "#CB6547", "#278245")):
+        counts = distribution.loc[distribution.split.eq(split)].set_index("available_targets").videos.reindex(x, fill_value=0)
+        axis.bar(x + offset, counts, width=.25, label=split.capitalize(), color=color)
+    axis.set(xlabel="Observed laboratory targets per video", ylabel="Videos", xticks=x,
+             title="Multitask union cohort: missing targets are masked")
+    axis.legend(); axis.grid(axis="y", alpha=.2); figure.tight_layout()
+    (OUTPUT / "figures").mkdir(exist_ok=True)
+    figure.savefig(OUTPUT / "figures/label_availability.png", dpi=180)
+    plt.close(figure)
+
+
 def prepare():
     OUTPUT.mkdir(parents=True, exist_ok=True); (OUTPUT / "task_records").mkdir(exist_ok=True)
     if (OUTPUT / "model.pt").exists(): raise FileExistsError("Shared-backbone checkpoint already exists; not overwriting")
-    reference = json.loads((BASE / "direct_field_extension_protocol.json").read_text())
-    if sha256(Path(config.EXP_DIR).parents[1] / "merged_lab_tests.csv") != reference["lab_table_sha256"]:
-        raise RuntimeError("Main reference is not based on the current lab table")
+    from study.exp2_face_dinov3_frozen.run_main_regression import preflight as main_preflight
+    _, _, expected, _, lab_hash = main_preflight()
     records, hashes = {}, {}
-    expected = {**reference["original_eight_records_sha256"], **reference["record_hashes"][str(BASE)]}
     for target in TARGETS:
         path = BASE / f"task_records/{target}.csv"; hashes[target] = sha256(path)
         if hashes[target] != expected[target]: raise RuntimeError(f"Main records changed: {target}")
@@ -151,6 +194,7 @@ def prepare():
         summaries.append(row)
     videos, labels, masks, events = build_union(records)
     videos.to_csv(OUTPUT / "video_manifest.csv", index=False)
+    write_mask_audit(records, videos, masks)
     pd.DataFrame({"hospital_id": assignments.keys(), "split": assignments.values()}).to_csv(OUTPUT / "patient_split.csv", index=False)
     pd.DataFrame(summaries).to_csv(OUTPUT / "task_summary.csv", index=False)
     pd.DataFrame(audits).to_csv(OUTPUT / "split_distribution_audit.csv", index=False)
@@ -162,9 +206,11 @@ def prepare():
     manifest = {
         "experiment": "exp2_face_shared_backbone_head32_regression",
         "output_directory": str(OUTPUT), "log_directory": str(LOGS),
-        "targets": list(TARGETS), "lab_table_sha256": reference["lab_table_sha256"],
-        "source_records_sha256": hashes, "frame_index": reference["frame_index"],
-        "frame_index_sha256": reference["frame_index_sha256"],
+        "targets": list(TARGETS), "lab_table_sha256": lab_hash,
+        "source_records_sha256": hashes, "frame_index": str(config.INDEX_PATH),
+        "frame_index_sha256": sha256(config.INDEX_PATH),
+        "matching_hours": 24, "frames_per_video": 20, "training_views": list(config.VIEW_NAMES),
+        "evaluation_views": ["original"], "backbone_weight_sha256": sha256(Path(config.WEIGHTS_DIR) / "efficientnet_b0_rwightman-7f5810bc.pth"),
         "source": str(BASE), "videos": len(videos), "patients": videos.hospital_id.nunique(),
         "original_cross_task_split_conflicts": conflicts, "split_selection": selection,
         "comparison": "only shared model trained; original-main split differs; full cohort and common held-out patients reported separately",
@@ -174,6 +220,8 @@ def prepare():
                      "head_epochs": config.HEAD_MAX_EPOCHS, "finetune_epochs": config.FINETUNE_MAX_EPOCHS,
                      "head_patience": config.HEAD_PATIENCE, "finetune_patience": config.FINETUNE_PATIENCE,
                      "min_lr": config.MIN_LEARNING_RATE, "weight_decay": config.WEIGHT_DECAY,
+                     "dropout": .25, "head_hidden": 32, "gradient_clip": config.GRAD_CLIP_NORM,
+                     "amp": True, "seed": config.SEED, "loss_level": "frame",
                      "scheduler": "cosine, no warmup", "loss": "equal-task mean of observed-frame SmoothL1(beta=0.5)",
                      "task_sampling_correction_weights": dict(zip(TARGETS, weights.tolist())),
                      "missing_targets": "masked; no imputation", "frame_batch_size": 240,
@@ -205,11 +253,24 @@ def preflight():
         table = pd.read_csv(OUTPUT / f"task_records/{target}.csv", dtype={"hospital_id": str, "video_id": str}, float_precision="round_trip")
         assert not table.video_id.duplicated().any() and table.match_delta_h.between(0, 24 + 1e-9).all()
         assert fit_robust_target_scaler(target, table, config.SCORE_DEFINITIONS[target]["unit"]).to_dict() == scalers[target]
+        source = pd.read_csv(BASE / f"task_records/{target}.csv", dtype={"hospital_id": str, "video_id": str}, float_precision="round_trip")
+        invariant = [name for name in source.columns if name not in ("split", "robust_scaled_raw_value")]
+        pd.testing.assert_frame_equal(table[invariant], source[invariant])
+        np.testing.assert_array_equal(RobustTargetScaler(**scalers[target]).transform(table.raw_value).astype(np.float32),
+                                      table.robust_scaled_raw_value.to_numpy(np.float32))
         records[target] = table
     videos, labels, masks, events = build_union(records)
     assert videos.groupby("hospital_id").split.nunique().eq(1).all()
     assert all(index.frame_range(video)[1] - index.frame_range(video)[0] == 20 for video in videos.video_id)
     np.testing.assert_array_equal(masks.sum(axis=0), [len(records[target]) for target in TARGETS])
+    if not masks.any(axis=1).all() or not np.isfinite(labels[masks]).all():
+        raise RuntimeError("Empty union video or invalid observed label")
+    assignment = pd.read_csv(OUTPUT / "patient_split.csv", dtype={"hospital_id": str})
+    if assignment.hospital_id.duplicated().any():
+        raise RuntimeError("Duplicate patient assignment")
+    pd.testing.assert_series_equal(videos.split, videos.hospital_id.map(assignment.set_index("hospital_id").split), check_names=False)
+    if not pd.read_csv(OUTPUT / "split_distribution_pairwise.csv").passed.all():
+        raise RuntimeError("The common split failed a distribution audit")
     train_rows = np.flatnonzero(videos.split.eq("train"))
     sampler = SharedLabBatchSampler([events[row] for row in train_rows])
     coverage = np.sort(np.concatenate(sampler.batches))
@@ -254,6 +315,7 @@ def evaluate(model, loader, dataset, scalers, records, split, device):
         images = _prepare_images(images, codes, "bicubic", device)
         labels = labels.to(device); mask = mask.to(device)
         with torch.autocast("cuda", dtype=torch.float16): output = model(images)
+        if not torch.isfinite(output).all(): raise RuntimeError("Nonfinite evaluation output")
         sums += masked_losses(output, labels, mask).sum(dim=0); counts += mask.sum(dim=0)
         predictions.append(output.float().cpu().numpy()); positions.append(rows.numpy())
     if counts.min() == 0: raise RuntimeError(f"A task has no {split} labels")
@@ -274,6 +336,8 @@ def evaluate(model, loader, dataset, scalers, records, split, device):
         merged["y_true_scaled"] = merged.robust_scaled_raw_value; merged["residual"] = merged.y_pred - merged.y_true
         merged["architecture"] = "efficientnet_b0"; merged["target"] = target
         metrics[target] = _regression_metrics(merged.y_true, merged.y_pred, merged.score_threshold, config.SCORE_DEFINITIONS[target]["direction"])
+        if metrics[target]["n"] != len(table): raise RuntimeError("Evaluation silently dropped observed labels")
+        metrics[target]["explained_variance"] = float(explained_variance_score(merged.y_true, merged.y_pred)) if len(table) > 1 else np.nan
         metrics[target]["frame_loss"] = float(losses[column]); tables[target] = merged
         raw_lookup = table.set_index("video_id").raw_value
         frames[target] = {
@@ -345,12 +409,15 @@ def fit(records, videos, labels, masks, events, index, scalers, destination=OUTP
                 optimizer.zero_grad(set_to_none=True)
                 with torch.autocast("cuda", dtype=torch.float16):
                     prediction = execution(images); loss = task_balanced_loss(prediction, truth, mask, weights)
-                if not torch.isfinite(loss): raise RuntimeError("Nonfinite shared loss")
+                if not torch.isfinite(loss) or not torch.isfinite(prediction).all(): raise RuntimeError("Nonfinite shared loss/prediction")
                 amp.scale(loss).backward(); amp.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config.GRAD_CLIP_NORM)
                 amp.step(optimizer); amp.update()
                 sums += masked_losses(prediction.detach(), truth, mask).sum(dim=0)
                 counts += mask.sum(dim=0); loss_sum += float(loss.detach()) * len(images); inputs += len(images)
+                if batch == 0 or (batch + 1) % 50 == 0:
+                    print(f"[batch] {stage} epoch={epoch} batch={batch+1}/{len(data['augmented'])} frame_views={inputs} "
+                          f"loss={loss.item():.5f} observed_label_losses={int(mask.sum().item())}", flush=True)
                 del prediction, loss, images, truth, mask
             if not smoke:
                 assert inputs == len(datasets["augmented"]), "Training did not retain every frame/view"
@@ -368,6 +435,10 @@ def fit(records, videos, labels, masks, events, index, scalers, destination=OUTP
                                   "train_macro_loss": train_loss, "val_macro_loss": val_loss,
                                   "val_macro_scaled_mae": val_score})
             pd.DataFrame(joint_history).to_csv(destination / "shared_training_history.csv", index=False)
+            for column, target in enumerate(TARGETS):
+                print(f"[task-epoch] {stage}/{target} epoch={epoch} observed_train_frame_views={int(counts[column].item())} "
+                      f"train_loss={optimization[column]:.5f} train_MAE={training[target]['mae']:.5g} train_r={training[target]['pearson_r']:.4f} "
+                      f"val_loss={validation[target]['frame_loss']:.5f} val_MAE={validation[target]['mae']:.5g} val_r={validation[target]['pearson_r']:.4f}", flush=True)
             for column, target in enumerate(TARGETS):
                 row = {**base, "architecture": "efficientnet_b0", "target": target,
                        "train_loss": float(optimization[column]), "train_eval_loss": training[target]["frame_loss"],
@@ -399,6 +470,7 @@ def fit(records, videos, labels, masks, events, index, scalers, destination=OUTP
         if best_overall is None or best_score < best_overall[0]: best_overall = (best_score, stage, best_state)
         model.zero_grad(set_to_none=True)
         del execution, optimizer, amp
+        del scheduler
         torch._dynamo.reset(); gc.collect(); torch.cuda.empty_cache()
     model.load_state_dict(best_overall[2])
     torch.save({"architecture": "efficientnet_b0_shared_backbone_separate_head32", "targets": TARGETS,
@@ -436,6 +508,11 @@ def smoke(compiled=False):
     for split in ("train", "val", "test"):
         candidates = videos.loc[videos.split.eq(split)].drop_duplicates("hospital_id").index.to_numpy()
         chosen = sorted(candidates, key=lambda row: -int(masks[row].sum()))[:12 if split == "train" else 4]
+        if split == "train":
+            partial = next((row for row in candidates if 0 < masks[row].sum() < len(TARGETS)), None)
+            if partial is None: raise RuntimeError("Smoke needs a genuinely partially labeled video")
+            if partial not in chosen: chosen[-1] = partial
+            assert not masks[chosen].all()
         if not masks[chosen].any(axis=0).all(): raise RuntimeError("Smoke does not cover all ten heads")
         keep.extend(chosen)
     subset = videos.iloc[keep].reset_index(drop=True)
@@ -467,15 +544,20 @@ def main():
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--compiled-smoke", action="store_true")
     parser.add_argument("--resume-finetune", action="store_true")
-    args = parser.parse_args(); OUTPUT.mkdir(parents=True, exist_ok=True)
+    parser.add_argument("--overwrite", action="store_true", help="Clear only this experiment's outputs and rebuild the current full-data cohort")
+    args = parser.parse_args()
+    if args.overwrite and (args.reuse_prepared or args.resume_finetune):
+        parser.error("--overwrite cannot reuse prepared data or resume an old checkpoint")
+    OUTPUT.mkdir(parents=True, exist_ok=True)
     with (OUTPUT / ".queue.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if args.overwrite: clear_outputs()
         if not args.reuse_prepared: prepare()
         if args.prepare_only: return
         if args.smoke or args.compiled_smoke: smoke(compiled=args.compiled_smoke); return
         if (OUTPUT / "model.pt").exists(): raise FileExistsError("Existing shared results will not be overwritten")
         records, videos, labels, masks, events, index, scalers, _ = preflight()
-        record_memory_fix(args.resume_finetune)
+        record_execution_settings(args.resume_finetune)
         fit(records, videos, labels, masks, events, index, scalers, resume_finetune=args.resume_finetune)
         from unittest.mock import patch
         from study.exp2_face_pretrained_head32_regression import plot_results

@@ -132,8 +132,7 @@ def plot(data, output):
             ax.axvline(1, color="gray", ls="--", lw=1)
     axes.flat[0].legend(fontsize=8)
     fig.suptitle("Retained-frame quality and resize distributions: 100-video audit", fontsize=15)
-    for extension in ("png", "pdf"):
-        fig.savefig(output / f"figures/retained_frame_distributions.{extension}", dpi=180)
+    fig.savefig(output / "figures/retained_frame_distributions.png", dpi=180)
     plt.close(fig)
 
 

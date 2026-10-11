@@ -72,8 +72,7 @@ def plot_one(root, family, architecture, *, targets=None, loss_label="View-level
                  ylabel=f"Predicted ({TASK_UNITS[target]})")
         axis.grid(alpha=.2)
         axis.legend(fontsize=7)
-    for extension in ("png", "pdf"):
-        figure.savefig(figures / f"test_predicted_vs_true.{extension}", dpi=180)
+    figure.savefig(figures / "test_predicted_vs_true.png", dpi=180)
     plt.close(figure)
 
 
@@ -114,6 +113,5 @@ def compare():
                 axis.grid(axis="y", alpha=.2)
                 axis.set_axisbelow(True)
             figure.suptitle(f"{family.capitalize()} | same 12h held-out videos | {label}")
-            for extension in ("png", "pdf"):
-                figure.savefig(figures / f"{family}_{key}_comparison.{extension}", dpi=180)
+            figure.savefig(figures / f"{family}_{key}_comparison.png", dpi=180)
             plt.close(figure)

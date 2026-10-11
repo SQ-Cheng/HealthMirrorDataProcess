@@ -30,9 +30,18 @@ def roi_features(rgb, mask):
         raise ValueError("Invalid native ROI mask")
     # Select original pixels before color conversion; mask holes/padding never enter statistics.
     raw = rgb[mask.astype(bool)]
+    return color_pixel_features(raw)
+
+
+def color_pixel_features(raw):
+    """Describe selected uint8 or [0,1] float RGB pixels without spatial resize."""
     if not len(raw):
         raise ValueError("Empty native ROI mask")
-    pixels = raw.astype(np.float32) / 255.
+    if raw.ndim != 2 or raw.shape[1] != 3:
+        raise ValueError("Expected selected RGB pixels")
+    pixels = raw.astype(np.float32) / 255. if raw.dtype == np.uint8 else raw.astype(np.float32)
+    if not np.isfinite(pixels).all() or pixels.min() < 0 or pixels.max() > 1:
+        raise ValueError("Color pixels must be finite and within [0,1]")
     lab = cv2.cvtColor(pixels[:, None, :], cv2.COLOR_RGB2LAB)[:, 0, :]
     hsv = cv2.cvtColor(pixels[:, None, :], cv2.COLOR_RGB2HSV)[:, 0, :]
     result = []
@@ -59,7 +68,8 @@ def roi_features(rgb, mask):
         result.extend(_mean_std(channel))
     for numerator in (values[:, 0], values[:, 2]):
         result.extend(_mean_std(np.log((numerator + EPSILON) / (values[:, 1] + EPSILON))))
-    result.extend((float((raw <= 5).all(axis=1).mean()), float((raw >= 250).any(axis=1).mean())))
+    quality = raw if raw.dtype == np.uint8 else pixels * 255.
+    result.extend((float((quality <= 5).all(axis=1).mean()), float((quality >= 250).any(axis=1).mean())))
     vector = np.asarray(result, np.float32)
     if vector.shape != (41,) or not np.isfinite(vector).all():
         raise ValueError("Nonfinite or incorrectly sized color descriptor")

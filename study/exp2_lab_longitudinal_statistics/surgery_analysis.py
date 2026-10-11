@@ -6,7 +6,6 @@ import math
 import os
 
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
@@ -1184,47 +1183,50 @@ def _plot_sensitivity(statistics, output_dir):
     return values.reset_index(), path
 
 
-def _plot_phase_pdf(summary, selected_ids, output_dir):
-    path = os.path.join(output_dir, "all_surgery_aligned_trajectories.pdf")
-    with PdfPages(path) as pdf:
-        for variable_id in sorted(selected_ids):
-            figure, axes = plt.subplots(1, 2, figsize=(14, 5), sharex=True)
-            for axis, cohort in zip(axes, ("cabg", "all_surgery")):
-                values = summary[
-                    summary["cohort"].eq(cohort)
-                    & summary["variable_id"].eq(variable_id)
-                ].sort_values("phase_order")
-                if values.empty:
-                    axis.axis("off")
-                    continue
-                x = values["phase_order"].to_numpy()
-                axis.plot(x, values["median"], color="#2F6B8A", marker="o")
-                axis.fill_between(
-                    x,
-                    values["q25"],
-                    values["q75"],
-                    color="#8CB7C9",
-                    alpha=0.35,
-                )
-                axis.set_xticks(
-                    range(len(PHASES)),
-                    [label for _, label in PHASES],
-                    rotation=55,
-                    ha="right",
-                    fontsize=7,
-                )
-                axis.set_ylabel(values.iloc[0]["unit"])
-                axis.set_title(cohort.replace("_", " "))
-                axis.grid(alpha=0.2)
-            first = summary[summary["variable_id"].eq(variable_id)].iloc[0]
-            figure.suptitle(
-                f"{variable_id} {first['item_name_en']} [{first['unit']}]",
-                fontsize=13,
+def _plot_phase_pngs(summary, selected_ids, output_dir):
+    per_dir = os.path.join(output_dir, "per_analyte_surgery")
+    os.makedirs(per_dir, exist_ok=True)
+    paths = []
+    for variable_id in sorted(selected_ids):
+        figure, axes = plt.subplots(1, 2, figsize=(14, 5), sharex=True)
+        for axis, cohort in zip(axes, ("cabg", "all_surgery")):
+            values = summary[
+                summary["cohort"].eq(cohort)
+                & summary["variable_id"].eq(variable_id)
+            ].sort_values("phase_order")
+            if values.empty:
+                axis.axis("off")
+                continue
+            x = values["phase_order"].to_numpy()
+            axis.plot(x, values["median"], color="#2F6B8A", marker="o")
+            axis.fill_between(
+                x,
+                values["q25"],
+                values["q75"],
+                color="#8CB7C9",
+                alpha=0.35,
             )
-            figure.tight_layout()
-            pdf.savefig(figure, bbox_inches="tight")
-            plt.close(figure)
-    return path
+            axis.set_xticks(
+                range(len(PHASES)),
+                [label for _, label in PHASES],
+                rotation=55,
+                ha="right",
+                fontsize=7,
+            )
+            axis.set_ylabel(values.iloc[0]["unit"])
+            axis.set_title(cohort.replace("_", " "))
+            axis.grid(alpha=0.2)
+        first = summary[summary["variable_id"].eq(variable_id)].iloc[0]
+        figure.suptitle(
+            f"{variable_id} {first['item_name_en']} [{first['unit']}]",
+            fontsize=13,
+        )
+        figure.tight_layout()
+        path = os.path.join(per_dir, f"{variable_id}.png")
+        figure.savefig(path, dpi=180, bbox_inches="tight")
+        plt.close(figure)
+        paths.append(path)
+    return paths
 
 
 def _format_quantiles(values):
@@ -1339,7 +1341,7 @@ CABG 手术时长中位数为 {duration['median']:.2f} 小时（IQR {duration['q
 - `../figures/cabg_surgery_trajectory_panels.png`
 - `../figures/cabg_surgery_contrast_forest.png`
 - `../figures/surgery_all_vs_cabg_sensitivity.png`
-- `../figures/all_surgery_aligned_trajectories.pdf`
+- `../figures/per_analyte_surgery/*.png`
 - `../tables/surgery_event_audit.csv`
 - `../tables/surgery_episode_audit.csv`
 - `../tables/surgery_procedure_summary.csv`
@@ -1497,7 +1499,7 @@ def run_surgery_analysis(
         os.path.join(table_dir, "surgery_sensitivity.csv"),
         index=False,
     )
-    pdf_path = _plot_phase_pdf(phase_summary, selected_ids, figure_dir)
+    phase_paths = _plot_phase_pngs(phase_summary, selected_ids, figure_dir)
 
     summary = _write_surgery_report(
         report_dir,
@@ -1560,7 +1562,7 @@ def run_surgery_analysis(
             "phase_eligible_variables": int(len(selected_ids)),
         },
         "plots": [
-            os.path.join("figures", os.path.basename(path))
+            os.path.join("figures", os.path.relpath(path, figure_dir))
             for path in (
                 overview_path,
                 coverage_path,
@@ -1568,7 +1570,7 @@ def run_surgery_analysis(
                 panels_path,
                 forest_path,
                 sensitivity_path,
-                pdf_path,
+                *phase_paths,
             )
         ],
     }

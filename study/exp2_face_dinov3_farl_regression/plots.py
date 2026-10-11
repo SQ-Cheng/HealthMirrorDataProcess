@@ -1,4 +1,4 @@
-"""Native DINO baseline versus concat and gated heads on identical test videos."""
+"""Native DINO baseline versus concat and two gated heads on identical videos."""
 
 import matplotlib
 matplotlib.use("Agg")
@@ -13,7 +13,7 @@ from . import config
 
 def plot_results():
     roots = [config.reference.RESULTS] + [config.OUTPUT / f"regression/{variant}" for variant in config.VARIANTS]
-    names = ("Frozen DINOv3-S", "DINOv3 + FaRL concat", "DINOv3 + FaRL gated")
+    names = ("Frozen DINOv3-S", "DINOv3 + FaRL concat", "DINOv3 + FaRL vector gate", "DINOv3 + FaRL scalar gate")
     for variant, label in zip(config.VARIANTS, names[1:]):
         LABELS[variant] = label
         plot_one(config.OUTPUT / f"regression/{variant}", "regression", variant, targets=config.TARGETS, loss_label="Frame-level SmoothL1")
@@ -37,14 +37,13 @@ def plot_results():
         for axis in axes.flat[len(config.TARGETS):]:
             axis.set_visible(False)
         for axis, target in zip(axes.flat, config.TARGETS):
-            bars = axis.bar(range(3), [table.loc[target, metric] for table in tables], color=["#64737c", "#2878b5", "#278245"])
+            bars = axis.bar(range(4), [table.loc[target, metric] for table in tables], color=["#64737c", "#2878b5", "#278245", "#cb6547"])
             axis.bar_label(bars, fmt="%.3f", padding=3, fontsize=7)
-            axis.set_xticks(range(3), ["DINOv3", "Concat", "Gated"])
+            axis.set_xticks(range(4), ["DINOv3", "Concat", "Vector gate", "Scalar gate"], rotation=20, ha="right")
             axis.set(title=TASK_LABELS[target], ylabel=label + (f" ({TASK_UNITS[target]})" if metric in ("mae", "rmse") else ""))
             axis.margins(y=.18)
             axis.axhline(0, color="#64737c", linewidth=.6)
             axis.grid(axis="y", alpha=.2)
         figure.suptitle(f"Same native224 / 24h / 20-frame test videos | {label}")
-        for extension in ("png", "pdf"):
-            figure.savefig(figures / f"{metric}_comparison.{extension}", dpi=180)
+        figure.savefig(figures / f"{metric}_comparison.png", dpi=180)
         plt.close(figure)
