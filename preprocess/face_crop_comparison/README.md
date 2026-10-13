@@ -199,3 +199,107 @@ videos and timestamps are never rewritten. The launcher resumes completed
 matching outputs rather than encoding them again; interrupted partial files
 are replaced on the next run. Log:
 `preprocess/face_crop_comparison/logs/full_dataset/run.log`.
+
+## Raw IR Frame Review
+
+```bash
+/root/miniconda3/envs/healthmirrorenv/bin/python -m preprocess.face_crop_comparison.preview_ir
+```
+
+This creates `outputs/ir100_224/index.html`, 100 PNG comparisons (including
+rejected frames), five contact sheets, accepted lossless 224 PNG crops, and CSV
+source/frame audits. It samples 20 readable `raw_ir_video.avi` sessions from each
+of the five mirrors, without selecting by detection score. One frame at about
+one second is shown per session. Every preceding frame is processed from frame
+zero to preserve the production Kalman state; this is not skipped-frame filtering.
+
+The RGB production quality/geometry settings are reused unchanged: MediaPipe
+reporting floor 0.10, acceptance 0.75, top expansion 20%, maximum outside area
+10%, normalized-coordinate Kalman filtering, no alignment, bilinear resize.
+IR faces are detected independently on the decoded source; RGB boxes are not
+transferred, and no histogram/intensity normalization or false-color mapping is
+applied. Grayscale is only represented as three equal channels for MediaPipe.
+
+The IR-specific `.ts` must be monotonic and its count must equal the source JPEG
+count; inconsistent sources are recorded and skipped, never blindly paired by
+position. Raw video/timestamp hashes are checked before and after processing.
+No raw or existing RGB files are overwritten and no full production IR videos
+are generated before review. The output is a fixed-time sample, not an estimate
+of full-video retention or full-dataset timestamp validity. IR clinical absolute
+timestamps are deliberately not inferred from RGB start times.
+
+Tests: `python -m unittest preprocess.face_crop_comparison.test_ir_preview preprocess.face_crop_comparison.test_face_quality`.
+
+## RGB / IR Correspondence Audit
+
+```bash
+python -m preprocess.face_crop_comparison.audit_rgb_ir_correspondence
+```
+
+This reads all existing `face224.mkv` mappings and validates raw IR JPEG/sidecar
+consistency, then measures absolute recorder-time coverage at several tolerances.
+It does not run full-video IR face detection, recrop RGB, write IR videos or assign
+clinical timestamps. The existing 100 IR test crops provide actual quality
+counterexamples on mutually nearest RGB/IR frames. Results are in
+`outputs/rgb_ir_correspondence/REPORT.md`, `summary.json` and `tables/`.
+
+Nearest-time matches may reuse IR frames; mutual-nearest counts are unique but
+conservative, not maximum-cardinality matching. Time tolerances are sensitivity
+checks, not an approved final pairing protocol. Inconsistent raw IR timestamps
+are unverified, not assumed to be recoverable or permanently useless. Raw IR
+time coverage must not be reported as processed IR224 quality coverage.
+
+## Full IR Production And Paired Counts
+
+```bash
+bash preprocess/face_crop_comparison/launch_full_ir_screen.sh
+screen -r face224_ir_full_c075
+```
+
+The existing production engine supports `--modality ir` (default remains RGB).
+All raw IR sessions are processed, regardless of RGB or laboratory availability.
+Each source session receives `face224_ir.mkv`, `face224_ir_frames.csv`,
+`face224_ir_audit.csv` and `face224_ir_metadata.json`. Encoding is lossless FFV1,
+224 x 224, all keyframes; every output is decoded for a pixel-exact check.
+Original files and the separate RGB `face224` products are never overwritten.
+Processing resumes completed matching IR results; `--overwrite` removes only
+the selected modality's generated files. IR status/protocol is separate under
+`HealthMirrorRawData/_face224_ir_processing/`.
+
+IR recording timestamps and elapsed PTS are retained. Independent IR canonical
+clinical origins are deliberately left missing; downstream paired labels use
+the existing calibrated RGB timeline. JPEG/timestamp mismatches are recorded
+as invalid sources, not guessed into positional correspondence.
+
+After full processing, the launcher automatically runs
+`count_retained_rgb_ir_pairs`. It reproduces the fixed 1,980,915 mutual-nearest
+RGB-retained/raw-IR candidates within 33.333 ms, then filters by IR eligibility.
+It never rematches after quality filtering or reuses IR frames. Twenty-pair
+videos require unique frames and raw-frame gaps >=2 in both modalities. Existing
+5-95% quantiles and uniform fallback are tried first; a feasible-chain fallback
+retains sparse valid videos rather than rejecting them due to rounding alone.
+Every selected RGB and IR frame is decoded from its FFV1 video.
+
+Final results are under `outputs/rgb_ir_paired224/`: `summary.json`, `REPORT.md`,
+`tables/video_pair_counts.csv`, `tables/mirror_pair_counts.csv`,
+`tables/selected20_pairs.csv` and `tables/ir_rejection_reasons.csv`. Only mappings
+and counts are saved; paired pixels/videos are not duplicated. Terminal runtime
+failures are reported as unknown-quality candidates and block a complete result.
+Log: `logs/full_ir/run.log`.
+
+After paired preprocessing is complete, audit the current Exp2 and Exp6 primary
+experiment cohorts without changing their labels, splits or results:
+
+```bash
+python -m preprocess.face_crop_comparison.audit_experiment_rgb_ir_attrition
+```
+
+This filters the actual native224 primary task records by paired20 eligibility;
+Exp6 requires both original endpoint videos and never bridges removed visits.
+The current Exp2 has ten targets, while Exp6 additionally includes troponin.
+Reference hashes are checked before reading. Per-target/per-split video, patient,
+unique-lab and sample counts, excluded IDs/reasons, and a PNG comparison are
+saved under `outputs/rgb_ir_paired224/experiment_attrition/`. Twenty common
+frames can be reselected; exact survival of the original cached twenty RGB
+frames is a different question and is not assumed. Cross-target sample totals
+and deduplicated cohort totals are reported separately.

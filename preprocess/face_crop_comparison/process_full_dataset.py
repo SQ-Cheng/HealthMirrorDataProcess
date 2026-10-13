@@ -24,6 +24,18 @@ from .pipeline import CropConfig, MediaPipeDetector, RawRecording, VideoWriter
 from .run_comparison import sha256
 
 
+class InvalidSourceError(ValueError):
+    """Raw JPEG packets cannot be safely mapped to recorder timestamps."""
+
+
+def output_prefix(record):
+    return "face224_ir" if record.get("modality") == "ir" else "face224"
+
+
+def summary_directory(output, modality):
+    return output / ("_face224_ir_processing" if modality == "ir" else "_face224_processing")
+
+
 def source_signature(path):
     stat = Path(path).stat()
     return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
@@ -61,12 +73,16 @@ def process(record, output_path, protocol):
     directory.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(directory).free < 5 * 1024 ** 3:
         raise RuntimeError("Less than 5 GiB free")
-    temporary = directory / "face224.partial.mkv"
+    prefix = output_prefix(record)
+    temporary = directory / f"{prefix}.partial.mkv"
     source = Path(record["raw_video_path"])
     source_paths = [source, Path(str(source) + ".ts")]
-    before = {str(path): source_signature(path) for path in source_paths}
-    hashes = {str(path): sha256(path) for path in source_paths}
-    recording = RawRecording(source)
+    try:
+        before = {str(path): source_signature(path) for path in source_paths}
+        hashes = {str(path): sha256(path) for path in source_paths}
+        recording = RawRecording(source)
+    except (OSError, ValueError, pd.errors.ParserError, pd.errors.EmptyDataError) as error:
+        raise InvalidSourceError(str(error)) from error
     detector = gate = writer = None
     mapping, audit, reasons = [], [], Counter()
     digest = hashlib.sha256()
@@ -96,7 +112,8 @@ def process(record, output_path, protocol):
             times = {"source_frame_index": index, "source_elapsed_seconds": elapsed,
                      "source_recorder_timestamp_unix": float(timestamp),
                      "canonical_session_frame_time_unix":
-                         record["session_time_unix"] + elapsed if record["session_time_unix"] is not None else np.nan}
+                         record["session_time_unix"] + elapsed
+                         if record["session_time_unix"] is not None and record.get("modality") != "ir" else np.nan}
             row.update({**times, "output_frame_index": output_index})
             audit.append(row)
             reasons[row["rejection_reason"]] += 1
@@ -113,27 +130,27 @@ def process(record, output_path, protocol):
         verification = verify_video(temporary, mapping, digest.hexdigest()) if mapping else None
         if {str(path): source_signature(path) for path in source_paths} != before:
             raise RuntimeError("Raw source changed during processing")
-        pd.DataFrame(audit).to_csv(directory / "face224_audit.partial.csv", index=False)
+        pd.DataFrame(audit).to_csv(directory / f"{prefix}_audit.partial.csv", index=False)
         columns = ["output_frame_index", "source_frame_index", "source_elapsed_seconds",
                    "source_recorder_timestamp_unix", "canonical_session_frame_time_unix",
                    "confidence", "encoded_pts", "encoded_time_base"]
-        pd.DataFrame(mapping, columns=columns).to_csv(directory / "face224_frames.partial.csv", index=False)
+        pd.DataFrame(mapping, columns=columns).to_csv(directory / f"{prefix}_frames.partial.csv", index=False)
         result = {**record, "status": "completed" if mapping else "no_valid_frames",
                   "source_frames": len(recording.timestamps), "retained_frames": len(mapping),
-                  "video_path": str(directory / "face224.mkv") if mapping else "",
-                  "frames_path": str(directory / "face224_frames.csv"),
+                  "video_path": str(directory / f"{prefix}.mkv") if mapping else "",
+                  "frames_path": str(directory / f"{prefix}_frames.csv"),
                   "bytes": temporary.stat().st_size if mapping else 0,
                   "rejection_counts": dict(reasons), "source_signatures": before,
                   "source_sha256": hashes, "protocol": protocol, "verification": verification,
                   "seconds": time.monotonic() - start}
         if mapping:
-            temporary.replace(directory / "face224.mkv")
+            temporary.replace(directory / f"{prefix}.mkv")
         else:
-            (directory / "face224.mkv").unlink(missing_ok=True)
-        for name in ("face224_audit", "face224_frames"):
+            (directory / f"{prefix}.mkv").unlink(missing_ok=True)
+        for name in (f"{prefix}_audit", f"{prefix}_frames"):
             (directory / f"{name}.partial.csv").replace(directory / f"{name}.csv")
-        (directory / "face224_metadata.partial.json").write_text(json.dumps(result, indent=2) + "\n")
-        (directory / "face224_metadata.partial.json").replace(directory / "face224_metadata.json")
+        (directory / f"{prefix}_metadata.partial.json").write_text(json.dumps(result, indent=2) + "\n")
+        (directory / f"{prefix}_metadata.partial.json").replace(directory / f"{prefix}_metadata.json")
         print(f"[done] {record['video_id']} retained={len(mapping)}/{len(audit)} "
               f"bytes={result['bytes']} lossless_verified={bool(verification)} seconds={result['seconds']:.1f}", flush=True)
         return result
@@ -145,20 +162,23 @@ def process(record, output_path, protocol):
         if gate is not None:
             gate.close()
         recording.close()
-        for path in directory.glob("face224*.partial.*"):
-            path.unlink()
+        for name in (f"{prefix}.partial.mkv", f"{prefix}_audit.partial.csv", f"{prefix}_frames.partial.csv", f"{prefix}_metadata.partial.json"):
+            (directory / name).unlink(missing_ok=True)
 
 
-def inventory(raw_root):
+def inventory(raw_root, modality="rgb"):
     records = []
     for directory in sorted(raw_root.glob("mirror*_data/patient_*")):
         if not directory.is_dir():
             continue
-        source = directory / "raw_video.avi"
+        source_name = "raw_ir_video.avi" if modality == "ir" else "raw_video.avi"
+        source = directory / source_name
         record = {"video_id": f"{directory.parent.name.removesuffix('_data')}_{directory.name}",
                   "relative_directory": str(directory.relative_to(raw_root)), "raw_video_path": str(source),
                   "hospital_id": "", "session_time_unix": None, "metadata_error": "",
                   "status": "pending" if source.is_file() and source.stat().st_size else "missing_or_empty_video"}
+        if modality == "ir":
+            record["modality"] = "ir"
         try:
             metadata = read_session_metadata(directory / "patient_info.txt",
                                              expected_local_id=directory.name.removeprefix("patient_"))
@@ -169,13 +189,14 @@ def inventory(raw_root):
     if not records:
         raise ValueError("No raw session directories found")
     discovered = {Path(record["raw_video_path"]) for record in records}
-    if any(path not in discovered for path in raw_root.rglob("raw_video.avi")):
-        raise ValueError("Raw RGB video exists outside recognized mirror/patient layout")
+    source_name = "raw_ir_video.avi" if modality == "ir" else "raw_video.avi"
+    if any(path not in discovered for path in raw_root.rglob(source_name)):
+        raise ValueError(f"Raw {modality.upper()} video exists outside recognized mirror/patient layout")
     return records
 
 
-def write_summary(output, records, results):
-    output = output / "_face224_processing"
+def write_summary(output, records, results, modality="rgb"):
+    output = summary_directory(output, modality)
     merged = {record["video_id"]: dict(record) for record in records}
     for result in results:
         merged[result["video_id"]] = {key: value for key, value in result.items()
@@ -195,6 +216,7 @@ def main():
     parser.add_argument("--raw-root", type=Path, default=Path("/root/shared/HealthMirrorRawData"))
     parser.add_argument("--output-dir", type=Path, help="Defaults to the original raw-video root")
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--modality", choices=("rgb", "ir"), default="rgb")
     parser.add_argument("--video-id", help="Optional single-video check using the same production protocol")
     parser.add_argument("--overwrite", action="store_true", help="Replace generated face224 files; never modify raw sources")
     args = parser.parse_args()
@@ -202,7 +224,7 @@ def main():
     if args.workers < 1:
         raise ValueError("Invalid worker count")
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    summary_dir = args.output_dir / "_face224_processing"
+    summary_dir = summary_directory(args.output_dir, args.modality)
     summary_dir.mkdir(parents=True, exist_ok=True)
     lock = (summary_dir / ".processing.lock").open("w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -214,11 +236,18 @@ def main():
                 "raw_root": str(args.raw_root.resolve()),
                 "implementation_sha256": {name: sha256(Path(__file__).parent / name)
                                           for name in ("pipeline.py", "mediapipe_alignment.py", "face_quality.py")}}
+    if args.modality == "ir":
+        protocol.update(modality="ir", output_prefix="face224_ir",
+                        timestamps="IR source elapsed PTS; exact recorder times in face224_ir_frames.csv; no independent elapsed-origin RGB/IR matching",
+                        clinical_timestamp_assignment=False,
+                        clinical_time_note="IR canonical times are not assigned without a common calibrated origin; paired clinical time comes from the validated RGB mapping",
+                        source_handling="original IR MJPEG; no photometric enhancement; strict JPEG/timestamp count equality",
+                        detector_weight_sha256=sha256(Path(__file__).parent / "models/blaze_face_short_range.tflite"))
     protocol_path = summary_dir / "protocol.json"
     if protocol_path.exists() and json.loads(protocol_path.read_text()) != protocol and not args.overwrite:
         raise ValueError("Existing output uses a different protocol; choose another output directory")
     protocol_path.write_text(json.dumps(protocol, indent=2) + "\n")
-    records = inventory(args.raw_root)
+    records = inventory(args.raw_root, args.modality)
     if args.video_id:
         records = [record for record in records if record["video_id"] == args.video_id]
         if len(records) != 1:
@@ -226,16 +255,17 @@ def main():
     if args.overwrite:
         for record in records:
             directory = args.output_dir / record["relative_directory"]
-            for name in ("face224.mkv", "face224_frames.csv", "face224_audit.csv", "face224_metadata.json",
-                         "face224.partial.mkv", "face224_frames.partial.csv", "face224_audit.partial.csv",
-                         "face224_metadata.partial.json"):
+            prefix = output_prefix(record)
+            for name in (f"{prefix}.mkv", f"{prefix}_frames.csv", f"{prefix}_audit.csv", f"{prefix}_metadata.json",
+                         f"{prefix}.partial.mkv", f"{prefix}_frames.partial.csv", f"{prefix}_audit.partial.csv",
+                         f"{prefix}_metadata.partial.json"):
                 (directory / name).unlink(missing_ok=True)
         print(f"[overwrite] cleared generated face224 results for {len(records)} sessions; raw files untouched", flush=True)
     results, pending = [], []
     for record in records:
         if record["status"] != "pending":
             continue
-        metadata_path = args.output_dir / record["relative_directory"] / "face224_metadata.json"
+        metadata_path = args.output_dir / record["relative_directory"] / f"{output_prefix(record)}_metadata.json"
         if metadata_path.exists():
             previous = json.loads(metadata_path.read_text())
             intact = all(Path(path).exists() and source_signature(path) == signature
@@ -250,8 +280,8 @@ def main():
             raise ValueError(f"Existing result/source mismatch: {record['video_id']}")
         pending.append(record)
     total = len(pending) + len(results)
-    write_summary(args.output_dir, records, results)
-    print(f"[inventory] sessions={len(records)} raw_rgb={len(pending) + len(results)} "
+    write_summary(args.output_dir, records, results, args.modality)
+    print(f"[inventory] sessions={len(records)} raw_{args.modality}={len(pending) + len(results)} "
           f"resume_completed={len(results)} queued={len(pending)} workers={args.workers}", flush=True)
     with ProcessPoolExecutor(max_workers=args.workers, mp_context=mp.get_context("spawn")) as pool:
         futures = {}
@@ -264,10 +294,11 @@ def main():
             try:
                 result = future.result()
             except Exception as error:
-                result = {**record, "status": "failed", "error": str(error)}
+                status = "invalid_source" if args.modality == "ir" and isinstance(error, InvalidSourceError) else "failed"
+                result = {**record, "status": status, "error": str(error)}
                 print(f"[failed] {record['video_id']}: {error}", flush=True)
             results.append(result)
-            write_summary(args.output_dir, records, results)
+            write_summary(args.output_dir, records, results, args.modality)
             print(f"[progress] finished={len(results)}/{total} "
                   f"remaining={sum(not f.done() for f in futures)}", flush=True)
     print(f"[finished] output={args.output_dir}", flush=True)
