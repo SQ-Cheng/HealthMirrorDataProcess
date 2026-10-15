@@ -2,7 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SESSION="${SESSION_NAME:-exp2_rgb_ir_head32_regression}"
-LOG="$ROOT/study/exp2_face_rgb_ir_head32_regression/logs/run.log"
+LOG="${LOG_FILE:-$ROOT/study/exp2_face_rgb_ir_head32_regression/logs/run.log}"
 if screen -ls 2>/dev/null | grep -q "[.]${SESSION}[[:space:]]"; then
     echo "Screen already exists: $SESSION" >&2
     exit 1

@@ -4,6 +4,7 @@
     {"id": "face_history_regression", "path": "study/exp2_face_history_head32_regression", "task": "raw_value_regression"},
     {"id": "face_history_residual_regression", "path": "study/exp2_face_history_residual_head32_regression", "task": "patient_oof_history_baseline_then_face_raw_value_residual_regression"},
     {"id": "face_regression", "path": "study/exp2_face_pretrained_head32_regression", "task": "raw_value_regression"},
+    {"id": "face_rgb_ir_regression", "path": "study/exp2_face_rgb_ir_head32_regression", "task": "four_channel_rgb_ir_raw_value_regression"},
     {"id": "face_shared_backbone_regression", "path": "study/exp2_face_shared_backbone_head32_regression", "task": "shared_backbone_raw_value_regression"},
     {"id": "face_ssl_regression", "path": "study/exp2_face_ssl_head32_regression", "task": "train_only_byol_then_independent_raw_value_regression"},
     {"id": "history_regression", "path": "study/exp2_history_only_head32_regression", "task": "raw_value_regression"},

@@ -61,6 +61,9 @@ outputs. Unit tests: `python -m unittest study.exp2_face_rgb_ir_head32_regressio
 predictions, video predictions, all train/val losses/r/MAE/RMSE/R2 histories and
 data contracts are saved in `outputs/`, with per-target runs under
 `runs/efficientnet_b0/<target>/`.
+Each run also saves `ir_stem_audit.json` with the head-stage, fine-tune and
+selected-model IR filter norms. The main validation selection rule is unchanged;
+if the head-stage checkpoint wins, the selected model still ignores IR.
 
 After each model, the existing RGB checkpoint is re-evaluated on the exact new
 joint-selected RGB test frames; this is inference only. After all jobs, PNG
@@ -73,3 +76,78 @@ The training cohorts differ because IR eligibility removes samples. Matched
 test/frame evaluation reduces evaluation confounding but does not turn these
 results into a same-training-cohort architecture-only ablation. The original
 RGB results, checkpoints, data and split assignments are never modified.
+
+## RGB-Trained Initialization Variant
+
+```bash
+bash study/exp2_face_rgb_ir_head32_regression/launch_rgb_main_screen.sh
+screen -r exp2_rgb_ir_rgb_main_init
+```
+
+The default run above starts from ImageNet. This additional variant starts from
+each analyte's selected current RGB main `model.pt`, including both backbone and
+head32. It then expands the stem and zeros the IR slice in exactly the same way.
+The pretrained head's final linear weights/bias are converted to the paired
+training cohort's existing median/IQR, preserving the initial raw prediction.
+This does not alter the head design, paired target scaler or training schedule.
+
+Patient splits, job seeds, task records, twenty synchronous pairs, all five views,
+loss, batch composition and 40/60-epoch two-stage settings are copied from the
+completed ImageNet RGB+IR run; no rematching or split search is performed.
+Pretrained RGB checkpoint training-set/scaler provenance is checked against the
+current source records, with checkpoint SHA256 recorded for every task.
+
+Results and checkpoints: `outputs/rgb_main_init/`. Log:
+`logs/rgb_main_init/run.log`. The original `outputs/` results remain untouched.
+All new PNGs are generated automatically, including
+`outputs/rgb_main_init/figures/initialization_comparison.png`: RGB main,
+ImageNet-initialized RGB+IR and RGB-trained-initialized RGB+IR on the identical
+joint-selected frames and test cohort. CSV audits accompany the chart.
+The supervised RGB initialization saw the larger original training cohort but
+the same held-out patients; this difference is explicitly reported.
+
+Preparation: `python -m study.exp2_face_rgb_ir_head32_regression.run
+--initialization rgb_main --prepare-only`, followed by the launch script with
+`--train-prepared`. A bounded check uses `--initialization rgb_main --smoke-test
+--targets hemoglobin_low --devices 0` and writes `outputs_smoke_rgb_main_init/`;
+it retains the full shared frame index without rebuilding or altering it.
+
+## Frozen RGB / Joint IR And Head
+
+```bash
+bash study/exp2_face_rgb_ir_head32_regression/launch_frozen_rgb_ir_head_screen.sh
+screen -r exp2_rgb_ir_frozen_rgb_ir_head
+```
+
+This additional single-stage run loads the same per-task RGB main best model
+and equivalent head-scaling conversion. Only the new IR stem slice (288 weights)
+and head32 (41,089 weights) train: 41,377 parameters in total. RGB stem filters
+are separate immutable parameters, concatenated with trainable IR filters in the
+forward pass; no gradient mask or post-update restoration is needed. All other
+backbone parameters and BatchNorm buffers are frozen. Backbone stochastic depth
+is disabled while head dropout remains .25. Autograd still propagates through
+the frozen backbone to the IR slice.
+
+AdamW uses two simultaneous parameter groups: IR lr 1e-4 and head lr 5e-5,
+weight decay 1e-4, cosine floor 1e-6 for both, maximum 60 epochs, patience 12.
+The best checkpoint is selected by validation video MAE. AMP, clip 1, 24h,
+ten targets, patient splits/seeds, twenty synchronous pairs, five views,
+12 distinct lab events per batch and frame-level SmoothL1(.5) are unchanged.
+This variant's launcher disables `torch.compile` (`--no-compile`); training and
+evaluation run eagerly. This does not change AMP, batching or optimization.
+
+Outputs: `outputs/rgb_main_frozen_ir_head/`; log:
+`logs/rgb_main_frozen_ir_head/run.log`. Automatic PNG figures include
+`figures/frozen_rgb_ir_head_comparison.png` with RGB main, both earlier RGB+IR
+variants and the new joint model, using common test videos and identical RGB
+frames. The comparison explicitly distinguishes the one-stage and two-stage
+schedules. Every task writes `frozen_rgb_audit.json`, proving that ALL original
+backbone parameters/buffers remained bitwise identical and both IR/head updated.
+Checkpoints require `build_joint_model` because the stem saves separate
+`features.0.0.weight` (RGB3) and `features.0.0.ir_weight` (IR1) tensors.
+
+Use `--initialization rgb_main --training-protocol joint_ir_head --prepare-only`
+with the run module to prepare; pass `--train-prepared` to the launch script.
+The bounded `--smoke-test --targets hemoglobin_low --devices 0` mode performs
+one joint batch and saves to `outputs_smoke_rgb_main_frozen_ir_head/` without
+changing the full cached frame index or existing results.

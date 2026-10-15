@@ -35,6 +35,8 @@ def scan_selected(path, mapping, selected):
                 if packet.pts != target or not packet.is_keyframe or str(packet.time_base) != row.encoded_time_base:
                     raise ValueError("Pair selection/FFV1 packet mismatch")
                 payload = bytes(packet)
+                if packet.pos is None or packet.pos < 0:
+                    raise ValueError("Missing FFV1 packet position")
                 start = mapped.find(payload, packet.pos, packet.pos+packet.size+256)
                 if start < 0:
                     raise ValueError("Cannot locate independently coded FFV1 payload")
@@ -103,4 +105,8 @@ def load_indexes(rgb_path, ir_path):
     if (not np.array_equal(rgb.video_ids, ir.video_ids) or not np.array_equal(rgb.video_ptr, ir.video_ptr)
             or not np.all(np.diff(rgb.video_ptr) == 20) or set(rgb.video_formats) != {"ffv1"} or set(ir.video_formats) != {"ffv1"}):
         raise ValueError("RGB/IR compact indexes are not position-aligned")
+    for index in (rgb, ir):
+        if (index.video_ptr[0] != 0 or index.video_ptr[-1] != len(index.starts)
+                or len(index.starts) != len(index.ends) or np.any(index.ends <= index.starts)):
+            raise ValueError("Incomplete FFV1 packet index")
     return rgb, ir
