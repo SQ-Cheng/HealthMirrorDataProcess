@@ -14,6 +14,45 @@ from .models import ConcatHead, GatedHead, ScalarGatedHead, FrozenDualPredictor
 
 
 class DualTests(unittest.TestCase):
+    def test_vitb_heads_parameters_gradients_and_gate_shapes(self):
+        for model, expected in ((ConcatHead(768), 41089), (GatedHead(dino_features=768), 92737), (ScalarGatedHead(768), 84610)):
+            self.assertEqual(sum(p.numel() for p in model.parameters()), expected)
+            output = model(torch.randn(240, 1280))
+            self.assertEqual(output.shape, (240, 1))
+            output.square().mean().backward()
+            self.assertTrue(all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters()))
+        for model, width in ((GatedHead(dino_features=768), 64), (ScalarGatedHead(768), 1)):
+            torch.testing.assert_close(model.gate(torch.randn(3, 128)).sigmoid(), torch.full((3, width), .5))
+        predictor = FrozenDualPredictor(nn.Linear(3, 768), nn.Linear(3, 512), "scalar_gated", dino_features=768).train()
+        predictor(torch.randn(4, 3), torch.randn(4, 3)).sum().backward()
+        self.assertTrue(all(p.grad is None and not p.requires_grad for enc in (predictor.dino, predictor.farl) for p in enc.parameters()))
+
+    def test_vitb_cache_output_rng_and_scalar_contract(self):
+        from .run import build_current_model, register_contracts, training_config
+        try:
+            config.configure_backbone()
+            small_output, small_dino, farl = config.OUTPUT, config.DINO_CACHE, config.CACHE
+            for variant in config.VARIANTS:
+                config.configure_backbone()
+                torch.manual_seed(12)
+                build_current_model(variant)
+                expected_rng = torch.get_rng_state().clone()
+                config.configure_backbone("dinov3_vitb16")
+                torch.manual_seed(12)
+                build_current_model(variant)
+                torch.testing.assert_close(torch.get_rng_state(), expected_rng, rtol=0, atol=0)
+            self.assertNotEqual(config.OUTPUT, small_output)
+            self.assertNotEqual(config.DINO_CACHE, small_dino)
+            self.assertEqual(config.CACHE, farl)
+            self.assertEqual(training_config().OUTPUT_DIR, config.OUTPUT)
+            with tempfile.TemporaryDirectory() as name:
+                root = Path(name)
+                register_contracts({"variants": list(config.BASE_VARIANTS), "feature_dimensions": [768, 512]}, root)
+                extension = json.loads((root / "scalar_gate_manifest.json").read_text())
+                self.assertEqual(extension["parameters"]["scalar_gated"], 84610)
+        finally:
+            config.configure_backbone()
+
     def test_heads_parameters_and_gradients(self):
         torch.set_num_threads(1)
         for model, expected in ((ConcatHead(), 28801), (GatedHead(), 68161), (ScalarGatedHead(), 60034)):

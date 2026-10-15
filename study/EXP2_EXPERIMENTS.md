@@ -16,6 +16,21 @@ uses train-only robust scaling of raw lab values.
 | Prior labs only | `exp2_history_only_head32_regression` | `exp2_history_only_head32_classification` |
 
 `exp2_lab_longitudinal_statistics` is the retained lab-only descriptive study.
+`exp2_face_rgb_ir_head32_regression` uses ten independent EfficientNet-B0/head32
+regressors with a four-channel RGB+IR stem: pretrained RGB filters are copied,
+and the IR filter slice starts at zero. It preserves the current RGB main
+per-analyte labels, patient splits and seeds, filtering only for twenty verified
+synchronous pairs per video. The frozen-head then full-backbone training protocol
+is unchanged. Automatic PNG comparisons use common test videos and also reevaluate
+the existing RGB checkpoints on the identical joint-selected RGB frames; the
+smaller paired training cohort is disclosed. Each checkpoint records the selected
+stage and IR-filter norms; a selected head-stage model remains RGB-only.
+The `outputs/rgb_main_init` variant loads each analyte's selected RGB backbone
+and head, with an equivalent final-linear target-scaler conversion. The separate
+`outputs/rgb_main_frozen_ir_head` variant freezes all original RGB backbone
+parameters and BatchNorm buffers, jointly fitting only 288 independent IR filters
+and head32 in one eager/no-compile stage. Both reuse the same paired records,
+splits, selected frames and cache, preserving the original results.
 `exp2_face_history_residual_head32_regression` first trains ten independent
 same-analyte history baselines, generates patient-OOF training residuals, then
 fits ten independent EfficientNet-B0/head32 face residual models. It reuses the
@@ -40,11 +55,19 @@ It is separate from the six primary predictive experiments above.
 view-loss runs and current ten-task 24h frame-loss regression head32/head64
 runs. Frozen EN-B0 head32/head64 controls use the latter identical clinical
 protocol and frozen-DINO optimizer settings; paired five-model plots are automatic.
+Its `outputs/main24h_frame_loss_vitb16` extension replaces ViT-S/16 with frozen
+ViT-B/16 and retains head32 and the exact clinical/training protocol. Only the
+verified 327-MiB checkpoint member is downloaded from the supplied remote ZIP;
+source/weight hashes and download code are retained, not the archive or weights.
+S/B backbone-size PNG comparisons and exact-test audits are generated automatically.
 `exp2_face_dinov3_farl_regression` freezes DINOv3-S and local FaRL ViT-B/16,
 then fits direct-concat, projected-vector-gate and input-dependent scalar-gate
 heads on the exact current
 24h/20frame/five-view cohort. Each analyte/variant has an independent head32;
 both encoders have separate correct input normalization and compact reusable caches.
+The `outputs/vitb16` extension adds all three fusion heads with the frozen
+768-dimensional ViT-B branch and unchanged 512-dimensional FaRL cache. Original
+S results remain intact; completion refreshes paired eight-model S/B comparisons.
 `exp2_face_dinov3_roi_color_regression` concatenates frozen DINOv3-S full-face
 features (384) with four native ROI color descriptors (164), using a head32
 per analyte. It reuses Exp1's five-view ROI cache and common-valid frames;

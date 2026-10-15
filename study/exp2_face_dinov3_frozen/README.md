@@ -176,3 +176,59 @@ Five-model comparison PNG files are `outputs/figures/five_model_*`, with
 values in `outputs/five_model_test_comparison.csv` and strict test-identity
 audit in `outputs/five_model_test_audit.csv`. Existing comparison figures
 remain untouched. Common queue log: `study/common/logs/frozen_en_regression_controls/run.log`.
+
+## Larger Frozen Backbone: ViT-B/16 + Head32
+
+```bash
+# One-time download only; uses remotezip 0.12.6 in the existing environment.
+python -m pip install remotezip==0.12.6
+python -m study.exp2_face_dinov3_frozen.download_vitb_weights
+bash study/exp2_face_dinov3_frozen/launch_vitb_regression_screen.sh
+screen -r exp2_dinov3_vitb_head32_regression
+```
+
+This comparison changes the standard model size from ViT-S/16 to ViT-B/16
+(not the intermediate S+ FFN variant). The B/16 encoder has 85,669,632 frozen
+parameters, twelve blocks, twelve attention heads, four storage tokens and
+768-dimensional final normalized CLS features. Its head is
+`Linear(768,32) -> LayerNorm -> SiLU -> Dropout(.25) -> Linear(32,1)`, containing
+24,705 trainable parameters. Only the head trains, in one stage without compile.
+The larger first head layer is unavoidable when the backbone width changes;
+hidden width and every optimization setting remain identical to S/16 head32.
+
+The user-provided 126-GiB `DINOV3.zip` is read using HTTP Range; only the
+326.98-MiB B/16 PyTorch member is downloaded, without retaining the ZIP.
+The common weight is `dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth`, verified
+against the official hash prefix and by strict loading and a CPU 224x224 forward.
+Full SHA256: `73cec8be7427c8655ceced13ce62f6e20a1fa90d1b4d4a550df17a1144081a7c`.
+Source and verification details are stored beside it in `.source.json`.
+
+The exact existing S/16 head32 24h ten-target cohort, train/val/test patients,
+labels, scalers, selected twenty native224 RGB frames, five views, job seeds,
+12-distinct-lab batches, 240 frame losses, original-view video evaluation and
+80-epoch AdamW/cosine schedule are preserved. The B head initialization preserves
+S/16's RNG advancement, preventing the changed parameter count from reshuffling
+the clinical batches. Existing S/16 caches/results are never overwritten.
+The original frame-index NPZ hash and every referenced RGB video/sidecar are
+checked. Directory mtime changes in unused failed sessions (e.g. after IR output
+is added) do not invalidate this fixed cohort; they do not cause rematching or
+new frame selection.
+
+The screen waits until GPUs 0-3 are free before extracting B features and running
+a bounded real-feature smoke test, followed automatically by four-GPU head
+training. It does not stop or change an existing experiment. Only a separate
+float32 CLS-vector cache is stored, not pixels or duplicated backbone weights.
+
+- Results: `outputs/main24h_frame_loss_vitb16/regression/dinov3_vitb16_frozen/`.
+- Cache: `cache/main24h_frame_loss_vitb16/`.
+- Queue log: `logs/main24h_regression_vitb16/run.log`.
+- On completion: normal histories/scatter/metric PNGs, with EN-B0/S32/B32
+  comparisons in the B result folder; experiment-wide S32/B32 summary updated
+  at `outputs/figures/backbone_size_comparison.png`, with metrics and exact-test
+  audits in `outputs/backbone_size_test_comparison.csv` and
+  `outputs/backbone_size_test_audit.csv`. Existing five-model charts remain intact.
+
+Direct commands use `python -m study.exp2_face_dinov3_frozen.run_main_regression
+--backbone dinov3_vitb16 --head-hidden 32`, with optional `--check-only`, `--smoke`
+or `--plot-only`.
+Official architecture reference: https://github.com/facebookresearch/dinov3/blob/main/MODEL_CARD.md

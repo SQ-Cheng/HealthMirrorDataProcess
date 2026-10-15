@@ -3,6 +3,7 @@
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from sklearn.metrics import explained_variance_score
 
@@ -13,10 +14,12 @@ from study.exp2_face_pretrained_head32_regression.plot_results import TASK_LABEL
 from . import config
 
 
-def plot_main_regression(root, baseline, targets, *, head_hidden=32, head32_root=None):
+def plot_main_regression(root, baseline, targets, *, head_hidden=32, head32_root=None,
+                         architecture=None, backbone_label="DINOv3-S"):
     """Compare video predictions only after proving complete test identity."""
-    shared.LABELS[config.ARCHITECTURE] = f"Frozen DINOv3-S + head{head_hidden}"
-    plot_one(root, "regression", config.ARCHITECTURE, targets=targets,
+    architecture = config.ARCHITECTURE if architecture is None else architecture
+    shared.LABELS[architecture] = f"Frozen {backbone_label} + head{head_hidden}"
+    plot_one(root, "regression", architecture, targets=targets,
              loss_label="Frame-level SmoothL1")
     figures = root / "figures"
     old = pd.read_csv(baseline / "metrics_all.csv").query("split == 'test'").set_index("target").loc[list(targets)].copy()
@@ -46,7 +49,7 @@ def plot_main_regression(root, baseline, targets, *, head_hidden=32, head32_root
             head32.loc[target, "explained_variance"] = explained_variance_score(c.y_true, c.y_pred)
         counts.append({"target": target, "test_videos": len(a), "test_patients": a.hospital_id.nunique(),
                        "identical_test_labels_and_patients": True})
-    suffix = "_dinov3" if head32 is None else "_dinov3_head64"
+    suffix = "_dinov3_vitb16" if backbone_label == "DINOv3-B" else ("_dinov3" if head32 is None else "_dinov3_head64")
     comparison = old.join(new, lsuffix="_efficientnet", rsuffix=suffix)
     if head32 is not None:
         comparison = comparison.join(head32.add_suffix("_dinov3_head32"))
@@ -60,11 +63,11 @@ def plot_main_regression(root, baseline, targets, *, head_hidden=32, head32_root
             axis.set_visible(False)
         for axis, target in zip(axes.flat, targets):
             values = [old.loc[target, metric], new.loc[target, metric]]
-            labels = ["Fine-tuned EN-B0", f"DINOv3 head{head_hidden}"]
+            labels = ["Fine-tuned EN-B0", f"{backbone_label} head{head_hidden}"]
             colors = ["#64737C", "#2878B5"]
             if head32 is not None:
                 values.insert(1, head32.loc[target, metric])
-                labels.insert(1, "DINOv3 head32")
+                labels.insert(1, "DINOv3-S head32")
                 colors.insert(1, "#278245")
             positions = range(len(values))
             bars = axis.bar(positions, values, color=colors)
@@ -79,6 +82,53 @@ def plot_main_regression(root, baseline, targets, *, head_hidden=32, head32_root
         figure.suptitle(f"Regression | same 24h held-out videos, 20 frames and frame-level loss | {label}")
         figure.savefig(figures / f"{metric}_baseline_comparison.png", dpi=180)
         plt.close(figure)
+
+
+def plot_backbone_size_comparison(base_root, small_root, baseline, targets):
+    """Refresh the experiment-wide S32/B32 comparison without replacing old figures."""
+    import json
+    output = config.HERE / "outputs"
+    figures = output / "figures"
+    figures.mkdir(parents=True, exist_ok=True)
+    scalers = json.loads((baseline / "target_scalers.json").read_text())["targets"]
+    table, audits = [], []
+    metrics = []
+    for name, root in (("DINOv3-S/16 + head32", small_root), ("DINOv3-B/16 + head32", base_root)):
+        frame = pd.read_csv(root / "metrics_all.csv").query("split == 'test'").set_index("target").loc[list(targets)].copy()
+        for target in targets:
+            prediction = pd.read_csv(root / f"runs/{target}/video_predictions.csv", dtype={"hospital_id": str}).query("split == 'test'")
+            frame.loc[target, "explained_variance"] = explained_variance_score(prediction.y_true, prediction.y_pred)
+            frame.loc[target, "mae_train_iqr"] = frame.loc[target, "mae"]/scalers[target]["iqr"]
+            frame.loc[target, "rmse_train_iqr"] = frame.loc[target, "rmse"]/scalers[target]["iqr"]
+        metrics.append(frame)
+        table.append(frame.reset_index().assign(model=name))
+    for target in targets:
+        small = pd.read_csv(small_root / f"runs/{target}/video_predictions.csv", dtype={"hospital_id": str}).query("split == 'test'").sort_values("video_id").reset_index(drop=True)
+        base = pd.read_csv(base_root / f"runs/{target}/video_predictions.csv", dtype={"hospital_id": str}).query("split == 'test'").sort_values("video_id").reset_index(drop=True)
+        pd.testing.assert_frame_equal(small[["hospital_id", "video_id", "y_true"]], base[["hospital_id", "video_id", "y_true"]], check_dtype=False)
+        if not small.frame_count.eq(20).all() or not base.frame_count.eq(20).all():
+            raise RuntimeError("Backbone-size comparison must use exactly 20 original-view frames")
+        audits.append({"target": target, "videos": len(base), "patients": base.hospital_id.nunique(),
+                       "identical_test_patients_labels_frames": True})
+    pd.concat(table, ignore_index=True).to_csv(output / "backbone_size_test_comparison.csv", index=False)
+    pd.DataFrame(audits).to_csv(output / "backbone_size_test_audit.csv", index=False)
+    figure, axes = plt.subplots(2, 3, figsize=(17, 12), constrained_layout=True)
+    fields = (("pearson_r", "Pearson r"), ("spearman_r", "Spearman rho"), ("r2", "R squared"),
+              ("explained_variance", "Explained variance"), ("mae_train_iqr", "MAE / train IQR"),
+              ("rmse_train_iqr", "RMSE / train IQR"))
+    names = ("DINOv3-S/16 + head32", "DINOv3-B/16 + head32")
+    for axis, (column, title) in zip(axes.flat, fields):
+        for i, (frame, name, color) in enumerate(zip(metrics, names, ("#278245", "#2878B5"))):
+            axis.barh(np.arange(len(targets))+(i-.5)*.34, frame[column], height=.31, label=name, color=color)
+        axis.set_yticks(np.arange(len(targets)), [TASK_LABELS[target] for target in targets])
+        axis.invert_yaxis(); axis.set_title(title)
+        axis.grid(axis="x", alpha=.15); axis.set_axisbelow(True)
+        axis.axvline(0, color=".5", linewidth=.7)
+    axes.flat[0].legend(frameon=False, fontsize=9)
+    figure.suptitle("Frozen DINOv3 backbone size | identical 24h cohort, 20 frames, 5 views and head32 schedule")
+    figure.savefig(figures / "backbone_size_comparison.png", dpi=180)
+    plt.close(figure)
+    print(f"[backbone-size-plots] {figures / 'backbone_size_comparison.png'}", flush=True)
 
 
 def plot_results():

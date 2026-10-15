@@ -1,8 +1,11 @@
 """Check the frame-loss variant without decoding videos or allocating a GPU."""
 
 from pathlib import Path
+import json
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -48,6 +51,74 @@ def alternating_model(architecture):
 
 
 class MainRegressionTests(unittest.TestCase):
+    def test_referenced_rgb_audit_ignores_only_unused_failed_directories(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            video, sidecar = root / "face224.mkv", root / "frames.csv"
+            video.write_bytes(b"rgb-video"); sidecar.write_bytes(b"frame-mapping")
+            stat, extra = video.stat(), sidecar.stat()
+            manifest = {"schema_version": 4, "face_source": "face224", "frame_policy": {"frames_per_video": 20},
+                "videos": [{"video_id": "v", "video_path": str(video), "size_bytes": stat.st_size,
+                    "mtime_ns": stat.st_mtime_ns, "sidecars": {str(sidecar): [extra.st_size, extra.st_mtime_ns]}}],
+                "failed_videos": [{"video_id": "unused", "fingerprint_path": str(root), "mtime_ns": 0}]}
+            (root / "index_manifest.json").write_text(json.dumps(manifest))
+            index = SimpleNamespace(video_ids=np.array(["v"]), video_paths=np.array([str(video)]))
+            with patch.object(main_run, "INDEX_PATH", root / "frame_offsets.npz"):
+                main_run.validate_referenced_sources(index)
+                sidecar.write_bytes(b"changed")
+                with self.assertRaisesRegex(RuntimeError, "sidecar changed"):
+                    main_run.validate_referenced_sources(index)
+
+    def test_backbone_size_plots_require_identical_test_labels(self):
+        from .plots import plot_backbone_size_comparison
+        from . import config as dino_config
+        from study.exp2_face_pretrained_head32_regression.train import _regression_metrics
+        target = "hemoglobin_low"
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            small, base, baseline = root / "small", root / "base", root / "baseline"
+            baseline.mkdir()
+            (baseline / "target_scalers.json").write_text(json.dumps({"targets": {target: {"iqr": 30.}}}))
+            for output, predictions in ((small, [100., 116., 130.]), (base, [101., 117., 129.])):
+                run = output / f"runs/{target}"
+                run.mkdir(parents=True)
+                values = pd.DataFrame({"split": ["test"]*3, "hospital_id": ["0001", "0002", "0003"],
+                    "video_id": ["v1", "v2", "v3"], "y_true": [95., 115., 135.], "y_pred": predictions,
+                    "frame_count": [20]*3})
+                values.to_csv(run / "video_predictions.csv", index=False)
+                metrics = _regression_metrics(values.y_true, values.y_pred, np.full(3, 130.), "low")
+                pd.DataFrame([{**metrics, "target": target, "split": "test"}]).to_csv(output / "metrics_all.csv", index=False)
+            with patch.object(dino_config, "HERE", root):
+                plot_backbone_size_comparison(base, small, baseline, (target,))
+                self.assertTrue((root / "outputs/figures/backbone_size_comparison.png").is_file())
+                self.assertEqual(len(pd.read_csv(root / "outputs/backbone_size_test_comparison.csv")), 2)
+                path = base / f"runs/{target}/video_predictions.csv"
+                changed = pd.read_csv(path); changed.loc[0, "y_true"] += 1
+                changed.to_csv(path, index=False)
+                with self.assertRaises(AssertionError):
+                    plot_backbone_size_comparison(base, small, baseline, (target,))
+
+    def test_vitb_head32_is_separate_and_does_not_change_batch_rng(self):
+        try:
+            main_run.configure_variant(32)
+            small_output, small_cache = main_run.OUTPUT, main_run.CACHE
+            torch.manual_seed(12)
+            small = main_run.build_main_head(None)
+            expected_rng = torch.get_rng_state().clone()
+            main_run.configure_variant(32, "dinov3_vitb16")
+            torch.manual_seed(12)
+            base = main_run.build_main_head(None)
+            self.assertEqual(base[0].in_features, 768)
+            self.assertEqual(base[0].out_features, 32)
+            self.assertEqual(sum(p.numel() for p in base.parameters()), 24705)
+            self.assertEqual(sum(p.numel() for p in small.parameters()), 12417)
+            self.assertNotEqual(main_run.OUTPUT, small_output)
+            self.assertNotEqual(main_run.CACHE, small_cache)
+            self.assertEqual(main_run.training_config().LEARNING_RATES[main_run.ARCHITECTURE], 2e-4)
+            torch.testing.assert_close(torch.get_rng_state(), expected_rng, rtol=0, atol=0)
+        finally:
+            main_run.configure_variant(32)
+
     def test_head64_uses_separate_results_and_same_features(self):
         original_output, original_cache = main_run.OUTPUT, main_run.CACHE
         try:

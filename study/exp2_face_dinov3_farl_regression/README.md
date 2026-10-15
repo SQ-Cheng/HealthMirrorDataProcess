@@ -94,3 +94,45 @@ formal training. Valid completed jobs resume; incompatible contracts fail.
   `architecture_registry.json` lists all three variants and their validated
   contracts. Original checkpoints/complete markers retain their old hashes.
   `outputs/COMPLETE` is updated after all thirty models and PNG comparisons finish.
+
+## ViT-B/16 Extension
+
+```bash
+bash study/exp2_face_dinov3_farl_regression/launch_vitb_screen.sh
+screen -r exp2_dinov3b_farl_regression
+```
+
+The additional thirty models replace only the frozen DINO branch with the
+completed ViT-B/16 head32 comparison's 768-dimensional normalized CLS vectors.
+Its verified cache is reused from
+`../exp2_face_dinov3_frozen/cache/main24h_frame_loss_vitb16/`. The existing
+512-dimensional FaRL cache is reused unchanged; neither encoder is trained or
+re-extracted. No concatenated feature cache or duplicated backbone is saved.
+
+Three independent models per analyte:
+
+- Concat: `concat(DINO768,FaRL512) -> head32`; **41,089** trainable parameters.
+- Vector gate: DINO768/FaRL512 each project to 64, then the existing 64-dimensional
+  sigmoid gate and head32; **92,737** parameters.
+- Scalar gate: the same projectors/head with one input-dependent sigmoid scalar
+  broadcast to all 64 dimensions; **84,610** parameters.
+
+Both gate initial values remain .5. All twenty frames, five views, raw labels,
+train-only scalers, patient splits, seeds, batch composition and 80-epoch
+single-stage AdamW schedule are unchanged. The changed input width necessarily
+adds first-layer parameters; hidden head width remains 32. Model initialization
+preserves the old S model's CPU RNG advancement so it does not reshuffle batches.
+The source/scaler/cache/checkpoint contracts are checked, and the B dataset uses
+exactly the same selected RGB frames and canonical view indices as FaRL and S.
+
+The launcher performs a bounded real-feature smoke test for all three heads,
+then dynamically schedules thirty jobs across four GPUs. Original S results and
+four-model figures are preserved. New results are under
+`outputs/vitb16/regression/{concat,gated,scalar_gated}/`; log is
+`logs/vitb16/run.log`. The B-only four-model comparisons are in
+`outputs/vitb16/figures/`. On completion, experiment-wide eight-model S/B
+comparisons are automatically refreshed at
+`outputs/figures/backbone_fusion_{mae,rmse,pearson_r,r2,explained_variance}_comparison.png`,
+with raw metrics and exact test-cohort audits in
+`outputs/backbone_fusion_test_comparison.csv` and
+`outputs/backbone_fusion_test_audit.csv`. All figures are PNG only.

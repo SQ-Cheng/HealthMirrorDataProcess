@@ -1,0 +1,18 @@
+{
+  "architecture": "dinov3_vitb16",
+  "source_url": "https://facephyspublicmodel.tos-cn-beijing.volces.com/DINOV3.zip",
+  "zip_member": "DINOV3/DINOV3-pth/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth",
+  "size_bytes": 342860279,
+  "zip_crc32": "72e3aef9",
+  "sha256": "73cec8be7427c8655ceced13ce62f6e20a1fa90d1b4d4a550df17a1144081a7c",
+  "source_revision": "6876159a11b4df116f30f667f8c9888617df0751",
+  "download_method": "remote ZIP HTTP Range, one member only",
+  "strict_load_verified": true,
+  "cpu_forward_verified": true,
+  "feature_shape": [
+    1,
+    768
+  ],
+  "backbone_parameters": 85669632,
+  "head32_parameters": 24705
+}

@@ -42,25 +42,62 @@ TARGETS = baseline_config.ALL_REGRESSION_TARGETS
 INDEX = DEVICE = None
 HEAD_HIDDEN = 32
 HEAD_PARAMETERS = 12417
+BACKBONE = "dinov3_vits16"
+ARCHITECTURE = config.ARCHITECTURE
+FEATURE_DIM = 384
 
 
-def configure_variant(head_hidden):
-    global HEAD_HIDDEN, HEAD_PARAMETERS, OUTPUT, RESULTS
+def configure_variant(head_hidden, backbone="dinov3_vits16"):
+    global HEAD_HIDDEN, HEAD_PARAMETERS, OUTPUT, RESULTS, CACHE, BACKBONE, ARCHITECTURE, FEATURE_DIM
     if head_hidden not in (32, 64):
         raise ValueError("Supported DINO head widths are 32 and 64")
+    if backbone not in ("dinov3_vits16", "dinov3_vitb16") or (backbone == "dinov3_vitb16" and head_hidden != 32):
+        raise ValueError("The larger-backbone comparison uses ViT-B/16 and head32 only")
+    BACKBONE = backbone
+    ARCHITECTURE = backbone+"_frozen"
+    FEATURE_DIM = 768 if backbone == "dinov3_vitb16" else 384
     HEAD_HIDDEN = head_hidden
-    HEAD_PARAMETERS = 388 * head_hidden + 1
-    suffix = "" if head_hidden == 32 else "_head64"
+    HEAD_PARAMETERS = (FEATURE_DIM+4) * head_hidden + 1
+    suffix = "_vitb16" if backbone == "dinov3_vitb16" else ("" if head_hidden == 32 else "_head64")
     OUTPUT = config.HERE / f"outputs/main24h_frame_loss{suffix}"
-    RESULTS = OUTPUT / "regression" / config.ARCHITECTURE
+    RESULTS = OUTPUT / "regression" / ARCHITECTURE
+    CACHE = config.HERE / ("cache/main24h_frame_loss_vitb16" if backbone == "dinov3_vitb16" else "cache/main24h_frame_loss")
 
 
 def build_main_head(architecture):
-    return Head(HEAD_HIDDEN)
+    if BACKBONE == "dinov3_vitb16":
+        # Keep the S/16 RNG advancement so the larger head cannot reshuffle batches.
+        with torch.random.fork_rng(devices=[]):
+            model = Head(HEAD_HIDDEN, in_features=FEATURE_DIM)
+        Head(HEAD_HIDDEN, in_features=384)
+        return model
+    return Head(HEAD_HIDDEN, in_features=FEATURE_DIM)
 
 
 def read_records(path):
     return pd.read_csv(path, dtype={"hospital_id": str, "video_id": str})
+
+
+def validate_referenced_sources(index):
+    """Unused failed sessions may change directory mtime when IR files are added."""
+    manifest = json.loads((INDEX_PATH.parent / "index_manifest.json").read_text())
+    if (manifest.get("schema_version") != 4 or manifest.get("face_source") != "face224"
+            or manifest.get("frame_policy", {}).get("frames_per_video") != 20):
+        raise RuntimeError("Unsupported native224 source index")
+    rows = {row["video_id"]: row for row in manifest["videos"]}
+    for video, path in zip(index.video_ids, index.video_paths):
+        row = rows[str(video)]
+        if str(path) != row["video_path"] or not row.get("sidecars"):
+            raise RuntimeError("Referenced RGB video path/sidecar contract changed")
+        source = Path(path).stat()
+        if [source.st_size, source.st_mtime_ns] != [row["size_bytes"], row["mtime_ns"]]:
+            raise RuntimeError(f"Referenced RGB video changed: {video}")
+        for sidecar, signature in row["sidecars"].items():
+            stat = Path(sidecar).stat()
+            if [stat.st_size, stat.st_mtime_ns] != signature:
+                raise RuntimeError(f"Referenced RGB sidecar changed: {sidecar}")
+    print(f"[source-audit-ok] {len(index.video_ids)} referenced RGB videos and all sidecars unchanged; "
+          "unused failed-session directory mtimes do not affect this fixed cohort", flush=True)
 
 
 def preflight():
@@ -78,8 +115,12 @@ def preflight():
     if reference.sha256(INDEX_PATH) != protocol["frame_index_sha256"]:
         raise RuntimeError("Main frame index changed")
     index = FrameOffsetIndex.load(INDEX_PATH)
-    if set(index.video_formats) != {"ffv1"} or not _index_is_reusable(INDEX_PATH.parent, index.video_ids, "20frame"):
-        raise RuntimeError("Native224 main frame index is stale")
+    if set(index.video_formats) != {"ffv1"}:
+        raise RuntimeError("Native224 FFV1 main frame index required")
+    if not _index_is_reusable(INDEX_PATH.parent, index.video_ids, "20frame"):
+        if BACKBONE != "dinov3_vitb16":
+            raise RuntimeError("Native224 main frame index is stale")
+        validate_referenced_sources(index)
     # HCT/eGFR used a larger index; compare actual packets, not row offsets.
     extension_path = Path(extension["frame_index"])
     if reference.sha256(extension_path) != extension["frame_index_sha256"]:
@@ -154,8 +195,8 @@ def preflight():
 def training_config(output=None, max_epochs=None):
     output = OUTPUT if output is None else output
     return SimpleNamespace(HERE=config.HERE, OUTPUT_DIR=output, reference=reference,
-                           LOSS_LEVEL="frame", LEARNING_RATES=config.LEARNING_RATES,
-                           MIN_LEARNING_RATES=config.MIN_LEARNING_RATES,
+                           LOSS_LEVEL="frame", LEARNING_RATES={ARCHITECTURE: config.LEARNING_RATES[config.ARCHITECTURE]},
+                           MIN_LEARNING_RATES={ARCHITECTURE: config.MIN_LEARNING_RATES[config.ARCHITECTURE]},
                            MAX_EPOCHS=config.MAX_EPOCHS if max_epochs is None else max_epochs,
                            PATIENCE=config.PATIENCE, WEIGHT_DECAY=config.WEIGHT_DECAY)
 
@@ -166,9 +207,9 @@ def loader(index, records, architecture, family, train):
     return dataset, DataLoader(dataset, batch_sampler=sampler, num_workers=0, pin_memory=True)
 
 
-def init_worker(queue, head_hidden=32):
+def init_worker(queue, head_hidden=32, backbone="dinov3_vits16"):
     global INDEX, DEVICE
-    configure_variant(head_hidden)
+    configure_variant(head_hidden, backbone)
     gpu = int(queue.get())
     torch.cuda.set_device(gpu)
     DEVICE = torch.device(f"cuda:{gpu}")
@@ -188,11 +229,13 @@ def worker(job):
                  backbone_source_revision=config.REPO_REVISION, feature="normalized CLS token",
                  matching_hours=24, head_hidden=HEAD_HIDDEN, source_records_sha256=job["records_sha256"],
                  frame_index_sha256=reference.sha256(INDEX_PATH), train_batch_policy="distinct_lab_views")
+    if BACKBONE == "dinov3_vitb16":
+        saved.update(backbone=BACKBONE, feature_dimension=FEATURE_DIM)
     torch.save(saved, run / "model.pt")
     (run / "job_complete.json").write_text(json.dumps({"contract": job["contract"]}) + "\n")
     gc.collect()
     torch.cuda.empty_cache()
-    return {"architecture": config.ARCHITECTURE, "family": "regression", "target": job["target"],
+    return {"architecture": ARCHITECTURE, "family": "regression", "target": job["target"],
             "status": "ok", "seed": saved["seed"]}
 
 
@@ -208,11 +251,11 @@ def smoke(index, scalers):
         root = Path(name)
         (root / "source_records").mkdir()
         subset.to_csv(root / f"source_records/{target}.csv", index=False)
-        train_task({"architecture": config.ARCHITECTURE, "family": "regression", "target": target,
+        train_task({"architecture": ARCHITECTURE, "family": "regression", "target": target,
                     "scaler": scalers[target]}, index, torch.device("cuda:0"),
                    experiment_config=training_config(root, 1), model_factory=build_main_head,
                    loader_factory=loader, feature_scaler=no_feature_fitting)
-        run = root / "regression" / config.ARCHITECTURE / "runs" / target
+        run = root / "regression" / ARCHITECTURE / "runs" / target
         saved = torch.load(run / "model.pt", map_location="cpu", weights_only=True)
         history = pd.read_csv(run / "history.csv")
         assert saved["loss_unit"] == "frame" and saved["parameters"] == HEAD_PARAMETERS
@@ -227,12 +270,14 @@ def main():
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--plot-only", action="store_true")
+    parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--head-hidden", type=int, choices=(32, 64), default=32)
+    parser.add_argument("--backbone", choices=("dinov3_vits16", "dinov3_vitb16"), default="dinov3_vits16")
     args = parser.parse_args()
-    configure_variant(args.head_hidden)
+    configure_variant(args.head_hidden, args.backbone)
     ensure_source()
     index, scalers, hashes, counts, lab_hash = preflight()
-    digest = weight_sha256()
+    digest = weight_sha256(BACKBONE)
     if args.check_only:
         print(counts.to_string(index=False))
         return
@@ -244,7 +289,7 @@ def main():
                     "frame_index_sha256": reference.sha256(INDEX_PATH),
                     "scalers_sha256": reference.sha256(BASELINE / "target_scalers.json"),
                     "baseline_predictions_sha256": {target: reference.sha256(BASELINE / f"runs/efficientnet_b0/{target}/video_predictions.csv") for target in TARGETS},
-                    "architecture": config.ARCHITECTURE, "backbone_weight_sha256": digest,
+                    "architecture": ARCHITECTURE, "backbone_weight_sha256": digest,
                     "backbone_source_revision": config.REPO_REVISION, "backbone_frozen": True,
                     "head_parameters": HEAD_PARAMETERS, "head_hidden": HEAD_HIDDEN, "loss_level": "frame",
                     "loss": "unweighted per-frame SmoothL1(beta=0.5); train-only median/IQR raw target scaling",
@@ -257,6 +302,18 @@ def main():
                     "optimizer": "AdamW", "scheduler": "cosine; no warmup", "stages": 1,
                     "comparison_note": "Identical cohorts/splits/frames/views/scalers/batch/loss/evaluation and seeds. Frozen DINO head-only optimization versus two-stage fine-tuned EfficientNet; not a backbone-only ablation."}
         head32_root = None
+        if BACKBONE == "dinov3_vitb16":
+            small_output = config.HERE / "outputs/main24h_frame_loss"
+            if not (small_output / "COMPLETE").is_file():
+                raise RuntimeError("ViT-S head32 reference is incomplete")
+            original = json.loads((small_output / "experiment_manifest.json").read_text())
+            allowed = {"architecture", "backbone_weight_sha256", "head_parameters"}
+            if any(manifest.get(key) != value for key, value in original.items() if key not in allowed):
+                raise RuntimeError("ViT-B must differ from ViT-S head32 only in backbone/input feature dimension")
+            head32_root = small_output / "regression/dinov3_vits16_frozen"
+            manifest.update(backbone=BACKBONE, feature_dimension=FEATURE_DIM,
+                source_validation="original main NPZ SHA and every indexed RGB video/sidecar fingerprint; unused failed-session directory mtimes ignored",
+                vit_s32_baseline_predictions_sha256={target: reference.sha256(head32_root / f"runs/{target}/video_predictions.csv") for target in TARGETS})
         if HEAD_HIDDEN == 64:
             head32_output = config.HERE / "outputs/main24h_frame_loss"
             if not (head32_output / "COMPLETE").is_file():
@@ -274,8 +331,17 @@ def main():
         if args.plot_only:
             if not path.exists():
                 raise RuntimeError("No trained main experiment")
+        elif args.prepare_only:
+            path.write_text(json.dumps(manifest, indent=2)+"\n")
+            counts.to_csv(OUTPUT / "cohort_counts.csv", index=False)
+            (OUTPUT / "source_records").mkdir(exist_ok=True)
+            for target in TARGETS:
+                shutil.copy2(BASELINE / f"task_records/{target}.csv", OUTPUT / f"source_records/{target}.csv")
+            shutil.copy2(BASELINE / "target_scalers.json", OUTPUT / "target_scalers.json")
+            print(f"[prepared] {BACKBONE} head{HEAD_HIDDEN}: exact source data and manifest; no GPU allocated", flush=True)
+            return
         else:
-            ensure_cache(INDEX_PATH, CACHE)
+            ensure_cache(INDEX_PATH, CACHE, architecture=BACKBONE)
             if args.smoke:
                 smoke(index, scalers)
                 return
@@ -292,9 +358,9 @@ def main():
                 marker = run / "job_complete.json"
                 if (marker.exists() and json.loads(marker.read_text()) == {"contract": contract}
                         and all((run / name).is_file() for name in ("model.pt", "metrics.csv", "history.csv", "video_predictions.csv"))):
-                    rows.append({"architecture": config.ARCHITECTURE, "family": "regression", "target": target, "status": "ok"})
+                    rows.append({"architecture": ARCHITECTURE, "family": "regression", "target": target, "status": "ok"})
                 else:
-                    jobs.append({"architecture": config.ARCHITECTURE, "family": "regression", "target": target,
+                    jobs.append({"architecture": ARCHITECTURE, "family": "regression", "target": target,
                                  "scaler": scalers[target], "weight_sha256": digest,
                                  "records_sha256": hashes[target], "contract": contract})
             workers = min(4, torch.cuda.device_count(), len(jobs))
@@ -307,14 +373,14 @@ def main():
                     queue = manager.Queue()
                     for gpu in range(workers):
                         queue.put(gpu)
-                    with ProcessPoolExecutor(max_workers=workers, mp_context=ctx, initializer=init_worker, initargs=(queue, HEAD_HIDDEN)) as pool:
+                    with ProcessPoolExecutor(max_workers=workers, mp_context=ctx, initializer=init_worker, initargs=(queue, HEAD_HIDDEN, BACKBONE)) as pool:
                         futures = {pool.submit(worker, job): job for job in jobs}
                         for future in as_completed(futures):
                             target = futures[future]["target"]
                             try:
                                 row = future.result()
                             except Exception:
-                                row = {"architecture": config.ARCHITECTURE, "family": "regression", "target": target,
+                                row = {"architecture": ARCHITECTURE, "family": "regression", "target": target,
                                        "status": "failed", "error": traceback.format_exc()}
                                 print(row["error"], flush=True)
                             rows.append(row)
@@ -331,10 +397,15 @@ def main():
                                     for target, value in manifest["baseline_predictions_sha256"].items()):
             raise RuntimeError("Baseline changed during DINO training")
         from .plots import plot_main_regression
+        comparison_hashes = manifest.get("head32_baseline_predictions_sha256", manifest.get("vit_s32_baseline_predictions_sha256", {}))
         if head32_root is not None and any(reference.sha256(head32_root / f"runs/{target}/video_predictions.csv") != value
-                                           for target, value in manifest["head32_baseline_predictions_sha256"].items()):
+                                           for target, value in comparison_hashes.items()):
             raise RuntimeError("Head32 baseline changed during head64 training")
-        plot_main_regression(RESULTS, BASELINE, TARGETS, head_hidden=HEAD_HIDDEN, head32_root=head32_root)
+        plot_main_regression(RESULTS, BASELINE, TARGETS, head_hidden=HEAD_HIDDEN, head32_root=head32_root,
+            architecture=ARCHITECTURE, backbone_label="DINOv3-B" if BACKBONE == "dinov3_vitb16" else "DINOv3-S")
+        if BACKBONE == "dinov3_vitb16":
+            from .plots import plot_backbone_size_comparison
+            plot_backbone_size_comparison(RESULTS, head32_root, BASELINE, TARGETS)
         (OUTPUT / "COMPLETE").write_text("ten 24h frame-loss DINO heads and paired main regression figures completed\n")
         print("[queue-complete] DINO main24h regression and paired comparison figures", flush=True)
 

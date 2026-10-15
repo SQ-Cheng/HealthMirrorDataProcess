@@ -11,6 +11,12 @@ from torch import nn
 from . import config
 
 
+BACKBONES = {
+    "dinov3_vits16": {"features": 384, "weights": config.WEIGHTS, "hash": "08c60483"},
+    "dinov3_vitb16": {"features": 768, "weights": config.WEIGHTS.parent / "dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth", "hash": "73cec8be"},
+}
+
+
 def ensure_source():
     if not config.REPO.exists():
         config.REPO.parent.mkdir(parents=True, exist_ok=True)
@@ -21,32 +27,36 @@ def ensure_source():
         raise RuntimeError("Local official DINOv3 source revision changed")
 
 
-def weight_sha256():
-    if not config.WEIGHTS.is_file():
-        raise FileNotFoundError(f"Authorized official DINOv3-S checkpoint is missing: {config.WEIGHTS}")
-    digest = config.reference.sha256(config.WEIGHTS)
-    if not digest.startswith(config.WEIGHT_HASH_PREFIX):
-        raise RuntimeError("DINOv3 weights do not match the official ViT-S/16 LVD1689M hash prefix")
+def weight_sha256(architecture="dinov3_vits16"):
+    spec = BACKBONES[architecture]
+    path = config.WEIGHTS if architecture == "dinov3_vits16" else spec["weights"]
+    if not path.is_file():
+        raise FileNotFoundError(f"Official {architecture} checkpoint is missing: {path}")
+    digest = config.reference.sha256(path)
+    if not digest.startswith(spec["hash"]):
+        raise RuntimeError(f"DINOv3 weights do not match the official {architecture} LVD1689M hash prefix")
     return digest
 
 
-def load_encoder(*, pretrained=True):
+def load_encoder(*, pretrained=True, architecture="dinov3_vits16"):
+    spec = BACKBONES[architecture]
     ensure_source()
     if pretrained:
-        weight_sha256()
+        weight_sha256(architecture)
     sys.path.insert(0, str(config.REPO))
-    from dinov3.hub.backbones import dinov3_vits16
-    model = dinov3_vits16(pretrained=False)
+    from dinov3.hub import backbones
+    model = getattr(backbones, architecture)(pretrained=False)
     if pretrained:
-        model.load_state_dict(torch.load(config.WEIGHTS, map_location="cpu", weights_only=True), strict=True)
+        path = config.WEIGHTS if architecture == "dinov3_vits16" else spec["weights"]
+        model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True), strict=True)
     model.eval()
     model.requires_grad_(False)
     return model
 
 
 class Head(nn.Sequential):
-    def __init__(self, hidden_features=config.HIDDEN):
-        super().__init__(nn.Linear(384, hidden_features), nn.LayerNorm(hidden_features), nn.SiLU(),
+    def __init__(self, hidden_features=config.HIDDEN, in_features=384):
+        super().__init__(nn.Linear(in_features, hidden_features), nn.LayerNorm(hidden_features), nn.SiLU(),
                          nn.Dropout(config.DROPOUT), nn.Linear(hidden_features, 1))
 
 

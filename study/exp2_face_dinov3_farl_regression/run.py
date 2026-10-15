@@ -35,7 +35,7 @@ class DualDataset(DinoFeatureDataset):
     def __init__(self, index, records, views):
         super().__init__(index, records, views, "regression", config.DINO_CACHE)
         self.farl = np.load(config.CACHE / "features.npy", mmap_mode="r")
-        if self.features.shape != (len(index.starts), 5, 384) or self.farl.shape != (len(index.starts), 5, 512):
+        if self.features.shape != (len(index.starts), 5, config.DINO_FEATURES) or self.farl.shape != (len(index.starts), 5, 512):
             raise RuntimeError("Encoder cache alignment/dimensions are invalid")
 
     def __getitem__(self, sample):
@@ -52,15 +52,27 @@ def loader(index, records, architecture, family, train):
     return dataset, DataLoader(dataset, batch_sampler=sampler, num_workers=0, pin_memory=torch.cuda.is_available())
 
 
-def training_config(output=config.OUTPUT, epochs=80):
+def build_current_model(architecture):
+    if config.DINO_BACKBONE == "dinov3_vitb16":
+        with torch.random.fork_rng(devices=[]):
+            model = build_model(architecture, config.DINO_FEATURES)
+        # Preserve the old model's CPU RNG advancement and therefore batch ordering.
+        build_model(architecture)
+        return model
+    return build_model(architecture)
+
+
+def training_config(output=None, epochs=80):
+    output = config.OUTPUT if output is None else output
     return SimpleNamespace(HERE=config.HERE, OUTPUT_DIR=output, reference=config.reference.reference, LOSS_LEVEL="frame",
                            LEARNING_RATES={variant: 2e-4 for variant in config.VARIANTS},
                            MIN_LEARNING_RATES={variant: 1e-6 for variant in config.VARIANTS},
                            MAX_EPOCHS=epochs, PATIENCE=12, WEIGHT_DECAY=.001)
 
 
-def init_worker(queue):
+def init_worker(queue, backbone="dinov3_vits16"):
     global INDEX, DEVICE
+    config.configure_backbone(backbone)
     gpu = int(queue.get())
     torch.cuda.set_device(gpu)
     DEVICE = torch.device(f"cuda:{gpu}")
@@ -71,13 +83,15 @@ def worker(job):
     root = config.OUTPUT / f"regression/{job['architecture']}/runs/{job['target']}"
     root.mkdir(parents=True, exist_ok=True)
     with (root / "train.log").open("a", buffering=1) as log, contextlib.redirect_stdout(Tee(sys.stdout, log)):
-        train_task(job, INDEX, DEVICE, experiment_config=training_config(), model_factory=build_model,
+        train_task(job, INDEX, DEVICE, experiment_config=training_config(), model_factory=build_current_model,
                    loader_factory=loader, feature_scaler=no_feature_fitting)
     saved = torch.load(root / "model.pt", map_location="cpu", weights_only=True)
     saved.update(encoders_frozen=True, dino_weight_sha256=job["dino_weight_sha256"], farl_weight_sha256=job["farl_weight_sha256"],
-                 feature_dimensions=[384, 512], projection_dimension=64 if job["architecture"] != "concat" else None,
+                 feature_dimensions=[config.DINO_FEATURES, 512], projection_dimension=64 if job["architecture"] != "concat" else None,
                  gate_dimension={"concat": None, "gated": 64, "scalar_gated": 1}[job["architecture"]],
                  head_hidden=32, matching_hours=24, clinical_source_sha256=job["source_sha256"], experiment_contract=job["contract"])
+    if config.DINO_BACKBONE == "dinov3_vitb16":
+        saved["dino_backbone"] = config.DINO_BACKBONE
     torch.save(saved, root / "model.pt")
     (root / "job_complete.json").write_text(json.dumps({"contract": job["contract"]}) + "\n")
     torch.cuda.empty_cache()
@@ -98,9 +112,9 @@ def smoke(index, scalers, variants=config.VARIANTS):
         for variant in variants:
             train_task({"target": target, "architecture": variant, "family": "regression", "scaler": scalers[target]},
                        index, torch.device("cuda:0"), experiment_config=training_config(root, 1),
-                       model_factory=build_model, loader_factory=loader, feature_scaler=no_feature_fitting)
+                       model_factory=build_current_model, loader_factory=loader, feature_scaler=no_feature_fitting)
             checkpoint = torch.load(root / f"regression/{variant}/runs/{target}/model.pt", map_location="cpu", weights_only=True)
-            assert checkpoint["parameters"] == sum(p.numel() for p in build_model(variant).parameters())
+            assert checkpoint["parameters"] == sum(p.numel() for p in build_model(variant, config.DINO_FEATURES).parameters())
     print(f"[smoke-ok] {','.join(variants)}; real shared frame/view features, loss, optimizer and checkpoints", flush=True)
 
 
@@ -113,7 +127,9 @@ def register_contracts(base_manifest, output):
     else:
         path.write_text(json.dumps(base_manifest, indent=2) + "\n")
     base_contract = sha256(path)
-    extension = {**base_manifest, "variants": ["scalar_gated"], "parameters": {"scalar_gated": 60034},
+    dino_features = base_manifest.get("feature_dimensions", [384, 512])[0]
+    scalar_parameters = sum(p.numel() for p in build_model("scalar_gated", dino_features).parameters())
+    extension = {**base_manifest, "variants": ["scalar_gated"], "parameters": {"scalar_gated": scalar_parameters},
                  "gate_dimension": 1, "gate_initial_value": .5, "gate_policy": "input-dependent scalar broadcast over 64 features",
                  "base_manifest_sha256": base_contract}
     extension_path = output / "scalar_gate_manifest.json"
@@ -131,11 +147,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument("--backbone", choices=("dinov3_vits16", "dinov3_vitb16"), default="dinov3_vits16")
     parser.add_argument("--variants", nargs="+", choices=config.VARIANTS, default=list(config.VARIANTS),
                         help="Only these architectures may launch training; other completed results are reused")
     args = parser.parse_args()
+    config.configure_backbone(args.backbone)
     index, scalers, hashes, counts, lab_hash = config.reference.preflight()
-    dino_output = config.reference.config.HERE / "outputs/main24h_frame_loss"
+    dino_output = config.reference.OUTPUT
     dino_manifest = json.loads((dino_output / "experiment_manifest.json").read_text())
     if not (dino_output / "COMPLETE").is_file() or dino_manifest["source_records_sha256"] != hashes:
         raise RuntimeError("Completed DINO comparator data do not match")
@@ -145,7 +163,7 @@ def main():
     config.OUTPUT.mkdir(parents=True, exist_ok=True)
     with (config.OUTPUT / ".queue.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        ensure_dino(config.INDEX_PATH, config.DINO_CACHE)
+        ensure_dino(config.INDEX_PATH, config.DINO_CACHE, architecture=config.DINO_BACKBONE)
         ensure_cache()
         if args.smoke:
             smoke(index, scalers, args.variants)
@@ -154,8 +172,8 @@ def main():
                     "frame_index_sha256": sha256(config.INDEX_PATH), "scalers_sha256": sha256(config.reference.BASELINE / "target_scalers.json"),
                     "dino_weight_sha256": dino_manifest["backbone_weight_sha256"], "farl_weight_sha256": sha256(config.WEIGHTS),
                     "clip_revision": config.CLIP_REVISION, "encoders_frozen": True, "variants": list(config.BASE_VARIANTS),
-                    "feature_dimensions": [384, 512], "projection_dimension": 64, "head_hidden": 32,
-                    "parameters": {variant: sum(p.numel() for p in build_model(variant).parameters()) for variant in config.BASE_VARIANTS},
+                    "feature_dimensions": [config.DINO_FEATURES, 512], "projection_dimension": 64, "head_hidden": 32,
+                    "parameters": {variant: sum(p.numel() for p in build_model(variant, config.DINO_FEATURES).parameters()) for variant in config.BASE_VARIANTS},
                     "matching_hours": 24, "frames_per_video": 20, "views": list(config.reference.config.VIEWS),
                     "batch_distinct_labs": 12, "batch_frames": 240, "loss_level": "frame",
                     "loss": "unweighted SmoothL1 beta=.5 on train-only robust raw values", "max_epochs": 80,
@@ -163,6 +181,17 @@ def main():
                     "dropout": .25, "optimizer": "AdamW", "scheduler": "cosine; no warmup", "compile": False,
                     "normalization": {"dino": "original ImageNet normalization", "farl_mean": list(config.CLIP_MEAN), "farl_std": list(config.CLIP_STD)},
                     "dino_comparator_manifest_sha256": sha256(dino_output / "experiment_manifest.json")}
+        if config.DINO_BACKBONE == "dinov3_vitb16":
+            small_output = config.HERE / "outputs"
+            if not (small_output / "COMPLETE").is_file():
+                raise RuntimeError("ViT-S fusion comparator is incomplete")
+            small = json.loads((small_output / "experiment_manifest.json").read_text())
+            changed = {"dino_weight_sha256", "feature_dimensions", "parameters", "dino_comparator_manifest_sha256"}
+            if any(manifest.get(key) != value for key, value in small.items() if key not in changed):
+                raise RuntimeError("B/S fusion clinical or training protocols differ")
+            manifest.update(dino_backbone=config.DINO_BACKBONE,
+                small_fusion_predictions_sha256={f"{variant}/{target}": sha256(small_output / f"regression/{variant}/runs/{target}/video_predictions.csv")
+                    for variant in config.VARIANTS for target in config.TARGETS})
         contracts = register_contracts(manifest, config.OUTPUT)
         counts.to_csv(config.OUTPUT / "cohort_counts.csv", index=False)
         (config.OUTPUT / "source_records").mkdir(exist_ok=True)
@@ -194,7 +223,7 @@ def main():
                 queue = manager.Queue()
                 for gpu in range(workers):
                     queue.put(gpu)
-                with ProcessPoolExecutor(max_workers=workers, mp_context=context, initializer=init_worker, initargs=(queue,)) as pool:
+                with ProcessPoolExecutor(max_workers=workers, mp_context=context, initializer=init_worker, initargs=(queue, config.DINO_BACKBONE)) as pool:
                     futures = {pool.submit(worker, job): job for job in jobs}
                     for future in as_completed(futures):
                         job = futures[future]
@@ -215,6 +244,13 @@ def main():
             raise RuntimeError("Clinical/DINO reference changed during training")
         from .plots import plot_results
         plot_results()
+        if config.DINO_BACKBONE == "dinov3_vitb16":
+            for key, digest in manifest["small_fusion_predictions_sha256"].items():
+                variant, target = key.split("/")
+                if sha256(config.HERE / f"outputs/regression/{variant}/runs/{target}/video_predictions.csv") != digest:
+                    raise RuntimeError("ViT-S fusion predictions changed during B training")
+            from .plots import plot_backbone_comparison
+            plot_backbone_comparison()
         (config.OUTPUT / "COMPLETE").write_text(f"{len(config.TARGETS) * len(config.VARIANTS)} independent frozen dual-encoder regressors and paired figures completed\n")
         print("[queue-complete] DINOv3+FaRL regression", flush=True)
 

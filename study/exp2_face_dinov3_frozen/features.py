@@ -22,8 +22,8 @@ ENCODER = DATASET = DEVICE = None
 
 
 def load_frozen_encoder(architecture="dinov3_vits16"):
-    if architecture == "dinov3_vits16":
-        return load_encoder()
+    if architecture in ("dinov3_vits16", "dinov3_vitb16"):
+        return load_encoder(architecture=architecture)
     if architecture != "efficientnet_b0":
         raise ValueError(f"Unsupported frozen encoder: {architecture}")
     from torchvision.models import efficientnet_b0
@@ -64,18 +64,18 @@ def _extract(video):
 
 
 def ensure_cache(index_path=None, cache_dir=None, reuse_from=None, architecture="dinov3_vits16"):
-    if architecture not in ("dinov3_vits16", "efficientnet_b0"):
+    if architecture not in ("dinov3_vits16", "dinov3_vitb16", "efficientnet_b0"):
         raise ValueError(f"Unsupported frozen encoder: {architecture}")
-    prefix = "dino-cache" if architecture == "dinov3_vits16" else "en-b0-cache"
+    prefix = {"dinov3_vits16": "dino-cache", "dinov3_vitb16": "dino-b-cache", "efficientnet_b0": "en-b0-cache"}[architecture]
     index_path = index_path or config.INDEX_PATH
     cache_dir = cache_dir or CACHE
     cache_dir.mkdir(parents=True, exist_ok=True)
     index = FrameOffsetIndex.load(index_path)
     expected = {
-        "encoder": "official dinov3_vits16", "repo_revision": config.REPO_REVISION,
-        "weight_sha256": weight_sha256() if architecture == "dinov3_vits16" else config.reference.sha256(config.WEIGHTS.parent / "efficientnet_b0_rwightman-7f5810bc.pth"),
+        "encoder": "official "+architecture, "repo_revision": config.REPO_REVISION,
+        "weight_sha256": weight_sha256(architecture) if architecture != "efficientnet_b0" else config.reference.sha256(config.WEIGHTS.parent / "efficientnet_b0_rwightman-7f5810bc.pth"),
         "frame_index_sha256": config.reference.sha256(index_path),
-        "shape": [len(index.starts), 5, 384], "dtype": "float32", "input_size": [224, 224],
+        "shape": [len(index.starts), 5, 768 if architecture == "dinov3_vitb16" else 384], "dtype": "float32", "input_size": [224, 224],
         "feature": "final normalized CLS token", "encoder_frozen": True,
         "encoder_mode": "eval", "views": list(config.VIEWS), "label_independent": True,
         "crop_scale": config.reference.config.CROP_SCALE,
