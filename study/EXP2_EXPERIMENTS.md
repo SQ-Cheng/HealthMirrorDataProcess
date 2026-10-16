@@ -68,6 +68,37 @@ both encoders have separate correct input normalization and compact reusable cac
 The `outputs/vitb16` extension adds all three fusion heads with the frozen
 768-dimensional ViT-B branch and unchanged 512-dimensional FaRL cache. Original
 S results remain intact; completion refreshes paired eight-model S/B comparisons.
+`exp2_face_rgb_ir_dinov3b_regression` uses the verified synchronous RGB/IR paired20
+cohort and six independent head32 structures: frozen DINOv3-B RGB/IR, or frozen
+DINOv3-B+FaRL within each modality, each with concat/vector-gate/scalar-gate
+RGB-versus-IR fusion. Separate IR encoders receive replicated grayscale inputs.
+The existing per-task labels/splits/train-only scalers are kept exactly; four
+compact frozen feature banks and an eight-GPU dynamic queue serve all60 heads.
+All histories/checkpoints and same-data six-model PNG comparisons are automatic.
+`exp2_face_rgb_ir_dual_enb0_regression` trains ten per-analyte regressors with
+independent ImageNet EN-B0 RGB/IR encoders, concat2560 and head32. It preserves
+the paired20 clinical cohort/splits/scalers and main two-stage 40/60-epoch
+2e-4/1e-5 schedule. Logical240-pair batches accumulate60-pair microbatches;
+finetune BN uses the microbatch size. Eight-GPU scheduling and matched-frame
+RGB/single-backbone/dual-backbone comparison PNGs are automatic.
+`exp2_sota_ablation` defines seven fixed-cohort improvement studies of the
+RGB/IR DINOv3-B+FaRL scalar-gate model: regularization, video/patient-balanced
+supervision, hierarchical supervised RGB warm starts, tail/log/ranking loss,
+color-safe views, match-time weights and IR-only last-block adaptation. It
+preserves all baseline patient roles/test pairs, validates warm-start leakage,
+and offers an opt-in serial-protocol/eight-GPU analyte queue with incremental
+PNG comparisons and paired patient bootstrap intervals. A01-A06 have completed;
+A07 is stopped with the static/fullgraph IR compiler repair ready. These are
+exploratory protocols, not a claim of SOTA performance.
+`exp2_sota_5fold_ablation` defines a reference, eight cumulative improvement
+protocols and three composite protocols, each with ten independent analytes and
+five patient-disjoint outer80/20 folds. Inner holdout selects budgets; a fresh
+full80% refit precedes the single outer-test evaluation. Old supervised RGB
+weights are forbidden; fold-local RGB initialization is retrained. A continuous
+eight-GPU queue crosses protocol boundaries without waiting for all analytes,
+with asynchronous incremental PNGs. B00/C01-C07 completed all400 folds; C08 is
+paused at the user's request, and X01-X03 run next. The launcher respects the
+local scheduling hold without altering the immutable training/split protocol.
 `exp2_face_dinov3_roi_color_regression` concatenates frozen DINOv3-S full-face
 features (384) with four native ROI color descriptors (164), using a head32
 per analyte. It reuses Exp1's five-view ROI cache and common-valid frames;
